@@ -201,6 +201,29 @@ The name and email must match a real identity (your real name and a working emai
 
 ---
 
+## Releasing
+
+Releases are tag-driven. Maintainers only:
+
+1. Bump `version` in `Cargo.toml`.
+2. Move the `CHANGELOG.md` `[Unreleased]` entries under a new `[X.Y.Z]` heading (with the date).
+3. Commit, then tag and push:
+   ```bash
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+
+Pushing the `vX.Y.Z` tag triggers [`.github/workflows/release.yml`](.github/workflows/release.yml), which:
+
+- verifies the tag matches `Cargo.toml`'s version, then `cargo publish`es the crate to **crates.io**, and
+- builds and pushes the Docker image to **Docker Hub** as `sustentabilitas/synapse-gateway:X.Y.Z` and `:latest`.
+
+Every push to `main` also publishes a rolling `sustentabilitas/synapse-gateway:edge` image (no crate publish).
+
+Required repository secrets (Settings → Secrets and variables → Actions): `CARGO_REGISTRY_TOKEN`, `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`.
+
+---
+
 ## License
 
 By submitting a contribution you agree that your work is licensed under the
