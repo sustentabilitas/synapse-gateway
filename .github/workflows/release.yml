@@ -15,21 +15,26 @@ env:
 jobs:
   publish-crate:
     name: Publish crate (crates.io)
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Tag push (vX.Y.Z) OR a manual run from the Actions tab / `gh workflow run release.yml`.
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Verify tag matches Cargo.toml version
+      - name: Resolve version (verify tag match on tag pushes)
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME#v}"
           CRATE="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')"
-          echo "tag=$TAG crate=$CRATE"
-          if [ "$TAG" != "$CRATE" ]; then
-            echo "::error::git tag v$TAG does not match Cargo.toml version $CRATE"
-            exit 1
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF_NAME#v}"
+            if [ "$TAG" != "$CRATE" ]; then
+              echo "::error::git tag v$TAG does not match Cargo.toml version $CRATE"
+              exit 1
+            fi
+            echo "Tag push: publishing v$CRATE"
+          else
+            echo "Manual dispatch: publishing Cargo.toml version $CRATE (crates.io rejects an already-published version)"
           fi
       - name: cargo publish
         run: cargo publish --locked
