@@ -70,6 +70,30 @@ pub struct EmbeddingUsage {
     pub total_tokens: u64,
 }
 
+/// Build an OpenAI-shaped `EmbeddingResponse` from aggregated provider output.
+/// One `EmbeddingData` per vector (dense `index`); usage is input-token only.
+pub fn build_response(model: String, out: EmbedOut) -> EmbeddingResponse {
+    let data = out
+        .vectors
+        .into_iter()
+        .enumerate()
+        .map(|(index, embedding)| EmbeddingData {
+            object: "embedding",
+            index,
+            embedding,
+        })
+        .collect();
+    EmbeddingResponse {
+        object: "list",
+        data,
+        model,
+        usage: EmbeddingUsage {
+            prompt_tokens: out.input_tokens,
+            total_tokens: out.input_tokens,
+        },
+    }
+}
+
 /// Split `inputs` into contiguous batches no larger than `limit`, preserving order.
 pub fn split_batches(inputs: &[String], limit: usize) -> Vec<&[String]> {
     if inputs.is_empty() {

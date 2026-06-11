@@ -34,6 +34,10 @@ pub struct Gateway {
     pub(crate) vertex_native: Option<Arc<VertexNativeProvider>>,
     pub(crate) timeouts: StreamTimeouts,
     pub(crate) default_tenant: String,
+    pub(crate) embed_routes: Arc<crate::routing::embeddings::EmbeddingRouteTable>,
+    pub(crate) embedders:
+        std::collections::HashMap<String, Arc<dyn crate::embeddings::EmbeddingProvider>>,
+    pub(crate) embed_default_input_per_mtok: f64,
 }
 
 /// Per-call identity for an in-process request (replaces HTTP headers).
@@ -56,6 +60,10 @@ pub struct GatewayBuilder {
     vertex_native: Option<VertexNativeProvider>,
     timeouts: Option<StreamTimeouts>,
     default_tenant: Option<String>,
+    embed_routes: Option<crate::routing::embeddings::EmbeddingRouteTable>,
+    embedders:
+        Option<std::collections::HashMap<String, Arc<dyn crate::embeddings::EmbeddingProvider>>>,
+    embed_default_input_per_mtok: Option<f64>,
 }
 
 impl Gateway {
@@ -238,6 +246,112 @@ impl Gateway {
         );
         Ok(completion)
     }
+
+    /// Embed `req.input` against the embedding alias `req.model`, pinning output to
+    /// the alias's declared dimension. Tries each leg in order, falling through on
+    /// upstream error (simple ordered fallback). Records one ledger row on success.
+    ///
+    // TODO(embeddings): wrap legs in resilience breakers like the chat path.
+    pub async fn embed(
+        &self,
+        req: crate::embeddings::EmbeddingRequest,
+        ctx: RequestCtx,
+    ) -> Result<crate::embeddings::EmbeddingResponse, GatewayError> {
+        let alias = req.model.clone();
+        let dims = self
+            .embed_routes
+            .dimensions(&alias)
+            .ok_or_else(|| GatewayError::UnknownModel(alias.clone()))?;
+        if let Some(d) = req.dimensions {
+            if d != dims {
+                return Err(GatewayError::BadRequest(format!(
+                    "dimensions {d} does not match embedding alias '{alias}' dimension {dims}"
+                )));
+            }
+        }
+        let inputs = req.input.into_vec();
+        let legs = self
+            .embed_routes
+            .legs(&alias)
+            .ok_or_else(|| GatewayError::UnknownModel(alias.clone()))?
+            .to_vec();
+
+        let mut last_err: Option<GatewayError> = None;
+        for leg in &legs {
+            let Some(embedder) = self.embedders.get(&leg.provider) else {
+                continue;
+            };
+            let limit = match leg.provider.as_str() {
+                "vertex" => crate::embeddings::vertex::VERTEX_EMBED_BATCH,
+                _ => crate::embeddings::openai::OPENAI_EMBED_BATCH,
+            };
+            match self
+                .embed_all_batches(embedder.as_ref(), &leg.model, &inputs, dims, limit)
+                .await
+            {
+                Ok(out) => {
+                    self.record_embed_usage(&ctx, &alias, leg, out.input_tokens);
+                    return Ok(crate::embeddings::build_response(alias, out));
+                }
+                Err(e) => last_err = Some(e),
+            }
+        }
+        Err(last_err.unwrap_or(GatewayError::AllLegsFailed {
+            route: alias,
+            failures: Vec::new(),
+        }))
+    }
+
+    /// Embed `inputs` in provider-sized batches, concatenating vectors (input order)
+    /// and summing input tokens into a single `EmbedOut`.
+    async fn embed_all_batches(
+        &self,
+        embedder: &dyn crate::embeddings::EmbeddingProvider,
+        model: &str,
+        inputs: &[String],
+        dims: u32,
+        limit: usize,
+    ) -> Result<crate::embeddings::EmbedOut, GatewayError> {
+        let mut vectors = Vec::with_capacity(inputs.len());
+        let mut input_tokens = 0u64;
+        for batch in crate::embeddings::split_batches(inputs, limit) {
+            let out = embedder.embed(model, batch, dims).await?;
+            input_tokens += out.input_tokens;
+            vectors.extend(out.vectors);
+        }
+        Ok(crate::embeddings::EmbedOut {
+            vectors,
+            input_tokens,
+        })
+    }
+
+    /// Fire one cost + ledger row for a completed embedding call (input tokens only).
+    fn record_embed_usage(&self, ctx: &RequestCtx, alias: &str, leg: &ChainLeg, input_tokens: u64) {
+        let cost = self.pricing.embedding_cost_usd(
+            &leg.provider,
+            &leg.model,
+            input_tokens,
+            self.embed_default_input_per_mtok,
+        );
+        self.ledger.enqueue(UsageEntry {
+            ts: Utc::now(),
+            tenant: self.tenant_of(ctx).to_string(),
+            workspace: ctx.workspace.clone(),
+            route: alias.to_string(),
+            provider: leg.provider.clone(),
+            model: leg.model.clone(),
+            lane: "embedding".into(),
+            input_tokens,
+            output_tokens: 0,
+            cost_usd: cost,
+            request_id: ctx
+                .request_id
+                .clone()
+                .unwrap_or_else(|| Uuid::new_v4().to_string()),
+            status: "ok".into(),
+            op: "embedding".into(),
+        });
+    }
 }
 
 impl GatewayBuilder {
@@ -269,6 +383,24 @@ impl GatewayBuilder {
         self.default_tenant = Some(t.into());
         self
     }
+    pub fn embed_routes(mut self, t: crate::routing::embeddings::EmbeddingRouteTable) -> Self {
+        self.embed_routes = Some(t);
+        self
+    }
+    pub fn embedder(
+        mut self,
+        id: impl Into<String>,
+        e: Arc<dyn crate::embeddings::EmbeddingProvider>,
+    ) -> Self {
+        self.embedders
+            .get_or_insert_with(Default::default)
+            .insert(id.into(), e);
+        self
+    }
+    pub fn embed_default_input_per_mtok(mut self, v: f64) -> Self {
+        self.embed_default_input_per_mtok = Some(v);
+        self
+    }
 
     pub fn build(self) -> anyhow::Result<Gateway> {
         Ok(Gateway {
@@ -290,6 +422,9 @@ impl GatewayBuilder {
             vertex_native: self.vertex_native.map(Arc::new),
             timeouts: self.timeouts.unwrap_or_default(),
             default_tenant: self.default_tenant.unwrap_or_else(|| "unattributed".into()),
+            embed_routes: Arc::new(self.embed_routes.unwrap_or_default()),
+            embedders: self.embedders.unwrap_or_default(),
+            embed_default_input_per_mtok: self.embed_default_input_per_mtok.unwrap_or(0.10),
         })
     }
 }
@@ -712,5 +847,117 @@ mod tests {
         assert!(got);
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         assert_eq!(store.entries().len(), 1);
+    }
+
+    // --- Embeddings ---------------------------------------------------------
+
+    use crate::embeddings::{EmbedOut, EmbeddingInput, EmbeddingProvider, EmbeddingRequest};
+    use async_trait::async_trait;
+
+    /// Always fails — exercises the ordered-fallback path.
+    struct FlakyEmbedder;
+    #[async_trait]
+    impl EmbeddingProvider for FlakyEmbedder {
+        async fn embed(
+            &self,
+            _model: &str,
+            _inputs: &[String],
+            _dims: u32,
+        ) -> Result<EmbedOut, GatewayError> {
+            Err(GatewayError::Upstream {
+                status: 500,
+                body: "x".into(),
+            })
+        }
+    }
+
+    /// Returns one zero-vector per input (length `dims`) and a fixed token count.
+    struct GoodEmbedder;
+    #[async_trait]
+    impl EmbeddingProvider for GoodEmbedder {
+        async fn embed(
+            &self,
+            _model: &str,
+            inputs: &[String],
+            dims: u32,
+        ) -> Result<EmbedOut, GatewayError> {
+            Ok(EmbedOut {
+                vectors: inputs.iter().map(|_| vec![0.0f32; dims as usize]).collect(),
+                input_tokens: 6,
+            })
+        }
+    }
+
+    fn embed_gateway() -> (Gateway, Arc<InMemoryLedger>) {
+        let embed_routes = crate::routing::embeddings::EmbeddingRouteTable::from_toml_str(
+            r#"
+            [embeddings."default-embed"]
+            dimensions = 4
+            legs = [
+              { provider = "flaky", model = "flaky-embed" },
+              { provider = "good", model = "good-embed" },
+            ]
+            "#,
+        )
+        .unwrap();
+        let routes = RouteTable::from_toml_str(
+            "[routes.\"fast\"]\nlegs = [{ provider = \"qwen\", model = \"qwen-max\" }]",
+        )
+        .unwrap();
+        let catalog = Catalog::for_test(vec![("qwen", "http://127.0.0.1:1/v1".into())]);
+        let store = Arc::new(InMemoryLedger::default());
+        let ledger = LedgerHandle::spawn(store.clone() as Arc<dyn LedgerStore>, 16);
+        let gw = Gateway::builder()
+            .routes(routes)
+            .catalog(catalog)
+            .pricing(PricingTable::default())
+            .ledger(ledger)
+            .default_tenant("acme")
+            .embed_routes(embed_routes)
+            .embedder(
+                "flaky",
+                Arc::new(FlakyEmbedder) as Arc<dyn EmbeddingProvider>,
+            )
+            .embedder("good", Arc::new(GoodEmbedder) as Arc<dyn EmbeddingProvider>)
+            .build()
+            .unwrap();
+        (gw, store)
+    }
+
+    #[tokio::test]
+    async fn embed_falls_through_to_good_leg_and_records_usage() {
+        let (gw, store) = embed_gateway();
+        let req = EmbeddingRequest {
+            input: EmbeddingInput::Many(vec!["a".into(), "b".into()]),
+            model: "default-embed".into(),
+            dimensions: None,
+        };
+        let resp = gw.embed(req, RequestCtx::default()).await.unwrap();
+        assert_eq!(resp.data.len(), 2);
+        assert!(resp.data.iter().all(|d| d.embedding.len() == 4));
+        assert_eq!(resp.data[0].index, 0);
+        assert_eq!(resp.data[1].index, 1);
+        assert_eq!(resp.usage.prompt_tokens, 6);
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let rows = store.entries();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].op, "embedding");
+        assert_eq!(rows[0].lane, "embedding");
+        assert_eq!(rows[0].output_tokens, 0);
+        assert_eq!(rows[0].provider, "good");
+        assert!(rows[0].cost_usd > 0.0);
+    }
+
+    #[tokio::test]
+    async fn embed_dimension_mismatch_is_bad_request() {
+        let (gw, _store) = embed_gateway();
+        let req = EmbeddingRequest {
+            input: EmbeddingInput::Many(vec!["a".into()]),
+            model: "default-embed".into(),
+            dimensions: Some(8),
+        };
+        let err = gw.embed(req, RequestCtx::default()).await.unwrap_err();
+        assert!(matches!(err, GatewayError::BadRequest(_)));
     }
 }
