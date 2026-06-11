@@ -13,6 +13,7 @@ pub struct Config {
     pub default_tenant: String,
     pub request_timeout: Duration,
     pub stream_idle_timeout: Duration,
+    pub embed_default_input_per_mtok: f64,
     /// Provider credentials/base-urls, read straight from the env map.
     pub env: HashMap<String, String>,
 }
@@ -86,6 +87,12 @@ impl Config {
                     .parse()
                     .map_err(|e| anyhow::anyhow!("SYNAPSE_STREAM_IDLE_TIMEOUT_SECS: {e}"))?,
             ),
+            embed_default_input_per_mtok: get_or(
+                "SYNAPSE_EMBED_DEFAULT_INPUT_PRICE_PER_MTOK",
+                "0.10",
+            )
+            .parse()
+            .unwrap_or(0.10),
             env: env.clone(),
         })
     }

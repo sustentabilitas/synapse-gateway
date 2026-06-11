@@ -10,3 +10,7 @@ output = 1.20
 [ "qwen:qwen-max" ]
 input = 1.6
 output = 6.4
+
+[ "vertex:text-embedding-004" ]
+input = 0.025
+output = 0.0

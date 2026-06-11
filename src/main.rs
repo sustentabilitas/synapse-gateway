@@ -5,10 +5,14 @@ use anyhow::{Context, Result};
 use tracing_subscriber::{fmt, EnvFilter};
 
 use synapse::config::{Config, LedgerBackend};
+use synapse::embeddings::openai::OpenAiEmbedder;
+use synapse::embeddings::vertex::VertexEmbedder;
+use synapse::embeddings::EmbeddingProvider;
 use synapse::ledger::{LedgerHandle, LedgerStore};
 use synapse::pricing::PricingTable;
 use synapse::providers::vertex_auth::VertexAuth;
 use synapse::providers::Catalog;
+use synapse::routing::embeddings::EmbeddingRouteTable;
 use synapse::routing::table::RouteTable;
 use synapse::server::router;
 use synapse::vertex_native::VertexNativeProvider;
@@ -37,10 +41,9 @@ async fn main() -> Result<()> {
         .context("installing prometheus exporter")?;
     tracing::info!(addr = %config.metrics_addr, "synapse-gateway metrics listening");
 
-    let routes = RouteTable::from_toml_str(
-        &std::fs::read_to_string(&config.routes_path)
-            .with_context(|| format!("reading {}", config.routes_path))?,
-    )?;
+    let routes_content = std::fs::read_to_string(&config.routes_path)
+        .with_context(|| format!("reading {}", config.routes_path))?;
+    let routes = RouteTable::from_toml_str(&routes_content)?;
     let pricing = PricingTable::from_toml_str(
         &std::fs::read_to_string(&config.pricing_path)
             .with_context(|| format!("reading {}", config.pricing_path))?,
@@ -69,6 +72,55 @@ async fn main() -> Result<()> {
                 None,
             ))
         });
+
+    // Parse embedding aliases from the same routes file (different top-level table)
+    // and build one embedder per referenced provider, mirroring Catalog::build creds.
+    let embed_routes = EmbeddingRouteTable::from_toml_str(&routes_content)?;
+    let mut embedders: HashMap<String, Arc<dyn EmbeddingProvider>> = HashMap::new();
+    for id in embed_routes.referenced_providers() {
+        let embedder: Arc<dyn EmbeddingProvider> = match id.as_str() {
+            "vertex" => {
+                let project = env
+                    .get("VERTEX_PROJECT")
+                    .filter(|s| !s.trim().is_empty())
+                    .cloned()
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "embedding alias references provider 'vertex' but VERTEX_PROJECT is unset"
+                        )
+                    })?;
+                Arc::new(VertexEmbedder::new(
+                    Arc::new(VertexAuth::from_adc()),
+                    project,
+                    vertex_location.clone(),
+                    config.request_timeout,
+                ))
+            }
+            "openai" => {
+                let api_key = env
+                    .get("OPENAI_API_KEY")
+                    .filter(|s| !s.trim().is_empty())
+                    .cloned()
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "embedding alias references provider 'openai' but OPENAI_API_KEY is unset"
+                        )
+                    })?;
+                let base_url = env
+                    .get("OPENAI_BASE_URL")
+                    .filter(|s| !s.trim().is_empty())
+                    .cloned()
+                    .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
+                Arc::new(OpenAiEmbedder::new(
+                    base_url,
+                    api_key,
+                    config.request_timeout,
+                ))
+            }
+            other => anyhow::bail!("embedding provider '{other}' not supported"),
+        };
+        embedders.insert(id, embedder);
+    }
 
     // Build one sink per selected backend, then fan out.
     let mut sinks: Vec<(&'static str, Arc<dyn LedgerStore>)> = Vec::new();
@@ -151,7 +203,7 @@ async fn main() -> Result<()> {
     let store: Arc<dyn LedgerStore> = Arc::new(synapse::ledger::FanoutLedger::new(sinks));
     let ledger = LedgerHandle::spawn(store, 10_000);
 
-    let gateway = synapse::gateway::Gateway::builder()
+    let builder = synapse::gateway::Gateway::builder()
         .routes(routes)
         .catalog(catalog)
         .pricing(pricing)
@@ -162,6 +214,11 @@ async fn main() -> Result<()> {
             idle: config.stream_idle_timeout,
         })
         .default_tenant(config.default_tenant.clone())
+        .embed_routes(embed_routes)
+        .embed_default_input_per_mtok(config.embed_default_input_per_mtok);
+    let gateway = embedders
+        .into_iter()
+        .fold(builder, |b, (id, e)| b.embedder(id, e))
         .build()?;
     let app = router(Arc::new(gateway));
     tracing::info!(addr = %config.addr, "synapse-gateway listening");

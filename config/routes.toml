@@ -6,3 +6,9 @@ legs = [
 
 [routes."fast"]
 legs = [{ provider = "vertex", model = "gemini-3-flash" }]
+
+[embeddings."default-embed"]
+dimensions = 768
+legs = [
+  { provider = "vertex", model = "text-embedding-004" },
+]
