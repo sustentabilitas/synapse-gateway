@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-synapse-gateway is pre-1.0; nothing has been released yet. Everything below is the
-initial feature set being readied for a first tagged release.
+## [0.2.0] - 2026-06-11
+
+### Added
+
+- **Embeddings endpoint** — OpenAI-compatible `POST /v1/embeddings` routing a model alias through dimension-pinned fallback legs to native **Vertex AI** (`:predict`) or **OpenAI-compatible** embedding models. The per-alias declared `dimensions` is pinned on every leg (Vertex `outputDimensionality` / OpenAI `dimensions`) so fallback never changes vector length. Tenant/workspace attribution and a cost element are recorded to the ledger (`op:"embedding"`, `output_tokens:0`; unpriced embeddings default to `$0.10`/1M via `SYNAPSE_EMBED_DEFAULT_INPUT_PRICE_PER_MTOK`). Adds the in-process `Gateway::embed()` method and `synapse_embeddings_total` / `synapse_embedding_duration_seconds` metrics.
+- **Configurable Vertex region** — `VERTEX_LOCATION` (default `global`) selects the Vertex endpoint for the native lane.
+
+## [0.1.0] - 2026-06-10
 
 ### Added
 
@@ -23,4 +29,6 @@ initial feature set being readied for a first tagged release.
 - **Observability** — `gen_ai.*` OpenTelemetry span attributes and a Prometheus pull endpoint on every request.
 - **Embeddable library** — `synapse::gateway::Gateway` (builder + in-process `chat()` / `chat_stream()`); the axum HTTP server and Prometheus exporter are behind a default-on `server` feature, so the engine can be embedded with `default-features = false`. See `examples/embed.rs`.
 
-[Unreleased]: https://github.com/sustentabilitas/synapse-gateway/commits/main
+[Unreleased]: https://github.com/sustentabilitas/synapse-gateway/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/sustentabilitas/synapse-gateway/releases/tag/v0.2.0
+[0.1.0]: https://github.com/sustentabilitas/synapse-gateway/releases/tag/v0.1.0
