@@ -25,6 +25,7 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
         .route("/health", get(|| async { "ok" }))
         .route("/v1/models", get(list_models))
         .route("/v1/chat/completions", post(chat_completions))
+        .route("/v1/embeddings", post(embeddings))
         .with_state(AppState { gateway })
 }
 
@@ -71,6 +72,16 @@ async fn chat_completions(
 
     let completion = st.gateway.chat(req, &ctx).await?;
     Ok(Json(openai_json(&completion, &request_id)).into_response())
+}
+
+async fn embeddings(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<crate::embeddings::EmbeddingRequest>,
+) -> Result<Response, GatewayError> {
+    let ctx = request_ctx(&headers);
+    let resp = st.gateway.embed(req, ctx).await?;
+    Ok(Json(resp).into_response())
 }
 
 /// Build the OpenAI `chat.completion` JSON from a buffered `Completion`
