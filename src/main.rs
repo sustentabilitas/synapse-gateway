@@ -50,6 +50,13 @@ async fn main() -> Result<()> {
     let catalog = Catalog::build(&env, &routes.referenced_providers(), config.request_timeout)?;
 
     // Native Vertex lane is available when VERTEX_PROJECT is configured.
+    // Region defaults to the global endpoint; override with VERTEX_LOCATION.
+    let vertex_location = env
+        .get("VERTEX_LOCATION")
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("global")
+        .to_string();
     let vertex_native = env
         .get("VERTEX_PROJECT")
         .filter(|s| !s.trim().is_empty())
@@ -57,7 +64,7 @@ async fn main() -> Result<()> {
             Arc::new(VertexNativeProvider::new(
                 Arc::new(VertexAuth::from_adc()),
                 project.clone(),
-                "global".to_string(),
+                vertex_location.clone(),
                 config.request_timeout,
                 None,
             ))
