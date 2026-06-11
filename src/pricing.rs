@@ -38,6 +38,24 @@ impl PricingTable {
             })
             .unwrap_or(0.0)
     }
+
+    /// Cost in USD for an embedding call (input tokens only). Unlike `cost_usd`,
+    /// an unknown `provider:model` falls back to `default_input_per_mtok` (USD per
+    /// 1M tokens) so embedding usage is never silently free.
+    pub fn embedding_cost_usd(
+        &self,
+        provider: &str,
+        model: &str,
+        input_tokens: u64,
+        default_input_per_mtok: f64,
+    ) -> f64 {
+        let per_mtok = self
+            .prices
+            .get(&format!("{provider}:{model}"))
+            .map(|p| p.input)
+            .unwrap_or(default_input_per_mtok);
+        input_tokens as f64 * per_mtok / 1_000_000.0
+    }
 }
 
 #[cfg(test)]
@@ -62,5 +80,24 @@ mod tests {
     fn unknown_model_is_free_not_error() {
         let t = PricingTable::from_toml_str(SAMPLE).unwrap();
         assert_eq!(t.cost_usd("oai_compat", "qwen-local", 1000, 1000), 0.0);
+    }
+
+    #[test]
+    fn embedding_uses_key_when_present_else_default() {
+        let t = PricingTable::from_toml_str(
+            "[\"vertex:text-embedding-004\"]\ninput = 0.025\noutput = 0.0\n",
+        )
+        .unwrap();
+        // priced key: 1M tokens * 0.025 = 0.025
+        assert!(
+            (t.embedding_cost_usd("vertex", "text-embedding-004", 1_000_000, 0.10) - 0.025).abs()
+                < 1e-9
+        );
+        // missing key: falls back to the $0.10/1M default
+        assert!(
+            (t.embedding_cost_usd("openai", "text-embedding-3-large", 1_000_000, 0.10) - 0.10)
+                .abs()
+                < 1e-9
+        );
     }
 }
