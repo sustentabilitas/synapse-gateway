@@ -55,15 +55,16 @@ fn to_genai_request(req: &ChatRequest) -> genai::chat::ChatRequest {
                 chat = chat.append_message(ChatMessage::from(ToolResponse { call_id, content }));
             }
             role => {
-                let text = m
-                    .content
-                    .as_str()
-                    .map(str::to_string)
-                    .unwrap_or_else(|| m.content.to_string());
                 let msg = match role {
-                    "system" => ChatMessage::system(text),
-                    "assistant" => ChatMessage::assistant(text),
-                    _ => ChatMessage::user(text),
+                    "system" => ChatMessage::system(genai::chat::MessageContent::from_parts(
+                        crate::routing::content_parts::content_to_genai_parts(&m.content),
+                    )),
+                    "assistant" => ChatMessage::assistant(genai::chat::MessageContent::from_parts(
+                        crate::routing::content_parts::content_to_genai_parts(&m.content),
+                    )),
+                    _ => ChatMessage::user(genai::chat::MessageContent::from_parts(
+                        crate::routing::content_parts::content_to_genai_parts(&m.content),
+                    )),
                 };
                 chat = chat.append_message(msg);
             }
@@ -112,10 +113,27 @@ fn openai_tool_call_to_genai(v: &serde_json::Value) -> Option<genai::chat::ToolC
 }
 
 fn to_genai_options(req: &ChatRequest) -> genai::chat::ChatOptions {
-    genai::chat::ChatOptions::default().pipe(|o| match req.temperature {
-        Some(t) => o.with_temperature(t as f64),
-        None => o,
-    })
+    genai::chat::ChatOptions::default()
+        .pipe(|o| match req.temperature {
+            Some(t) => o.with_temperature(t as f64),
+            None => o,
+        })
+        .pipe(|o| match &req.response_format {
+            Some(rf) => match rf.kind.as_str() {
+                "json_object" => o.with_response_format(genai::chat::ChatResponseFormat::JsonMode),
+                "json_schema" => {
+                    if let Some(spec) = rf.json_schema.clone() {
+                        o.with_response_format(genai::chat::ChatResponseFormat::JsonSpec(
+                            genai::chat::JsonSpec::new("synapse", spec),
+                        ))
+                    } else {
+                        o
+                    }
+                }
+                _ => o,
+            },
+            None => o,
+        })
 }
 
 /// True if a genai error is worth advancing the chain for (transient/5xx/timeout).

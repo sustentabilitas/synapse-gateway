@@ -3950,6 +3950,7 @@ dependencies = [
  "aws-sdk-sns",
  "axum",
  "backon",
+ "base64 0.22.1",
  "bytes",
  "chrono",
  "futures",

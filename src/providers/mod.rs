@@ -92,6 +92,11 @@ impl Catalog {
         Ok(Self { providers })
     }
 
+    /// Construct a catalog from pre-built providers (tests and embedders).
+    pub fn from_map(providers: HashMap<String, Arc<Provider>>) -> Self {
+        Self { providers }
+    }
+
     /// Test-only catalog of OpenAI-compatible providers from (id, base_url) pairs.
     #[cfg(test)]
     pub fn for_test(pairs: Vec<(&'static str, String)>) -> Self {

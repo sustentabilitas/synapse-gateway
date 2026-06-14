@@ -299,12 +299,8 @@ fn build_payload(req: &ChatRequest, ext: &VertexExt) -> Value {
             }
             role => {
                 let vrole = if role == "assistant" { "model" } else { "user" };
-                let text = m
-                    .content
-                    .as_str()
-                    .map(str::to_string)
-                    .unwrap_or_else(|| m.content.to_string());
-                contents.push(json!({ "role": vrole, "parts": [{ "text": text }] }));
+                let parts = crate::routing::content_parts::content_to_vertex_parts(&m.content);
+                contents.push(json!({ "role": vrole, "parts": parts }));
             }
         }
     }
