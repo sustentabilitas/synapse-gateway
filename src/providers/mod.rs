@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::config::vertex_project_from_env;
 use crate::providers::genai_provider::{
     build_openai_compat_provider, build_vertex_provider, OpenAiCompatConfig, Provider,
     VertexProviderConfig,
@@ -36,8 +37,10 @@ impl Catalog {
         for id in referenced {
             let provider = match id.as_str() {
                 "vertex" => {
-                    let project = get("VERTEX_PROJECT").ok_or_else(|| {
-                        anyhow::anyhow!("route references provider 'vertex' but VERTEX_PROJECT is unset")
+                    let project = vertex_project_from_env(env).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "route references provider 'vertex' but VERTEX_PROJECT_ID and VERTEX_PROJECT are unset"
+                        )
                     })?;
                     build_vertex_provider(
                         "vertex",
@@ -130,6 +133,28 @@ mod catalog_tests {
     }
     fn refs(ids: &[&str]) -> std::collections::HashSet<String> {
         ids.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn builds_vertex_when_project_id_present() {
+        let cat = Catalog::build(
+            &env(&[("VERTEX_PROJECT_ID", "my-gcp-project")]),
+            &refs(&["vertex"]),
+            Duration::from_secs(5),
+        )
+        .unwrap();
+        assert!(cat.get("vertex").is_some());
+    }
+
+    #[test]
+    fn builds_vertex_when_legacy_project_present() {
+        let cat = Catalog::build(
+            &env(&[("VERTEX_PROJECT", "my-gcp-project")]),
+            &refs(&["vertex"]),
+            Duration::from_secs(5),
+        )
+        .unwrap();
+        assert!(cat.get("vertex").is_some());
     }
 
     #[test]
