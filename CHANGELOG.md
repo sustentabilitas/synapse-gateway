@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-06-15
+
+### Fixed
+
+- **Pub/Sub ledger** — pass `&str` to `PubsubLedger::connect` when resolving the project from `vertex_project_from_env`.
+
 ## [0.4.0] - 2026-06-15
 
 ### Added
@@ -43,7 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Observability** — `gen_ai.*` OpenTelemetry span attributes and a Prometheus pull endpoint on every request.
 - **Embeddable library** — `synapse::gateway::Gateway` (builder + in-process `chat()` / `chat_stream()`); the axum HTTP server and Prometheus exporter are behind a default-on `server` feature, so the engine can be embedded with `default-features = false`. See `examples/embed.rs`.
 
-[Unreleased]: https://github.com/sustentabilitas/synapse-gateway/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/sustentabilitas/synapse-gateway/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/sustentabilitas/synapse-gateway/releases/tag/v0.4.1
 [0.4.0]: https://github.com/sustentabilitas/synapse-gateway/releases/tag/v0.4.0
 [0.2.1]: https://github.com/sustentabilitas/synapse-gateway/releases/tag/v0.2.1
 [0.2.0]: https://github.com/sustentabilitas/synapse-gateway/releases/tag/v0.2.0
