@@ -16,9 +16,12 @@ pub struct VertexNativeProvider {
     http: reqwest::Client,
     auth: Arc<VertexAuth>,
     project: String,
+    /// Default region, used when a leg carries no per-leg `region` override.
     region: String,
-    /// Base host; overridden in tests with a wiremock URI.
-    endpoint_base: String,
+    /// Explicit host override (a wiremock URI in tests, or a custom endpoint).
+    /// When set it wins for every region; otherwise the host is derived from the
+    /// effective region so a per-leg override can target a different location.
+    endpoint_override: Option<String>,
 }
 
 impl VertexNativeProvider {
@@ -29,13 +32,6 @@ impl VertexNativeProvider {
         request_timeout: Duration,
         endpoint_override: Option<String>,
     ) -> Self {
-        let endpoint_base = endpoint_override.unwrap_or_else(|| {
-            if region == "global" {
-                "https://aiplatform.googleapis.com".into()
-            } else {
-                format!("https://{region}-aiplatform.googleapis.com")
-            }
-        });
         Self {
             http: reqwest::Client::builder()
                 .timeout(request_timeout)
@@ -44,14 +40,29 @@ impl VertexNativeProvider {
             auth,
             project,
             region,
-            endpoint_base,
+            endpoint_override,
         }
     }
 
-    fn generate_url(&self, model: &str) -> String {
+    /// Resolve the API host for a region: the explicit override if configured,
+    /// else Vertex's regional host (`global` has its own non-prefixed host).
+    fn endpoint_for(&self, region: &str) -> String {
+        if let Some(base) = &self.endpoint_override {
+            base.clone()
+        } else if region == "global" {
+            "https://aiplatform.googleapis.com".into()
+        } else {
+            format!("https://{region}-aiplatform.googleapis.com")
+        }
+    }
+
+    fn generate_url(&self, model: &str, region: &str) -> String {
         format!(
             "{}/v1/projects/{}/locations/{}/publishers/google/models/{}:generateContent",
-            self.endpoint_base, self.project, self.region, model
+            self.endpoint_for(region),
+            self.project,
+            region,
+            model
         )
     }
 
@@ -64,7 +75,9 @@ impl VertexNativeProvider {
         &self,
         model: &str,
         req: &ChatRequest,
+        region: Option<&str>,
     ) -> Result<Completion, crate::error::GatewayError> {
+        let region = region.unwrap_or(&self.region);
         let ext = req.vertex.clone().unwrap_or_default();
         let payload = build_payload(req, &ext);
         let token = self
@@ -78,7 +91,7 @@ impl VertexNativeProvider {
 
         let resp = self
             .http
-            .post(self.generate_url(model))
+            .post(self.generate_url(model, region))
             .bearer_auth(token)
             .json(&payload)
             .send()
@@ -112,10 +125,13 @@ impl VertexNativeProvider {
         parse_response("vertex", model, &value)
     }
 
-    fn stream_url(&self, model: &str) -> String {
+    fn stream_url(&self, model: &str, region: &str) -> String {
         format!(
             "{}/v1/projects/{}/locations/{}/publishers/google/models/{}:streamGenerateContent?alt=sse",
-            self.endpoint_base, self.project, self.region, model
+            self.endpoint_for(region),
+            self.project,
+            region,
+            model
         )
     }
 
@@ -129,6 +145,7 @@ impl VertexNativeProvider {
         &self,
         model: &str,
         req: &ChatRequest,
+        region: Option<&str>,
     ) -> Result<
         impl futures::Stream<Item = Result<StreamItem, crate::routing::executor::LegError>>,
         crate::error::GatewayError,
@@ -138,6 +155,7 @@ impl VertexNativeProvider {
         use crate::routing::stream::FinishReason;
         use futures::StreamExt;
 
+        let region = region.unwrap_or(&self.region);
         let ext = req.vertex.clone().unwrap_or_default();
         let payload = build_payload(req, &ext);
         let token = self
@@ -151,7 +169,7 @@ impl VertexNativeProvider {
 
         let resp = self
             .http
-            .post(self.stream_url(model))
+            .post(self.stream_url(model, region))
             .bearer_auth(token)
             .json(&payload)
             .send()
@@ -320,14 +338,25 @@ fn build_payload(req: &ChatRequest, ext: &VertexExt) -> Value {
     if let Some(cache) = &ext.cached_content {
         body["cachedContent"] = json!(cache);
     }
+    // Assemble generationConfig from every native knob in one place so that
+    // schema, temperature, token cap, and thinking budget compose cleanly
+    // (a missing schema must not drop a maxOutputTokens/thinkingConfig).
+    let mut gen_cfg = serde_json::Map::new();
     if let Some(schema) = &ext.response_schema {
-        body["generationConfig"] = json!({
-            "responseMimeType": "application/json",
-            "responseSchema": schema,
-        });
+        gen_cfg.insert("responseMimeType".into(), json!("application/json"));
+        gen_cfg.insert("responseSchema".into(), schema.clone());
     }
     if let Some(t) = req.temperature {
-        body["generationConfig"]["temperature"] = json!(t);
+        gen_cfg.insert("temperature".into(), json!(t));
+    }
+    if let Some(max) = req.max_tokens {
+        gen_cfg.insert("maxOutputTokens".into(), json!(max));
+    }
+    if let Some(thinking) = &ext.thinking_config {
+        gen_cfg.insert("thinkingConfig".into(), thinking.clone());
+    }
+    if !gen_cfg.is_empty() {
+        body["generationConfig"] = Value::Object(gen_cfg);
     }
     if let Some(tools) = &req.tools {
         let decls = tools.iter().filter_map(|t| {
@@ -356,6 +385,14 @@ fn build_payload(req: &ChatRequest, ext: &VertexExt) -> Value {
     body
 }
 
+/// A Vertex "thinking" part (`{"text": "...", "thought": true}`) carries the
+/// model's reasoning, not answer content. It must be excluded from the emitted
+/// text — otherwise a thinking model (Gemini 3, Gemini 2.5) pollutes or, under
+/// a `responseSchema`, invalidates the structured output.
+fn is_thought_part(p: &Value) -> bool {
+    p.get("thought").and_then(Value::as_bool).unwrap_or(false)
+}
+
 /// Map a Vertex response into the shared `Completion`, extracting usage.
 fn parse_response(
     provider: &str,
@@ -367,6 +404,7 @@ fn parse_response(
         .map(|parts| {
             parts
                 .iter()
+                .filter(|p| !is_thought_part(p))
                 .filter_map(|p| p["text"].as_str())
                 .collect::<Vec<_>>()
                 .join("")
@@ -400,6 +438,9 @@ pub fn vertex_chunk_to_items(chunk: &Value, tool_index: &mut u32) -> Vec<StreamI
     let mut out = Vec::new();
     if let Some(parts) = chunk["candidates"][0]["content"]["parts"].as_array() {
         for p in parts {
+            if is_thought_part(p) {
+                continue;
+            }
             if let Some(text) = p["text"].as_str() {
                 if !text.is_empty() {
                     out.push(StreamItem::Delta(text.to_string()));
@@ -455,6 +496,7 @@ mod tests {
             cached_content: Some("cachedContents/abc".into()),
             media_uris: Some(vec!["gs://bucket/v.mp4".into()]),
             response_schema: Some(serde_json::json!({"type": "object"})),
+            ..Default::default()
         };
         let body = build_payload(&req_with(ext.clone()), &ext);
         assert_eq!(
@@ -469,6 +511,52 @@ mod tests {
         assert!(parts
             .iter()
             .any(|p| p["fileData"]["fileUri"] == "gs://bucket/v.mp4"));
+    }
+
+    #[test]
+    fn payload_includes_max_output_tokens_and_thinking_config() {
+        let ext = VertexExt {
+            thinking_config: Some(serde_json::json!({ "thinkingLevel": "low" })),
+            ..Default::default()
+        };
+        let mut req = req_with(ext.clone());
+        req.max_tokens = Some(8192);
+        let body = build_payload(&req, &ext);
+        assert_eq!(
+            body["generationConfig"]["maxOutputTokens"],
+            serde_json::json!(8192)
+        );
+        assert_eq!(
+            body["generationConfig"]["thinkingConfig"],
+            serde_json::json!({ "thinkingLevel": "low" })
+        );
+    }
+
+    #[test]
+    fn vertex_chunk_skips_thought_parts() {
+        use crate::routing::stream::StreamItem;
+        let mut idx = 0u32;
+        let chunk = serde_json::json!({
+            "candidates": [{"content": {"role": "model", "parts": [
+                {"text": "internal reasoning", "thought": true},
+                {"text": "answer"}
+            ]}}]
+        });
+        let items = vertex_chunk_to_items(&chunk, &mut idx);
+        assert_eq!(items, vec![StreamItem::Delta("answer".into())]);
+    }
+
+    #[test]
+    fn parse_response_skips_thought_parts() {
+        let v = serde_json::json!({
+            "candidates": [{"content": {"parts": [
+                {"text": "reasoning", "thought": true},
+                {"text": "real"}
+            ], "role": "model"}}],
+            "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 1}
+        });
+        let c = parse_response("vertex", "gemini-3-pro", &v).unwrap();
+        assert_eq!(c.content, "real");
     }
 
     #[test]
@@ -553,6 +641,53 @@ mod tests {
         );
     }
 
+    #[test]
+    fn endpoint_for_region_picks_regional_or_global_host() {
+        let auth = Arc::new(VertexAuth::with_fetcher(|| {
+            Box::pin(async { Ok(("t".into(), Duration::from_secs(3600))) })
+        }));
+        let provider =
+            VertexNativeProvider::new(auth, "p".into(), "global".into(), Duration::from_secs(5), None);
+        assert_eq!(provider.endpoint_for("global"), "https://aiplatform.googleapis.com");
+        assert_eq!(
+            provider.endpoint_for("us-central1"),
+            "https://us-central1-aiplatform.googleapis.com"
+        );
+    }
+
+    #[tokio::test]
+    async fn generate_uses_per_leg_region_override_in_url() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/projects/p/locations/us-central1/publishers/google/models/gemini-x:generateContent"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "candidates": [{"content": {"parts": [{"text": "ok"}], "role": "model"}}],
+                "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 1}
+            })))
+            .mount(&mock)
+            .await;
+
+        let auth = Arc::new(VertexAuth::with_fetcher(|| {
+            Box::pin(async { Ok(("test-token".into(), Duration::from_secs(3600))) })
+        }));
+        // Provider default region is `global`; the per-leg override must win.
+        let provider = VertexNativeProvider::new(
+            auth,
+            "p".into(),
+            "global".into(),
+            Duration::from_secs(5),
+            Some(mock.uri()),
+        );
+        let c = provider
+            .generate("gemini-x", &req_with(VertexExt::default()), Some("us-central1"))
+            .await
+            .unwrap();
+        assert_eq!(c.content, "ok");
+    }
+
     #[tokio::test]
     async fn generate_posts_to_vertex_url_with_bearer_and_parses() {
         use wiremock::matchers::{header, method, path};
@@ -586,6 +721,7 @@ mod tests {
                     cached_content: Some("cachedContents/x".into()),
                     ..Default::default()
                 }),
+                None,
             )
             .await
             .unwrap();
@@ -627,7 +763,7 @@ mod tests {
             "model":"gemini-3-pro","messages":[{"role":"user","content":"hi"}],"stream":true}))
         .unwrap();
         let mut stream = std::pin::pin!(provider
-            .stream_generate("gemini-3-pro", &req)
+            .stream_generate("gemini-3-pro", &req, None)
             .await
             .expect("starts"));
         let mut items = Vec::new();
@@ -678,7 +814,7 @@ mod tests {
         .unwrap();
 
         let err = provider
-            .stream_generate("gemini-3-pro", &req)
+            .stream_generate("gemini-3-pro", &req, None)
             .await
             .err()
             .expect("4xx should be an error");

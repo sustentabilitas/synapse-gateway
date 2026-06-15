@@ -440,10 +440,12 @@ mod tests {
             ChainLeg {
                 provider: "p1".into(),
                 model: "m".into(),
+                ..Default::default()
             },
             ChainLeg {
                 provider: "p2".into(),
                 model: "m".into(),
+                ..Default::default()
             },
         ];
         let r =
@@ -488,10 +490,12 @@ mod tests {
             ChainLeg {
                 provider: "p1".into(),
                 model: "m".into(),
+                ..Default::default()
             },
             ChainLeg {
                 provider: "p2".into(),
                 model: "m".into(),
+                ..Default::default()
             },
         ];
         let r = req(
@@ -552,10 +556,12 @@ mod tests {
             ChainLeg {
                 provider: "p1".into(),
                 model: "m".into(),
+                ..Default::default()
             },
             ChainLeg {
                 provider: "p2".into(),
                 model: "m".into(),
+                ..Default::default()
             },
         ];
         let r =

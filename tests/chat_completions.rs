@@ -61,6 +61,7 @@ async fn primary_success_returns_completion_with_usage() {
     let legs = vec![ChainLeg {
         provider: "qwen".into(),
         model: "qwen-max".into(),
+        ..Default::default()
     }];
     let c = execute_chain(&catalog, "gemini-pro", &legs, &chat_body("gemini-pro"))
         .await
@@ -84,6 +85,7 @@ async fn all_legs_fail_yields_all_legs_failed() {
     let legs = vec![ChainLeg {
         provider: "qwen".into(),
         model: "qwen-max".into(),
+        ..Default::default()
     }];
     let err = execute_chain(&catalog, "gemini-pro", &legs, &chat_body("gemini-pro"))
         .await
@@ -140,10 +142,12 @@ async fn first_leg_5xx_falls_over_to_second_leg() {
         ChainLeg {
             provider: "qwen".into(),
             model: "qwen-max".into(),
+            ..Default::default()
         },
         ChainLeg {
             provider: "openai".into(),
             model: "gpt-x".into(),
+            ..Default::default()
         },
     ];
     let c = execute_chain(&catalog, "gemini-pro", &legs, &chat_body("gemini-pro"))

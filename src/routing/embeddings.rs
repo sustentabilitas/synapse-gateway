@@ -80,6 +80,7 @@ mod tests {
             ChainLeg {
                 provider: "vertex".into(),
                 model: "text-embedding-004".into(),
+                ..Default::default()
             }
         );
         assert!(t.legs("nope").is_none());

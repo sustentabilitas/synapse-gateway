@@ -56,6 +56,11 @@ pub struct VertexExt {
     pub media_uris: Option<Vec<String>>,
     #[serde(default)]
     pub response_schema: Option<Value>,
+    /// Raw Vertex `generationConfig.thinkingConfig` passthrough (e.g.
+    /// `{"thinkingLevel":"low"}` for Gemini 3, or `{"thinkingBudget":N}` for
+    /// Gemini 2.5). Threaded verbatim so the gateway stays model-agnostic.
+    #[serde(default)]
+    pub thinking_config: Option<Value>,
 }
 
 #[cfg(test)]
@@ -90,6 +95,20 @@ mod tests {
             Some("cachedContents/abc")
         );
         assert_eq!(req.passthrough.get("top_k"), Some(&serde_json::json!(40)));
+    }
+
+    #[test]
+    fn captures_vertex_thinking_config() {
+        let body = serde_json::json!({
+            "model": "gemini-3-pro",
+            "messages": [{"role": "user", "content": "hi"}],
+            "vertex": { "thinking_config": { "thinkingLevel": "low" } }
+        });
+        let req: ChatRequest = serde_json::from_value(body).unwrap();
+        assert_eq!(
+            req.vertex.unwrap().thinking_config,
+            Some(serde_json::json!({ "thinkingLevel": "low" }))
+        );
     }
 
     #[test]

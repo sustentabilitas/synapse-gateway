@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-06-15
+
+### Added
+
+- **Per-leg Vertex region** — a route leg may now carry an optional `region`
+  (`{ provider = "vertex", model = "gemini-3.1-pro-preview", region = "global" }`).
+  The native Vertex lane uses it to pick both the API host and the
+  `locations/{region}` path, falling back to the provider's configured region
+  (env `VERTEX_LOCATION`) when unset — so a model can be pinned to the region
+  that serves it without a process-wide env change.
+- **Native Vertex thinking/token controls** — the native Vertex lane now emits
+  `generationConfig.maxOutputTokens` from `ChatRequest.max_tokens` (previously
+  dropped on this lane) and a new `VertexExt.thinking_config` passthrough for
+  `generationConfig.thinkingConfig` (e.g. `{"thinkingLevel":"low"}` for Gemini 3,
+  `{"thinkingBudget":N}` for Gemini 2.5). Without these, a thinking model under a
+  `responseSchema` can spend its whole output budget reasoning and return an
+  empty body.
+
+### Fixed
+
+- **Thinking parts excluded from content** — `parse_response` and
+  `vertex_chunk_to_items` now skip Vertex parts flagged `"thought": true`, so a
+  thinking model's reasoning no longer pollutes (or, under structured output,
+  invalidates) the emitted text.
+
 ## [0.4.1] - 2026-06-15
 
 ### Fixed

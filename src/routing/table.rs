@@ -4,10 +4,16 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use tap::Pipe;
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
 pub struct ChainLeg {
     pub provider: String,
     pub model: String,
+    /// Optional per-leg region override for the native Vertex lane. When unset,
+    /// the lane falls back to the provider's configured region (env
+    /// `VERTEX_LOCATION`). Lets a route pin a model to the region that serves it
+    /// (e.g. `global` for Gemini 3 previews) without a process-wide env change.
+    #[serde(default)]
+    pub region: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -81,11 +87,29 @@ mod tests {
             legs[0],
             ChainLeg {
                 provider: "vertex".into(),
-                model: "gemini-3-pro".into()
+                model: "gemini-3-pro".into(),
+                ..Default::default()
             }
         );
         assert_eq!(legs[1].provider, "qwen");
         assert!(t.legs("nope").is_none());
+    }
+
+    #[test]
+    fn parses_optional_per_leg_region() {
+        let t = RouteTable::from_toml_str(
+            r#"
+            [routes."visual"]
+            legs = [
+              { provider = "vertex", model = "gemini-3.1-pro-preview", region = "global" },
+              { provider = "qwen", model = "qwen3-vl-plus" },
+            ]
+        "#,
+        )
+        .unwrap();
+        let legs = t.legs("visual").unwrap();
+        assert_eq!(legs[0].region.as_deref(), Some("global"));
+        assert_eq!(legs[1].region, None);
     }
 
     #[test]

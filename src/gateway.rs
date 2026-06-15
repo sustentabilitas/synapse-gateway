@@ -156,7 +156,7 @@ impl Gateway {
             .as_ref()
             .ok_or_else(|| GatewayError::BadRequest("native vertex lane not configured".into()))?;
         provider
-            .stream_generate(&leg.model, req)
+            .stream_generate(&leg.model, req, leg.region.as_deref())
             .await
             .map(|stream| CommittedStream::single("vertex".into(), leg.model.clone(), stream))
     }
