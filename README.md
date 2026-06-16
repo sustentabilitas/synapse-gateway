@@ -310,13 +310,13 @@ Routes without a `policy` key fall back to the `default` policy. If `default` is
 | Scanner | Params | Severity | Notes |
 |---------|--------|----------|-------|
 | `secrets` | — | block | Detects credential-like patterns (API keys, tokens, etc.). |
-| `pii` | — | block | Detects PII patterns (email, phone, SSN, etc.). |
+| `pii` | — | block / warn | Detects PII patterns. High-confidence hits (SSN, payment cards) are block-severity; lower-confidence hits (e.g. phone numbers) are warn-severity (flagged, not blocked). |
 | `invisible_text` | — | block | Detects zero-width and other invisible Unicode characters. |
 | `role_override` | — | block | Detects attempts to override the system role mid-prompt. |
 | `script_mix` | `threshold` (usize, default `2`) | warn | Flags prompts mixing more than `threshold` writing scripts. |
 | `token_limit` | `max_chars` (usize, **required**) | block | Blocks when input exceeds `max_chars` characters (not tokens). |
 | `ban_substrings` | `substrings` (list, **required**); `severity` (`block`\|`warn`\|`info`, default `block`) | configurable | Blocks (or flags) prompts containing any listed substring. Always case-insensitive. |
-| `prompt_injection` | — | block | Bundle alias: curated injection-substring list + role-override detection. Expands to two scanners. |
+| `prompt_injection` | — | block | Bundle alias: curated injection-substring list + role-override detection. Expands to two scanners, which surface in metrics and the block response under the names `injection` and `role_override` (not `prompt_injection`). |
 
 Scanner entries are either a bare name string or a table with a `type` key and optional params:
 

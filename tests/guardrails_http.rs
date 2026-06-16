@@ -85,6 +85,12 @@ async fn blocked_request_returns_400_content_policy_violation() {
 
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    // Security invariant: the matched input text must never be echoed back.
+    let body_str = String::from_utf8_lossy(&bytes);
+    assert!(
+        !body_str.contains("forbidden"),
+        "block response must not leak the matched input text: {body_str}"
+    );
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(json["error"]["type"], "content_policy_violation");
     assert_eq!(json["error"]["code"], "content_blocked");
