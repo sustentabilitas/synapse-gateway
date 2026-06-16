@@ -3,4 +3,5 @@
 *.db
 docs
 .claude
+.claire
 service-account.json
