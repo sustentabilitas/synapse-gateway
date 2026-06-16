@@ -8,6 +8,9 @@ use serde::Serialize;
 
 use crate::ledger::UsageEntry;
 
+/// Marketplace ledger subscription discriminator (`attributes.EventType`).
+pub const LEDGER_EVENT_TYPE: &str = "Ledger.LLMTokensConsumed";
+
 /// One terminal usage event, published to a topic per request.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -59,6 +62,7 @@ impl UsageEvent {
     /// both backends can convert to their SDK-specific attribute type.
     pub fn attributes(&self) -> Vec<(&'static str, String)> {
         vec![
+            ("EventType", LEDGER_EVENT_TYPE.to_string()),
             ("namespace", self.namespace.clone()),
             ("requestId", self.request_id.clone()),
             ("type", self.event_type.to_string()),
@@ -121,8 +125,16 @@ mod tests {
         let keys: Vec<&str> = attrs.iter().map(|(k, _)| *k).collect();
         assert_eq!(
             keys,
-            vec!["namespace", "requestId", "type", "provider", "status"]
+            vec![
+                "EventType",
+                "namespace",
+                "requestId",
+                "type",
+                "provider",
+                "status"
+            ]
         );
-        assert_eq!(attrs[0].1, "acme");
+        assert_eq!(attrs[0].1, LEDGER_EVENT_TYPE);
+        assert_eq!(attrs[1].1, "acme");
     }
 }

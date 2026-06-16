@@ -11,6 +11,7 @@ use futures::stream::{BoxStream, Stream};
 use uuid::Uuid;
 
 use crate::error::GatewayError;
+use crate::guard::GuardEngine;
 use crate::ledger::{LedgerHandle, UsageEntry};
 use crate::observability::GenAiSpan;
 use crate::pricing::PricingTable;
@@ -38,6 +39,7 @@ pub struct Gateway {
     pub(crate) embedders:
         std::collections::HashMap<String, Arc<dyn crate::embeddings::EmbeddingProvider>>,
     pub(crate) embed_default_input_per_mtok: f64,
+    pub(crate) guard: Arc<GuardEngine>,
 }
 
 /// Per-call identity for an in-process request (replaces HTTP headers).
@@ -64,6 +66,7 @@ pub struct GatewayBuilder {
     embedders:
         Option<std::collections::HashMap<String, Arc<dyn crate::embeddings::EmbeddingProvider>>>,
     embed_default_input_per_mtok: Option<f64>,
+    guard: Option<GuardEngine>,
 }
 
 impl Gateway {
@@ -81,6 +84,13 @@ impl Gateway {
             .legs(&req.model)
             .ok_or_else(|| GatewayError::UnknownModel(req.model.clone()))
             .map(<[ChainLeg]>::to_vec)
+    }
+
+    /// Run the route's guardrail policy over the request input. Falls back to
+    /// the `default` policy; a no-op when neither is configured.
+    fn guard_input(&self, req: &ChatRequest) -> Result<(), GatewayError> {
+        let policy = self.routes.policy_of(&req.model).unwrap_or("default");
+        self.guard.guard(policy, req)
     }
 
     fn tenant_of<'a>(&'a self, ctx: &'a RequestCtx) -> &'a str {
@@ -171,6 +181,7 @@ impl Gateway {
         use crate::routing::executor::execute_streaming_with_timeouts;
         let started = Instant::now();
         let legs = self.resolve_legs(&req)?;
+        self.guard_input(&req)?;
         let request_id = ctx
             .request_id
             .clone()
@@ -216,6 +227,7 @@ impl Gateway {
     ) -> Result<Completion, GatewayError> {
         let started = Instant::now();
         let legs = self.resolve_legs(&req)?;
+        self.guard_input(&req)?;
         let request_id = ctx
             .request_id
             .clone()
@@ -416,6 +428,10 @@ impl GatewayBuilder {
         self.embed_default_input_per_mtok = Some(v);
         self
     }
+    pub fn guard(mut self, guard: GuardEngine) -> Self {
+        self.guard = Some(guard);
+        self
+    }
 
     pub fn build(self) -> anyhow::Result<Gateway> {
         Ok(Gateway {
@@ -440,6 +456,7 @@ impl GatewayBuilder {
             embed_routes: Arc::new(self.embed_routes.unwrap_or_default()),
             embedders: self.embedders.unwrap_or_default(),
             embed_default_input_per_mtok: self.embed_default_input_per_mtok.unwrap_or(0.10),
+            guard: Arc::new(self.guard.unwrap_or_else(GuardEngine::empty)),
         })
     }
 }
@@ -974,5 +991,44 @@ mod tests {
         };
         let err = gw.embed(req, RequestCtx::default()).await.unwrap_err();
         assert!(matches!(err, GatewayError::BadRequest(_)));
+    }
+
+    #[tokio::test]
+    async fn chat_blocks_when_route_policy_refuses() {
+        use crate::guard::{GuardEngine, GuardrailsConfig};
+        let routes = RouteTable::from_toml_str(
+            r#"[routes."fast"]
+               policy = "strict"
+               legs = [{ provider = "qwen", model = "qwen-max" }]"#,
+        )
+        .unwrap();
+        let guard = GuardEngine::from_config(
+            &GuardrailsConfig::from_toml_str(
+                r#"[guardrails.strict]
+                   scanners = [{ type = "ban_substrings", substrings = ["forbidden"] }]"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let catalog = Catalog::for_test(vec![("qwen", "http://127.0.0.1:1/v1".into())]);
+        let ledger = LedgerHandle::spawn(
+            Arc::new(InMemoryLedger::default()) as Arc<dyn LedgerStore>,
+            16,
+        );
+        let gw = Gateway::builder()
+            .routes(routes)
+            .catalog(catalog)
+            .pricing(PricingTable::default())
+            .ledger(ledger)
+            .guard(guard)
+            .build()
+            .unwrap();
+        let req = serde_json::from_value(serde_json::json!({
+            "model": "fast",
+            "messages": [{ "role": "user", "content": "this is forbidden" }]
+        }))
+        .unwrap();
+        let err = gw.chat(req, &RequestCtx::default()).await.unwrap_err();
+        assert!(matches!(err, GatewayError::ContentBlocked { .. }));
     }
 }

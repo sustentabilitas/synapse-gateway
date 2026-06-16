@@ -1,0 +1,35 @@
+addr = "0.0.0.0:8787"
+admin_addr = "127.0.0.1:8788"
+metrics_addr = "0.0.0.0:9090"
+
+[context]
+env = { org = "BROKER_ORG_ID", workspace = "BROKER_WORKSPACE_ID" }
+
+[[routes]]
+name = "cortex"
+path_prefix = "/v1/cortex"
+upstream = "http://cortex:8080"
+strip_prefix = true
+require_context = ["org", "workspace"]
+request_steps = [
+  { inject = { header = "X-Tenant-Id",    from_context = "org" } },
+  { inject = { header = "X-Workspace-Id", from_context = "workspace" } },
+  { inject = { header = "X-User-Id",      const = "_default" } },
+]
+
+[[routes]]
+name = "integration-call"
+path_prefix = "/v1/integrations/call"
+upstream = "http://integrations:8080/call-workspace"
+strip_prefix = true
+require_context = ["org", "workspace"]
+request_steps = [
+  { wrap = { under = "request", inject = [
+      { body = "org",       from_context = "org" },
+      { body = "workspace", from_context = "workspace" },
+  ] } },
+]
+response_steps = [
+  { error_remap = { when_status = 401, error = "auth_expired" } },
+  { error_remap = { when_status = 404, error = "no_connection" } },
+]

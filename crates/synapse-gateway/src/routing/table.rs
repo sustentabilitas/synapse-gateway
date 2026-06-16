@@ -2,7 +2,6 @@
 
 use serde::Deserialize;
 use std::collections::HashMap;
-use tap::Pipe;
 
 #[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
 pub struct ChainLeg {
@@ -19,6 +18,8 @@ pub struct ChainLeg {
 #[derive(Debug, Clone, Deserialize)]
 struct RouteEntry {
     legs: Vec<ChainLeg>,
+    #[serde(default)]
+    policy: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -29,22 +30,31 @@ struct RoutesFile {
 #[derive(Debug, Clone)]
 pub struct RouteTable {
     routes: HashMap<String, Vec<ChainLeg>>,
+    policies: HashMap<String, String>,
 }
 
 impl RouteTable {
     pub fn from_toml_str(s: &str) -> anyhow::Result<Self> {
-        toml::from_str::<RoutesFile>(s)?
-            .routes
-            .into_iter()
-            .map(|(name, entry)| (name, entry.legs))
-            .collect::<HashMap<_, _>>()
-            .pipe(|routes| Self { routes })
-            .pipe(Ok)
+        let file = toml::from_str::<RoutesFile>(s)?;
+        let mut routes = HashMap::new();
+        let mut policies = HashMap::new();
+        for (name, entry) in file.routes {
+            if let Some(policy) = entry.policy {
+                policies.insert(name.clone(), policy);
+            }
+            routes.insert(name, entry.legs);
+        }
+        Ok(Self { routes, policies })
     }
 
     /// Ordered legs for a model alias, or `None` if the alias is unknown.
     pub fn legs(&self, model: &str) -> Option<&[ChainLeg]> {
         self.routes.get(model).map(Vec::as_slice)
+    }
+
+    /// Policy name selected by a route alias, or `None` when unset.
+    pub fn policy_of(&self, model: &str) -> Option<&str> {
+        self.policies.get(model).map(String::as_str)
     }
 
     /// All registered aliases (for `/v1/models`), sorted for stable output.
@@ -127,5 +137,22 @@ mod tests {
         let p = t.referenced_providers();
         assert!(p.contains("vertex"));
         assert!(p.contains("qwen"));
+    }
+
+    #[test]
+    fn parses_optional_route_policy_and_defaults_to_none() {
+        let t = RouteTable::from_toml_str(
+            r#"
+            [routes."guarded"]
+            policy = "strict"
+            legs = [{ provider = "vertex", model = "gemini-3-pro" }]
+            [routes."plain"]
+            legs = [{ provider = "qwen", model = "qwen-max" }]
+        "#,
+        )
+        .unwrap();
+        assert_eq!(t.policy_of("guarded"), Some("strict"));
+        assert_eq!(t.policy_of("plain"), None);
+        assert_eq!(t.policy_of("missing"), None);
     }
 }

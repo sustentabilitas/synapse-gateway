@@ -1,0 +1,16 @@
+# Changelog
+
+## 0.2.0
+
+- Rule engine: context sources (`static` + `env` + admin push/clear), `require_context` gate, and a full transform pipeline (`inject`, `wrap`, `error_remap`) on request and response.
+- Three concurrent listeners: data (`addr`), admin (`admin_addr`), metrics (`metrics_addr`) served via `tokio::try_join!` with graceful SIGTERM drain.
+- OTel metrics exported in Prometheus format: `synapse_proxy_requests_total`, `synapse_proxy_request_duration_seconds`, `synapse_proxy_upstream_errors_total`, `synapse_proxy_transform_errors_total`.
+- Custom transform extension API: `ProxyBuilder::request_transform` / `response_transform`.
+- MCP/A2A-compatible: agent tool calls are plain `[[routes]]` using `inject` into `params.*` body paths plus streaming passthrough.
+- Broker-parity integration test: wrap envelope + error_remap end-to-end.
+
+## 0.1.0
+
+- Initial release: config-driven passthrough routing (longest `path_prefix`
+  match, optional prefix strip), static per-route header injection, streaming
+  responses, `/healthz/{liveness,readiness}`, and graceful SIGTERM drain.

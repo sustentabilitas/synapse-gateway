@@ -1,0 +1,43 @@
+[package]
+name = "synapse-proxy"
+version = "0.2.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Config-driven reverse-proxy sidecar: path-prefix routing, static header injection, and streaming passthrough."
+readme = "README.md"
+keywords = ["proxy", "sidecar", "reverse-proxy", "gateway"]
+categories = ["web-programming::http-server"]
+
+[lib]
+name = "synapse_proxy"
+path = "src/lib.rs"
+
+[[bin]]
+name = "synapse-proxy"
+path = "src/main.rs"
+
+[dependencies]
+async-trait = "0.1"
+tokio = { workspace = true }
+axum = { workspace = true }
+tower-http = { workspace = true }
+reqwest = { workspace = true }
+rustls = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+futures = { workspace = true }
+bytes = { workspace = true }
+opentelemetry = "0.32"
+opentelemetry_sdk = "0.32"
+opentelemetry-prometheus = "0.32"
+prometheus = "0.14"
+
+[dev-dependencies]
+wiremock = "0.6"
+http-body-util = "0.1"
+tower = { workspace = true, features = ["util"] }

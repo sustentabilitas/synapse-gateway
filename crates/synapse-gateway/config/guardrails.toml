@@ -1,0 +1,21 @@
+# Named guardrail policies. Routes opt in via `policy = "<name>"` in routes.toml;
+# routes with no policy fall back to "default". If "default" is undefined (or this
+# file is absent), guardrails are off.
+#
+# mode = "block" (default) rejects on a block-severity hit; mode = "observe"
+# records a would-block metric and proceeds (safe rollout).
+
+[guardrails.default]
+scanners = [
+  "prompt_injection",
+  "secrets",
+  "invisible_text",
+  { type = "token_limit", max_chars = 32000 },
+]
+
+[guardrails.strict]
+scanners = ["prompt_injection", "secrets", "pii", "role_override"]
+
+[guardrails.canary]
+mode = "observe"
+scanners = ["prompt_injection", "secrets"]
