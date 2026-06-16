@@ -29,6 +29,8 @@ pub enum GatewayError {
     UpstreamTimeout,
     #[error("upstream error {status}: {body}")]
     Upstream { status: u16, body: String },
+    #[error("request blocked by content policy '{policy}'")]
+    ContentBlocked { policy: String, scanners: Vec<String> },
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -51,11 +53,12 @@ impl GatewayError {
             }
             GatewayError::AllCircuitsOpen(_) => StatusCode::SERVICE_UNAVAILABLE,
             GatewayError::UpstreamTimeout => StatusCode::GATEWAY_TIMEOUT,
+            GatewayError::ContentBlocked { .. } => StatusCode::BAD_REQUEST,
         }
     }
 
     #[cfg(feature = "server")]
-    fn code(&self) -> &'static str {
+    pub(crate) fn code(&self) -> &'static str {
         match self {
             GatewayError::UnknownModel(_) => "model_not_found",
             GatewayError::NativeFeatureUnsupported { .. } => "native_feature_unsupported",
@@ -64,6 +67,7 @@ impl GatewayError {
             GatewayError::AllCircuitsOpen(_) => "circuit_open",
             GatewayError::UpstreamTimeout => "upstream_timeout",
             GatewayError::Upstream { .. } => "upstream_error",
+            GatewayError::ContentBlocked { .. } => "content_blocked",
         }
     }
 }
@@ -79,6 +83,32 @@ impl IntoResponse for GatewayError {
         if let GatewayError::AllLegsFailed { failures, .. } = &self {
             error["failures"] = json!(failures);
         }
+        if let GatewayError::ContentBlocked { policy, scanners } = &self {
+            error["type"] = json!("content_policy_violation");
+            error["message"] = json!(format!(
+                "Request blocked by content policy '{policy}' (scanners: {})",
+                scanners.join(", ")
+            ));
+            error["scanners"] = json!(scanners);
+        }
         (self.status(), Json(json!({ "error": error }))).into_response()
+    }
+}
+
+#[cfg(all(test, feature = "server"))]
+mod tests {
+    use super::*;
+    use axum::http::StatusCode;
+
+    #[test]
+    fn content_blocked_is_bad_request_with_named_scanners() {
+        let e = GatewayError::ContentBlocked {
+            policy: "strict".into(),
+            scanners: vec!["secrets".into(), "role_override".into()],
+        };
+        assert_eq!(e.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(e.code(), "content_blocked");
+        let msg = e.to_string();
+        assert!(msg.contains("strict"), "message names the policy: {msg}");
     }
 }
