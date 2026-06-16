@@ -3,6 +3,7 @@ pub mod config;
 pub mod embeddings;
 pub mod error;
 pub mod gateway;
+pub mod guard;
 pub mod ledger;
 pub mod observability;
 pub mod pricing;
