@@ -281,8 +281,14 @@ impl VertexNativeProvider {
 /// (CRLF) — Vertex/gemini-3 emits CRLF, and matching only `\n\n` drops every
 /// event (empty content + 0 tokens). Picks the earliest boundary.
 fn next_sse_boundary(buf: &[u8]) -> Option<(usize, usize)> {
-    let lf = buf.windows(2).position(|w| w == b"\n\n").map(|p| (p, 2usize));
-    let crlf = buf.windows(4).position(|w| w == b"\r\n\r\n").map(|p| (p, 4usize));
+    let lf = buf
+        .windows(2)
+        .position(|w| w == b"\n\n")
+        .map(|p| (p, 2usize));
+    let crlf = buf
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .map(|p| (p, 4usize));
     match (lf, crlf) {
         (Some(a), Some(b)) => Some(if a.0 <= b.0 { a } else { b }),
         (Some(a), None) => Some(a),
@@ -869,7 +875,10 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(text, "{\"answer\":\"hi\"}", "answer text must survive CRLF events");
+        assert_eq!(
+            text, "{\"answer\":\"hi\"}",
+            "answer text must survive CRLF events"
+        );
         assert!(matches!(
             items.last().unwrap(),
             StreamItem::Done {

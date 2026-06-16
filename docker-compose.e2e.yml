@@ -1,0 +1,54 @@
+# Live Vertex native E2E: gateway + integration tests against real Vertex AI.
+#
+# Requires ./service-account.json (gitignored). Example:
+#   docker compose -f docker-compose.e2e.yml up --build --abort-on-container-exit
+services:
+  gateway:
+    build: .
+    ports:
+      - "18080:8080"
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /secrets/service-account.json
+      VERTEX_PROJECT_ID: ${VERTEX_PROJECT_ID:-qa1-us-central1-vpc-63b3e2}
+      VERTEX_LOCATION: ${VERTEX_LOCATION:-us-central1}
+      SYNAPSE_ROUTES_PATH: /app/config/e2e/routes.toml
+      SYNAPSE_PRICING_PATH: /app/config/e2e/pricing.toml
+      SYNAPSE_LEDGER_BACKENDS: sqlite
+      SYNAPSE_REQUEST_TIMEOUT_SECS: "180"
+    volumes:
+      - ./service-account.json:/secrets/service-account.json:ro
+      - ./config/e2e:/app/config/e2e:ro
+
+  e2e:
+    image: rust:1-bookworm
+    working_dir: /workspace
+    depends_on:
+      - gateway
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /secrets/service-account.json
+      VERTEX_PROJECT_ID: ${VERTEX_PROJECT_ID:-qa1-us-central1-vpc-63b3e2}
+      VERTEX_LOCATION: ${VERTEX_LOCATION:-us-central1}
+      VERTEX_E2E_MODEL: ${VERTEX_E2E_MODEL:-gemini-2.5-flash}
+      GATEWAY_URL: http://gateway:8080
+      RUST_BACKTRACE: "1"
+    volumes:
+      - .:/workspace
+      - ./service-account.json:/secrets/service-account.json:ro
+      - e2e-cargo-registry:/usr/local/cargo/registry
+      - e2e-cargo-git:/usr/local/cargo/git
+      - e2e-target:/workspace/target
+    command:
+      - bash
+      - -lc
+      - |
+        set -euo pipefail
+        export PATH="/usr/local/cargo/bin:${PATH}"
+        apt-get update -qq
+        apt-get install -y --no-install-recommends cmake protobuf-compiler pkg-config libssl-dev curl ca-certificates
+        scripts/wait-for-gateway.sh
+        cargo test --test vertex_native_e2e -- --ignored --nocapture --test-threads=1
+
+volumes:
+  e2e-cargo-registry:
+  e2e-cargo-git:
+  e2e-target:

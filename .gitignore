@@ -3,3 +3,4 @@
 *.db
 docs
 .claude
+service-account.json

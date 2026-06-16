@@ -1,0 +1,3 @@
+# Vertex-only route for docker-compose E2E (see tests/vertex_native_e2e.rs).
+[routes."vertex-native"]
+legs = [{ provider = "vertex", model = "gemini-2.5-flash" }]
