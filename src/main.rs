@@ -49,6 +49,16 @@ async fn main() -> Result<()> {
             .with_context(|| format!("reading {}", config.pricing_path))?,
     )?;
 
+    // Optional guardrails: absent file ⇒ empty engine (guardrails off).
+    let guard = if std::path::Path::new(&config.guardrails_path).exists() {
+        let content = std::fs::read_to_string(&config.guardrails_path)
+            .with_context(|| format!("reading {}", config.guardrails_path))?;
+        let cfg = synapse::guard::GuardrailsConfig::from_toml_str(&content)?;
+        synapse::guard::GuardEngine::from_config(&cfg)?
+    } else {
+        synapse::guard::GuardEngine::empty()
+    };
+
     // Fail-fast: build every referenced provider's client + validate creds.
     let catalog = Catalog::build(&env, &routes.referenced_providers(), config.request_timeout)?;
 
@@ -210,6 +220,7 @@ async fn main() -> Result<()> {
             idle: config.stream_idle_timeout,
         })
         .default_tenant(config.default_tenant.clone())
+        .guard(guard)
         .embed_routes(embed_routes)
         .embed_default_input_per_mtok(config.embed_default_input_per_mtok);
     let gateway = embedders

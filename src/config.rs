@@ -9,6 +9,7 @@ pub struct Config {
     pub metrics_addr: String,
     pub routes_path: String,
     pub pricing_path: String,
+    pub guardrails_path: String,
     pub ledger_backends: Vec<LedgerBackend>,
     pub default_tenant: String,
     pub request_timeout: Duration,
@@ -88,6 +89,7 @@ impl Config {
             metrics_addr: get_or("SYNAPSE_METRICS_ADDR", "0.0.0.0:9090"),
             routes_path: get_or("SYNAPSE_ROUTES_PATH", "config/routes.toml"),
             pricing_path: get_or("SYNAPSE_PRICING_PATH", "config/pricing.toml"),
+            guardrails_path: get_or("SYNAPSE_GUARDRAILS_PATH", "config/guardrails.toml"),
             ledger_backends,
             default_tenant: get_or("SYNAPSE_DEFAULT_TENANT", "unattributed"),
             request_timeout: Duration::from_secs(
@@ -201,5 +203,21 @@ mod tests {
         assert!(
             Config::from_env_map(&env(&[("SYNAPSE_LEDGER_BACKENDS", "pubsub,pubsub")])).is_err()
         );
+    }
+
+    #[test]
+    fn guardrails_path_defaults_and_overrides() {
+        let c = Config::from_env_map(&env(&[])).unwrap();
+        assert_eq!(c.guardrails_path, "config/guardrails.toml");
+        let c = Config::from_env_map(&env(&[("SYNAPSE_GUARDRAILS_PATH", "/etc/g.toml")])).unwrap();
+        assert_eq!(c.guardrails_path, "/etc/g.toml");
+    }
+
+    #[test]
+    fn shipped_guardrails_sample_builds_an_engine() {
+        let content = std::fs::read_to_string("config/guardrails.toml")
+            .expect("config/guardrails.toml should exist");
+        let cfg = crate::guard::GuardrailsConfig::from_toml_str(&content).unwrap();
+        crate::guard::GuardEngine::from_config(&cfg).expect("sample policies must compile");
     }
 }
