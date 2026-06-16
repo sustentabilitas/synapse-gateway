@@ -40,7 +40,10 @@ fn blocked_gateway() -> Gateway {
     let catalog = Catalog::build(
         &HashMap::from([
             ("DASHSCOPE_API_KEY".to_string(), "sk-test".to_string()),
-            ("DASHSCOPE_BASE_URL".to_string(), "http://127.0.0.1:1/v1".to_string()),
+            (
+                "DASHSCOPE_BASE_URL".to_string(),
+                "http://127.0.0.1:1/v1".to_string(),
+            ),
         ]),
         &routes.referenced_providers(),
         Duration::from_secs(5),

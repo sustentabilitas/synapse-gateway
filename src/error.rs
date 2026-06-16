@@ -30,7 +30,10 @@ pub enum GatewayError {
     #[error("upstream error {status}: {body}")]
     Upstream { status: u16, body: String },
     #[error("request blocked by content policy '{policy}'")]
-    ContentBlocked { policy: String, scanners: Vec<String> },
+    ContentBlocked {
+        policy: String,
+        scanners: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
