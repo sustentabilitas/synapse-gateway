@@ -184,6 +184,7 @@ Both timeouts apply to the standard lane. The native Vertex lane is currently bo
 | `SYNAPSE_METRICS_ADDR` | `0.0.0.0:9090` | Address and port for the Prometheus metrics endpoint. |
 | `SYNAPSE_ROUTES_PATH` | `config/routes.toml` | Path to the route configuration file. |
 | `SYNAPSE_PRICING_PATH` | `config/pricing.toml` | Path to the pricing configuration file. |
+| `SYNAPSE_GUARDRAILS_PATH` | `config/guardrails.toml` | Path to the guardrails policy file. Absent file = guardrails off. |
 | `SYNAPSE_LEDGER_BACKENDS` | `sqlite` | Comma-separated list of active ledger sinks (e.g. `postgres,pubsub`). Every event fans out to all listed sinks. |
 | `SYNAPSE_LEDGER_BACKEND` | — | Single-backend alias; used when `SYNAPSE_LEDGER_BACKENDS` is not set. |
 | `SYNAPSE_LEDGER_SQLITE_DSN` | `sqlite://synapse.db?mode=rwc` | SQLite DSN. Falls back to `SYNAPSE_LEDGER_DSN`, then the default path. |
@@ -241,6 +242,118 @@ output = 1.20
 input  = 1.6
 output = 6.4
 ```
+
+---
+
+## Guardrails
+
+synapse-gateway supports configurable input guardrails backed by [`llm-guard`](https://crates.io/crates/llm-guard). Guardrails scan the concatenated text of system/user/tool messages **before** dispatching to the upstream provider. Output scanning and embeddings are out of scope in v1.
+
+### Configuration file
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SYNAPSE_GUARDRAILS_PATH` | `config/guardrails.toml` | Path to the guardrails policy file. Absent file = guardrails off. |
+
+Define named policies under `[guardrails.<name>]` in `config/guardrails.toml`:
+
+```toml
+# Named guardrail policies.
+# Routes opt in via `policy = "<name>"` in routes.toml.
+# Routes with no policy fall back to "default".
+# If "default" is undefined (or this file is absent), guardrails are off.
+
+[guardrails.default]
+scanners = [
+  "prompt_injection",
+  "secrets",
+  "invisible_text",
+  { type = "token_limit", max_chars = 32000 },
+]
+
+[guardrails.strict]
+scanners = ["prompt_injection", "secrets", "pii", "role_override"]
+
+[guardrails.canary]
+mode = "observe"
+scanners = ["prompt_injection", "secrets"]
+```
+
+### Per-route opt-in
+
+Add `policy = "<name>"` to any route in `config/routes.toml`:
+
+```toml
+[routes."gemini-pro"]
+policy = "strict"
+legs = [
+  { provider = "vertex", model = "gemini-3-pro" },
+  { provider = "qwen",   model = "qwen-max" },
+]
+
+[routes."fast"]
+# No policy — falls back to "default" if defined, otherwise no-op.
+legs = [{ provider = "vertex", model = "gemini-3-flash" }]
+```
+
+Routes without a `policy` key fall back to the `default` policy. If `default` is not defined (or `config/guardrails.toml` is absent entirely), guardrails are a no-op and all routes are unaffected — fully backward-compatible.
+
+### Modes
+
+| Mode | Behaviour |
+|------|-----------|
+| `block` (default) | Reject the request with HTTP 400 when a block-severity scanner fires. |
+| `observe` | Never reject; record a would-block metric and proceed. Use for safe rollout. |
+
+### Available scanners
+
+| Scanner | Params | Severity | Notes |
+|---------|--------|----------|-------|
+| `secrets` | — | block | Detects credential-like patterns (API keys, tokens, etc.). |
+| `pii` | — | block | Detects PII patterns (email, phone, SSN, etc.). |
+| `invisible_text` | — | block | Detects zero-width and other invisible Unicode characters. |
+| `role_override` | — | block | Detects attempts to override the system role mid-prompt. |
+| `script_mix` | `threshold` (usize, default `2`) | warn | Flags prompts mixing more than `threshold` writing scripts. |
+| `token_limit` | `max_chars` (usize, **required**) | block | Blocks when input exceeds `max_chars` characters (not tokens). |
+| `ban_substrings` | `substrings` (list, **required**); `severity` (`block`\|`warn`\|`info`, default `block`) | configurable | Blocks (or flags) prompts containing any listed substring. Always case-insensitive. |
+| `prompt_injection` | — | block | Bundle alias: curated injection-substring list + role-override detection. Expands to two scanners. |
+
+Scanner entries are either a bare name string or a table with a `type` key and optional params:
+
+```toml
+# Bare name (uses all defaults)
+scanners = ["secrets", "pii"]
+
+# Table form with params
+scanners = [
+  { type = "token_limit",    max_chars = 16000 },
+  { type = "ban_substrings", substrings = ["BEGIN RSA PRIVATE KEY", "DROP TABLE"], severity = "block" },
+  { type = "script_mix",     threshold = 3 },
+]
+```
+
+### Block response
+
+When a request is blocked, synapse-gateway returns `HTTP 400` with:
+
+```json
+{
+  "error": {
+    "type": "content_policy_violation",
+    "code": "content_blocked",
+    "message": "Request blocked by content policy 'strict' (scanners: ban_substrings, secrets)",
+    "scanners": ["ban_substrings", "secrets"]
+  }
+}
+```
+
+### Guardrail metrics
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `synapse_guard_scans_total` | Counter | `policy`, `outcome` | Total scans; `outcome` = `pass`\|`flag`\|`block`\|`observe`. |
+| `synapse_guard_matches_total` | Counter | `policy`, `scanner`, `severity` | Per-scanner match counts. |
+| `synapse_guard_scan_duration_seconds` | Histogram | `policy` | Time spent running the scanner pipeline. |
 
 ---
 
@@ -403,7 +516,7 @@ cargo test
 cargo test --all-features
 ```
 
-The test suite (66 tests) covers route resolution, fallback behaviour, lane detection, tenant attribution, config parsing, ledger writes, HTTP handler integration, streaming primitives, tool-call accumulation, first-chunk timeout fallback, and SSE serialisation.
+The test suite (137 tests) covers route resolution, fallback behaviour, lane detection, tenant attribution, config parsing, ledger writes, HTTP handler integration, streaming primitives, tool-call accumulation, first-chunk timeout fallback, SSE serialisation, and guardrail policy/scanner/engine behaviour.
 
 ---
 
