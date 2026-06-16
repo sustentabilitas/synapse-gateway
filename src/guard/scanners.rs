@@ -107,8 +107,10 @@ mod tests {
 
     #[test]
     fn builds_known_named_scanner() {
-        let s = spec(r#"[guardrails.p]
-                        scanners = ["secrets"]"#);
+        let s = spec(
+            r#"[guardrails.p]
+                        scanners = ["secrets"]"#,
+        );
         let built = build_scanners(&s).unwrap();
         assert_eq!(built.len(), 1);
         assert_eq!(built[0].name(), "secrets");
@@ -116,15 +118,19 @@ mod tests {
 
     #[test]
     fn prompt_injection_expands_to_bundle() {
-        let s = spec(r#"[guardrails.p]
-                        scanners = ["prompt_injection"]"#);
+        let s = spec(
+            r#"[guardrails.p]
+                        scanners = ["prompt_injection"]"#,
+        );
         assert_eq!(build_scanners(&s).unwrap().len(), 2);
     }
 
     #[test]
     fn ban_substrings_blocks_by_default_and_is_case_insensitive() {
-        let s = spec(r#"[guardrails.p]
-                        scanners = [{ type = "ban_substrings", substrings = ["forbidden"] }]"#);
+        let s = spec(
+            r#"[guardrails.p]
+                        scanners = [{ type = "ban_substrings", substrings = ["forbidden"] }]"#,
+        );
         let built = build_scanners(&s).unwrap();
         let r = built[0].scan("This is FORBIDDEN text");
         assert!(r.should_refuse(), "default severity must be Block");
@@ -132,16 +138,20 @@ mod tests {
 
     #[test]
     fn token_limit_requires_max_chars() {
-        let s = spec(r#"[guardrails.p]
-                        scanners = [{ type = "token_limit" }]"#);
+        let s = spec(
+            r#"[guardrails.p]
+                        scanners = [{ type = "token_limit" }]"#,
+        );
         let err = build_scanners(&s).err().expect("expected an error");
         assert!(err.to_string().contains("max_chars"));
     }
 
     #[test]
     fn unknown_scanner_errors() {
-        let s = spec(r#"[guardrails.p]
-                        scanners = ["nope"]"#);
+        let s = spec(
+            r#"[guardrails.p]
+                        scanners = ["nope"]"#,
+        );
         let err = build_scanners(&s).err().expect("expected an error");
         assert!(err.to_string().contains("unknown scanner"));
     }

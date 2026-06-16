@@ -209,9 +209,11 @@ mod tests {
 
     #[test]
     fn observe_mode_proceeds_despite_block_severity() {
-        let e = engine(r#"[guardrails.canary]
+        let e = engine(
+            r#"[guardrails.canary]
             mode = "observe"
-            scanners = [{ type = "ban_substrings", substrings = ["forbidden"] }]"#);
+            scanners = [{ type = "ban_substrings", substrings = ["forbidden"] }]"#,
+        );
         assert!(e.guard("canary", &req("this is forbidden")).is_ok());
     }
 
