@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: bump-synapse-proxy
@@ -35,4 +36,10 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Bump, commit, tag, and push
+        id: bump
         run: bash .github/scripts/bump-and-release.sh synapse-proxy "${{ inputs.bump }}"
+
+      - name: Trigger Release workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run release.yml --ref "${{ steps.bump.outputs.tag }}"

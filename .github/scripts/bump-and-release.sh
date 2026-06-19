@@ -71,4 +71,5 @@ git commit -m "chore(${CRATE}): release v${NEW_VERSION}"
 git tag "$TAG"
 git push origin HEAD:main "$TAG"
 
+echo "tag=${TAG}" >> "${GITHUB_OUTPUT:-/dev/null}"
 echo "Released ${CRATE} v${NEW_VERSION} (tag ${TAG})"
