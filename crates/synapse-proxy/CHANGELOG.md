@@ -1,5 +1,8 @@
 # Changelog
 
+
+## 0.2.1
+
 ## 0.2.0
 
 - Rule engine: context sources (`static` + `env` + admin push/clear), `require_context` gate, and a full transform pipeline (`inject`, `wrap`, `error_remap`) on request and response.
