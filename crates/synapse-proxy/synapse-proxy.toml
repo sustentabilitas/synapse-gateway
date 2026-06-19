@@ -1,0 +1,13 @@
+# synapse-proxy: config-driven reverse-proxy sidecar.
+# Each [[routes]] entry forwards requests whose path starts with `path_prefix`
+# to `upstream`. `strip_prefix` removes the prefix before forwarding; `headers`
+# are injected on every forwarded request.
+
+addr = "0.0.0.0:8787"
+
+[[routes]]
+path_prefix = "/v1/llm"
+upstream = "http://synapse-gateway:8080"
+strip_prefix = true
+[routes.headers]
+x-forwarded-by = "synapse-proxy"

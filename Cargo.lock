@@ -3994,6 +3994,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "synapse-proxy"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "bytes",
+ "futures",
+ "http-body-util",
+ "reqwest 0.12.28",
+ "rustls 0.23.40",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml",
+ "tower 0.5.3",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "wiremock",
+]
+
+[[package]]
 name = "sync_wrapper"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

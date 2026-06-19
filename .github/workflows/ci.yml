@@ -30,7 +30,7 @@ jobs:
       - name: Test
         run: cargo test
       - name: Vertex native gateway integration
-        run: cargo test --test vertex_native_gateway
+        run: cargo test -p synapse-gateway --test vertex_native_gateway
 
   build-features:
     name: build (${{ matrix.features }})
@@ -48,7 +48,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build
-        run: cargo build --features "${{ matrix.features }}"
+        run: cargo build -p synapse-gateway --features "${{ matrix.features }}"
 
   core:
     name: core (no-default-features lib)
@@ -58,4 +58,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build lean core
-        run: cargo build --no-default-features --lib
+        run: cargo build -p synapse-gateway --no-default-features --lib
+
+  proxy:
+    name: build (synapse-proxy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build proxy
+        run: cargo build -p synapse-proxy

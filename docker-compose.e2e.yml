@@ -4,7 +4,9 @@
 #   docker compose -f docker-compose.e2e.yml up --build --abort-on-container-exit
 services:
   gateway:
-    build: .
+    build:
+      context: .
+      dockerfile: crates/synapse-gateway/Dockerfile
     ports:
       - "18080:8080"
     environment:
@@ -17,7 +19,7 @@ services:
       SYNAPSE_REQUEST_TIMEOUT_SECS: "180"
     volumes:
       - ./service-account.json:/secrets/service-account.json:ro
-      - ./config/e2e:/app/config/e2e:ro
+      - ./crates/synapse-gateway/config/e2e:/app/config/e2e:ro
 
   e2e:
     image: rust:1-bookworm
