@@ -5,3 +5,6 @@ docs
 .claude
 .claire
 service-account.json
+
+# subagent-driven-development scratch (briefs/reports/ledger)
+/sdd/
