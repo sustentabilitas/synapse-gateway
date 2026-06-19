@@ -1,5 +1,10 @@
 # synapse-proxy
 
+[![crates.io](https://img.shields.io/crates/v/synapse-proxy.svg)](https://crates.io/crates/synapse-proxy)
+[![Docker Hub](https://img.shields.io/docker/v/sustentabilitas/synapse-proxy?logo=docker&label=docker)](https://hub.docker.com/r/sustentabilitas/synapse-proxy)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../../LICENSE)
+[![CI](https://github.com/sustentabilitas/synapse-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/sustentabilitas/synapse-gateway/actions/workflows/ci.yml)
+
 A config-driven reverse-proxy sidecar. It forwards incoming requests to upstreams
 by longest matching `path_prefix`, optionally stripping the prefix, injecting
 static headers, and streaming the response back.
