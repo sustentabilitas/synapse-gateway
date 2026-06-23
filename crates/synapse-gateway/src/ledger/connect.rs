@@ -115,7 +115,9 @@ async fn try_connect_backend(
             }
             #[cfg(not(feature = "ledger-sns"))]
             {
-                Err(LedgerError::Backend("ledger-sns feature not enabled".into()))
+                Err(LedgerError::Backend(
+                    "ledger-sns feature not enabled".into(),
+                ))
             }
         }
     };
