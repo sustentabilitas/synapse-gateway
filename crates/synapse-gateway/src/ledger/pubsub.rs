@@ -74,8 +74,7 @@ pub(crate) fn is_retryable_pubsub_connect_error(err: &LedgerError) -> bool {
         || m.contains("unauthenticated")
         || m.contains("invalid_grant")
         || m.contains("topic not found")
-        || m.contains("not found")
-            && m.contains("topic")
+        || m.contains("not found") && m.contains("topic")
     {
         return false;
     }
