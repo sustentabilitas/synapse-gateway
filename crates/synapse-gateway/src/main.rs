@@ -4,11 +4,11 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use tracing_subscriber::{fmt, EnvFilter};
 
-use synapse::config::{vertex_project_from_env, Config, LedgerBackend};
+use synapse::config::{vertex_project_from_env, Config};
 use synapse::embeddings::openai::OpenAiEmbedder;
 use synapse::embeddings::vertex::VertexEmbedder;
 use synapse::embeddings::EmbeddingProvider;
-use synapse::ledger::{LedgerHandle, LedgerStore};
+use synapse::ledger::LedgerHandle;
 use synapse::pricing::PricingTable;
 use synapse::providers::vertex_auth::VertexAuth;
 use synapse::providers::Catalog;
@@ -125,88 +125,7 @@ async fn main() -> Result<()> {
         embedders.insert(id, embedder);
     }
 
-    // Build one sink per selected backend, then fan out.
-    let mut sinks: Vec<(&'static str, Arc<dyn LedgerStore>)> = Vec::new();
-    for backend in &config.ledger_backends {
-        let sink: Arc<dyn LedgerStore> = match backend {
-            LedgerBackend::Sqlite => {
-                #[cfg(feature = "ledger-sqlite")]
-                {
-                    let dsn = config
-                        .env
-                        .get("SYNAPSE_LEDGER_SQLITE_DSN")
-                        .or_else(|| config.env.get("SYNAPSE_LEDGER_DSN"))
-                        .cloned()
-                        .unwrap_or_else(|| "sqlite://synapse.db?mode=rwc".into());
-                    Arc::new(synapse::ledger::sqlite::SqliteLedger::connect(&dsn).await?)
-                }
-                #[cfg(not(feature = "ledger-sqlite"))]
-                anyhow::bail!(
-                    "ledger backend 'sqlite' requested but built without the ledger-sqlite feature"
-                );
-            }
-            LedgerBackend::Postgres => {
-                #[cfg(feature = "ledger-postgres")]
-                {
-                    let dsn = config
-                        .env
-                        .get("SYNAPSE_LEDGER_POSTGRES_DSN")
-                        .or_else(|| config.env.get("SYNAPSE_LEDGER_DSN"))
-                        .filter(|s| !s.trim().is_empty())
-                        .context("SYNAPSE_LEDGER_POSTGRES_DSN (or SYNAPSE_LEDGER_DSN) required for postgres ledger")?;
-                    Arc::new(synapse::ledger::postgres::PostgresLedger::connect(dsn).await?)
-                }
-                #[cfg(not(feature = "ledger-postgres"))]
-                anyhow::bail!("ledger backend 'postgres' requested but built without the ledger-postgres feature");
-            }
-            LedgerBackend::Pubsub => {
-                #[cfg(feature = "ledger-pubsub")]
-                {
-                    let project = config
-                        .env
-                        .get("SYNAPSE_LEDGER_PUBSUB_PROJECT")
-                        .cloned()
-                        .filter(|s| !s.trim().is_empty())
-                        .or_else(|| vertex_project_from_env(&config.env))
-                        .context(
-                            "SYNAPSE_LEDGER_PUBSUB_PROJECT, VERTEX_PROJECT_ID, or VERTEX_PROJECT required for pubsub ledger",
-                        )?;
-                    let topic = config
-                        .env
-                        .get("SYNAPSE_LEDGER_PUBSUB_TOPIC")
-                        .filter(|s| !s.trim().is_empty())
-                        .context("SYNAPSE_LEDGER_PUBSUB_TOPIC required for pubsub ledger")?;
-                    Arc::new(synapse::ledger::pubsub::PubsubLedger::connect(&project, topic).await?)
-                }
-                #[cfg(not(feature = "ledger-pubsub"))]
-                anyhow::bail!(
-                    "ledger backend 'pubsub' requested but built without the ledger-pubsub feature"
-                );
-            }
-            LedgerBackend::Sns => {
-                #[cfg(feature = "ledger-sns")]
-                {
-                    let arn = config
-                        .env
-                        .get("SYNAPSE_LEDGER_SNS_TOPIC_ARN")
-                        .filter(|s| !s.trim().is_empty())
-                        .context("SYNAPSE_LEDGER_SNS_TOPIC_ARN required for sns ledger")?;
-                    let region = config
-                        .env
-                        .get("SYNAPSE_LEDGER_SNS_REGION")
-                        .filter(|s| !s.trim().is_empty())
-                        .map(|s| s.as_str());
-                    Arc::new(synapse::ledger::sns::SnsLedger::connect(arn, region).await?)
-                }
-                #[cfg(not(feature = "ledger-sns"))]
-                anyhow::bail!(
-                    "ledger backend 'sns' requested but built without the ledger-sns feature"
-                );
-            }
-        };
-        sinks.push((backend.label(), sink));
-    }
-    let store: Arc<dyn LedgerStore> = Arc::new(synapse::ledger::FanoutLedger::new(sinks));
+    let store = synapse::ledger::connect::build_store(&config).await;
     let ledger = LedgerHandle::spawn(store, 10_000);
 
     let builder = synapse::gateway::Gateway::builder()

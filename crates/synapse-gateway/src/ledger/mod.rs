@@ -10,6 +10,7 @@ use metrics::counter;
 use parking_lot::Mutex;
 use tokio::sync::mpsc;
 
+pub mod connect;
 pub mod event;
 #[cfg(feature = "ledger-postgres")]
 pub mod postgres;
@@ -49,6 +50,17 @@ pub trait LedgerStore: Send + Sync {
     async fn record(&self, entry: &UsageEntry) -> Result<(), LedgerError>;
 }
 
+/// Discards all usage events. Used when no ledger sink could be connected.
+#[derive(Default)]
+pub struct NoopLedger;
+
+#[async_trait]
+impl LedgerStore for NoopLedger {
+    async fn record(&self, _entry: &UsageEntry) -> Result<(), LedgerError> {
+        Ok(())
+    }
+}
+
 /// Fire-and-forget handle. Cloneable; the hot path calls `enqueue`.
 #[derive(Clone)]
 pub struct LedgerHandle {
@@ -63,10 +75,16 @@ impl LedgerHandle {
         tokio::spawn(async move {
             while let Some(entry) = rx.recv().await {
                 if let Err(e) = store.record(&entry).await {
-                    tracing::warn!(error = %e, tenant = %entry.tenant, "ledger write failed");
-                    counter!("synapse_ledger_errors_total").increment(1);
+                    tracing::warn!(
+                        error = %e,
+                        tenant = %entry.tenant,
+                        request_id = %entry.request_id,
+                        "ledger write failed"
+                    );
+                    counter!("synapse_ledger_errors_total", "backend" => "writer").increment(1);
                 }
             }
+            tracing::warn!("ledger background writer stopped");
         });
         Self { tx }
     }
@@ -192,6 +210,15 @@ mod tests {
         fanout.record(&entry()).await.unwrap();
         assert_eq!(a.entries.lock().len(), 1);
         assert_eq!(b.entries.lock().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn handle_keeps_accepting_after_write_failures() {
+        let handle = LedgerHandle::spawn(Arc::new(FailingLedger), 16);
+        handle.enqueue(entry());
+        handle.enqueue(entry());
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        handle.enqueue(entry());
     }
 
     #[tokio::test]
