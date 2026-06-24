@@ -14,6 +14,13 @@ static headers, and streaming the response back.
 Set `SYNAPSE_PROXY_CONFIG_PATH` (default `synapse-proxy.toml`); `SYNAPSE_PROXY_ADDR`
 overrides the listen address.
 
+Upstream HTTP client timeouts (avoid indefinite hangs on broken DNS/MCS paths):
+
+| Variable | Default |
+|---|---|
+| `SYNAPSE_PROXY_UPSTREAM_CONNECT_TIMEOUT_SECS` | `10` |
+| `SYNAPSE_PROXY_UPSTREAM_TIMEOUT_SECS` | `120` |
+
 ```toml
 addr = "0.0.0.0:8787"
 admin_addr = "127.0.0.1:8788"

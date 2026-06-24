@@ -6,6 +6,7 @@ use synapse_proxy::build_router;
 use synapse_proxy::config::Config;
 use synapse_proxy::metrics::{metrics_router, Metrics};
 use synapse_proxy::proxy::AppState;
+use synapse_proxy::http_client;
 use synapse_proxy::ProxyBuilder;
 
 #[tokio::main]
@@ -22,12 +23,13 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::load()?;
     let built = ProxyBuilder::from_config(config).build()?;
     let (metrics, registry) = Metrics::new()?;
+    let http_client = http_client::build_http_client()?;
 
     let shutting_down = Arc::new(AtomicBool::new(false));
     let state = AppState {
         routes: Arc::new(built.routes),
         context: built.context.clone(),
-        client: reqwest::Client::new(),
+        client: http_client,
         shutting_down: shutting_down.clone(),
         metrics: Arc::new(metrics),
     };

@@ -24,7 +24,7 @@ pub fn build_router_from_config(builder: ProxyBuilder) -> anyhow::Result<Router>
     let state = AppState {
         routes: Arc::new(built.routes),
         context: built.context,
-        client: reqwest::Client::new(),
+        client: crate::http_client::build_http_client()?,
         shutting_down: Arc::new(AtomicBool::new(false)),
         metrics: Arc::new(metrics),
     };

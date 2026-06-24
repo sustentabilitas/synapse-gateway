@@ -4,6 +4,7 @@ pub mod builder;
 pub mod config;
 pub mod context;
 pub mod health;
+pub mod http_client;
 pub mod metrics;
 pub mod proxy;
 pub mod transform;
