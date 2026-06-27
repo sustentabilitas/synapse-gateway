@@ -171,8 +171,7 @@ pub async fn handler(State(state): State<AppState>, req: Request) -> Response {
     }
 
     let method_val = preq.method.clone();
-    let out_headers = preq.headers.clone();
-    let out_body = preq.into_body_bytes();
+    let (out_headers, out_body) = preq.into_forward_parts();
 
     let upstream = state
         .client

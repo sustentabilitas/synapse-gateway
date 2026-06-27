@@ -90,6 +90,8 @@ The `[context]` table controls how the per-request context is populated.
 { inject = { header = "X-User-Id",   const = "_default" } }
 { inject = { body = "tenant",        from_context = "org" } }
 ```
+> **Body re-encoding:** JSON body transforms (`inject` / `wrap` on `body`) re-serialize the payload. Stale `Content-Length` / `Transfer-Encoding` from the client are stripped before forwarding so upstream receives the full JSON (reqwest sets the correct length).
+
 > **Security note:** When a `from_context` key is absent, header targets are fail-safe: the injector removes any caller-supplied value for that header so it cannot pass through. Body targets rely on `require_context` as the gate. Any `from_context` key used for identity (e.g. tenant or user headers) SHOULD also be listed in the route's `require_context` as defense in depth.
 
 **`wrap`** — nest the incoming JSON body under a key and inject sibling fields.

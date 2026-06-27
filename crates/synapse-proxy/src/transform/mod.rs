@@ -102,6 +102,26 @@ impl ProxyRequest {
             Body::Json(v) => serde_json::to_vec(&v).unwrap_or_default(),
         }
     }
+
+    /// Headers + body ready for the upstream reqwest call.
+    ///
+    /// When JSON transforms (`inject`/`wrap` on body) re-serialize the payload,
+    /// drop stale `Content-Length` / `Transfer-Encoding` from the client so
+    /// reqwest emits a length matching the new body (callers like urllib set
+    /// Content-Length for the pre-transform size).
+    pub fn into_forward_parts(self) -> (HeaderMap, Vec<u8>) {
+        let reencoded = matches!(self.body, Body::Json(_));
+        let bytes = match self.body {
+            Body::Bytes(b) => b,
+            Body::Json(v) => serde_json::to_vec(&v).unwrap_or_default(),
+        };
+        let mut headers = self.headers;
+        if reencoded {
+            headers.remove("content-length");
+            headers.remove("transfer-encoding");
+        }
+        (headers, bytes)
+    }
 }
 
 /// Mutable view of the upstream response. v1 transforms touch status/headers and
@@ -197,17 +217,39 @@ mod tests {
     }
 
     #[test]
-    fn body_json_mut_rejects_non_json() {
+    fn into_forward_parts_strips_stale_content_length_after_json_inject() {
+        let mut headers = HeaderMap::new();
+        headers.insert("content-length", "10".parse().unwrap());
+        headers.insert("transfer-encoding", "chunked".parse().unwrap());
         let mut r = ProxyRequest::from_parts(
             Method::POST,
             "/x".into(),
             None,
-            HeaderMap::new(),
-            b"not json".to_vec(),
+            headers,
+            br#"{"a":1}"#.to_vec(),
         );
-        assert!(matches!(
-            r.body_json_mut(),
-            Err(TransformError::Reject { .. })
-        ));
+        r.body_json_mut().unwrap()["orgId"] = serde_json::json!("acme");
+        let (headers, bytes) = r.into_forward_parts();
+        assert!(headers.get("content-length").is_none());
+        assert!(headers.get("transfer-encoding").is_none());
+        let v: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["orgId"], "acme");
+        assert!(bytes.len() > 10);
+    }
+
+    #[test]
+    fn into_forward_parts_keeps_content_length_when_body_unchanged() {
+        let mut headers = HeaderMap::new();
+        headers.insert("content-length", "7".parse().unwrap());
+        let r = ProxyRequest::from_parts(
+            Method::POST,
+            "/x".into(),
+            None,
+            headers,
+            br#"{"a":1}"#.to_vec(),
+        );
+        let (headers, bytes) = r.into_forward_parts();
+        assert_eq!(headers.get("content-length").unwrap(), "7");
+        assert_eq!(bytes, br#"{"a":1}"#);
     }
 }

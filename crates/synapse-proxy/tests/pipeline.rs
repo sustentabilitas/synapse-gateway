@@ -5,9 +5,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use http_body_util::BodyExt;
+use serde_json::json;
 use serde_json::Value;
 use tower::ServiceExt;
-use wiremock::matchers::{header, method, path};
+use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use synapse_proxy::build_router_from_config; // added in this task (router.rs)
@@ -50,6 +51,52 @@ async fn injects_context_header_and_forwards() {
     .unwrap();
     let app = build_router_from_config(ProxyBuilder::from_config(cfg)).unwrap();
     let resp = app.oneshot(request("/llm/chat", "{}")).await.unwrap();
+    assert_eq!(resp.status(), 200);
+}
+
+#[tokio::test]
+async fn body_inject_forwards_full_json_when_client_content_length_is_stale() {
+    std::env::set_var("PIPELINE_ORG", "acme");
+    let up = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/ingest"))
+        .and(body_json(json!({
+            "orgId": "acme",
+            "records": [{"ref": "r1"}]
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
+        .mount(&up)
+        .await;
+
+    let cfg = Config::from_toml_str(&format!(
+        r#"
+        [context]
+        env = {{ org = "PIPELINE_ORG" }}
+        [[routes]]
+        path_prefix = "/v1"
+        upstream = "{}"
+        strip_prefix = true
+        require_context = ["org"]
+        request_steps = [ {{ inject = {{ body = "orgId", from_context = "org" }} }} ]
+    "#,
+        up.uri()
+    ))
+    .unwrap();
+    let app = build_router_from_config(ProxyBuilder::from_config(cfg)).unwrap();
+
+    let original = r#"{"records":[{"ref":"r1"}]}"#;
+    let resp = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/v1/ingest")
+                .header("content-type", "application/json")
+                .header("content-length", original.len().to_string())
+                .body(axum::body::Body::from(original))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
 }
 
