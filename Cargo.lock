@@ -4032,7 +4032,7 @@ dependencies = [
 
 [[package]]
 name = "synapse-gateway"
-version = "0.5.7"
+version = "0.5.9"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4073,7 +4073,7 @@ dependencies = [
 
 [[package]]
 name = "synapse-proxy"
-version = "0.2.7"
+version = "0.2.8"
 dependencies = [
  "anyhow",
  "async-trait",
