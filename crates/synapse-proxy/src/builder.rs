@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::config::{Config, RequestStep, ResponseStep, Route};
+use crate::config::{Config, McpUpstreamConfig, RequestStep, ResponseStep, Route};
 use crate::context::ContextStore;
 use crate::transform::error_remap::ErrorRemap;
 use crate::transform::inject::Inject;
@@ -44,6 +44,8 @@ pub struct BuiltProxy {
     pub admin_addr: String,
     pub metrics_addr: String,
     pub addr: String,
+    pub mcp_addr: String,
+    pub mcp_upstreams: Vec<McpUpstreamConfig>,
 }
 
 impl std::fmt::Debug for BuiltProxy {
@@ -53,6 +55,8 @@ impl std::fmt::Debug for BuiltProxy {
             .field("admin_addr", &self.admin_addr)
             .field("metrics_addr", &self.metrics_addr)
             .field("addr", &self.addr)
+            .field("mcp_addr", &self.mcp_addr)
+            .field("mcp_upstreams_len", &self.mcp_upstreams.len())
             .finish()
     }
 }
@@ -111,6 +115,8 @@ impl ProxyBuilder {
             admin_addr: self.config.admin_addr.clone(),
             metrics_addr: self.config.metrics_addr.clone(),
             addr: self.config.addr.clone(),
+            mcp_addr: self.config.mcp_addr.clone(),
+            mcp_upstreams: self.config.mcp_upstreams.clone(),
         })
     }
 }

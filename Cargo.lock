@@ -4120,6 +4120,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "synapse-context"
+version = "0.1.0"
+
+[[package]]
 name = "synapse-gateway"
 version = "0.5.11"
 dependencies = [
@@ -4171,7 +4175,7 @@ dependencies = [
  "rmcp",
  "serde",
  "serde_json",
- "synapse-proxy",
+ "synapse-context",
  "tokio",
  "tower 0.5.3",
  "tracing",
@@ -4195,6 +4199,8 @@ dependencies = [
  "rustls 0.23.40",
  "serde",
  "serde_json",
+ "synapse-context",
+ "synapse-mcp",
  "tokio",
  "toml",
  "tower 0.5.3",

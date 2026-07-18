@@ -44,7 +44,7 @@ use rmcp::transport::streamable_http_server::session::local::LocalSessionManager
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 use rmcp::transport::StreamableHttpClientTransport;
 use rmcp::{ErrorData as McpError, RoleClient, ServerHandler, ServiceExt};
-use synapse_proxy::context::{ContextStore, ResolvedContext};
+use synapse_context::{ContextStore, ResolvedContext};
 use tokio::sync::Mutex as AsyncMutex;
 use tower::Service;
 

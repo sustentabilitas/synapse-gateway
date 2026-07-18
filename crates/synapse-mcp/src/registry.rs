@@ -1,6 +1,6 @@
 //! On-demand, TTL-scoped registry of upstream MCP servers.
 //!
-//! Mirrors the `ContextStore` pattern in `synapse-proxy::context`: a sync
+//! Mirrors the `ContextStore` pattern in `synapse-context`: a sync
 //! lock guards a plain map, expiry is tracked via `Instant`, and a
 //! `resolve_at(now)` seam makes TTL expiry deterministically testable. No
 //! lock is ever held across an `.await` — all operations here are

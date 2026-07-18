@@ -9,7 +9,7 @@ name = "synapse_mcp"
 path = "src/lib.rs"
 
 [dependencies]
-synapse-proxy = { path = "../synapse-proxy" }
+synapse-context = { workspace = true }
 rmcp = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true }
