@@ -161,18 +161,26 @@ struct ClientCache {
 }
 
 impl ClientCache {
+    /// `registry` is threaded through so every call can also sweep entries
+    /// for servers that have since been deregistered or TTL-expired — see
+    /// `sweep_deregistered`. This is the only eviction path for those
+    /// entries: nothing else in the gateway proactively closes a dropped
+    /// server's cached connections.
     async fn get_or_build(
         &self,
+        registry: &McpRegistry,
         server: &str,
         url: &str,
         identity: &Identity,
     ) -> Result<Arc<UpstreamClient>, GatewayError> {
         let key = (server.to_string(), identity.clone());
         {
-            let guard = self.entries.lock().await;
+            let mut guard = self.entries.lock().await;
             if let Some(entry) = guard.get(&key) {
                 if entry.url == url {
-                    return Ok(entry.client.clone());
+                    let client = entry.client.clone();
+                    sweep_deregistered(&mut guard, registry);
+                    return Ok(client);
                 }
                 // Identity is unchanged but the registry now resolves this
                 // server to a different URL (hot-swap) — fall through and
@@ -191,8 +199,24 @@ impl ClientCache {
                 url: url.to_string(),
             },
         );
+        sweep_deregistered(&mut guard, registry);
         Ok(client)
     }
+}
+
+/// Drop every cache entry whose server name no longer resolves in the
+/// registry (deregistered, or TTL-expired — `McpRegistry::resolve` returns
+/// `None` for both and lazily removes expired entries itself). Run on every
+/// `get_or_build` call so a long-lived gateway bounds its live upstream
+/// connections to currently-registered servers, instead of accumulating a
+/// dead `Arc<UpstreamClient>` (live TCP + rmcp task) per churned server
+/// name forever. Dropping the `CachedClient` is sufficient to cancel its
+/// connection — rmcp's client shuts down on drop.
+fn sweep_deregistered(
+    entries: &mut HashMap<(String, Identity), CachedClient>,
+    registry: &McpRegistry,
+) {
+    entries.retain(|(name, _), _| registry.resolve(name).is_some());
 }
 
 async fn build_upstream_client(
@@ -225,7 +249,9 @@ async fn resolve_upstream(
         .resolve(server)
         .ok_or_else(|| GatewayError::UnknownServer(server.to_string()))?;
     let identity = Identity::from_context(&context.resolve())?;
-    clients.get_or_build(server, &url, &identity).await
+    clients
+        .get_or_build(registry, server, &url, &identity)
+        .await
 }
 
 /// Recover which `/mcp/{server}` this call targets from the raw HTTP
@@ -593,6 +619,8 @@ mod tests {
         let upstream_addr = spawn_echo_upstream().await;
         let url = format!("http://{upstream_addr}/mcp");
         let clients = ClientCache::default();
+        let registry = McpRegistry::new();
+        registry.register("alpha".to_string(), url.clone(), None);
 
         let identity_a = Identity {
             org: "org-a".to_string(),
@@ -600,13 +628,13 @@ mod tests {
             user: "u".to_string(),
         };
         let client_a_first = clients
-            .get_or_build("alpha", &url, &identity_a)
+            .get_or_build(&registry, "alpha", &url, &identity_a)
             .await
             .expect("build client for identity_a");
 
         // Same identity, same server: reused, not rebuilt.
         let client_a_second = clients
-            .get_or_build("alpha", &url, &identity_a)
+            .get_or_build(&registry, "alpha", &url, &identity_a)
             .await
             .expect("resolve cached client for identity_a");
         assert!(
@@ -620,7 +648,7 @@ mod tests {
             user: "u".to_string(),
         };
         let client_b = clients
-            .get_or_build("alpha", &url, &identity_b)
+            .get_or_build(&registry, "alpha", &url, &identity_b)
             .await
             .expect("build client for identity_b");
 
@@ -805,5 +833,102 @@ mod tests {
 
         assert!(err.to_string().to_lowercase().contains("unknown"));
         client.cancel().await.ok();
+    }
+
+    // ---- Cache eviction for deregistered/expired servers -------------
+
+    /// Regression for the unbounded-cache finding: a server's cached
+    /// upstream client must not outlive its registration. Registers
+    /// "alpha", caches a client for it, deregisters "alpha", then registers
+    /// and resolves a *different* server "beta" — the resolve for "beta"
+    /// must sweep the now-orphaned "alpha" entry out of the cache.
+    #[tokio::test]
+    async fn deregistered_server_client_is_evicted_on_next_sweep() {
+        let alpha_upstream_addr = spawn_echo_upstream().await;
+        let beta_upstream_addr = spawn_echo_upstream().await;
+
+        let registry = McpRegistry::new();
+        registry.register(
+            "alpha".to_string(),
+            format!("http://{alpha_upstream_addr}/mcp"),
+            None,
+        );
+        let context = bound_context();
+        let clients = ClientCache::default();
+
+        resolve_upstream(&registry, &context, &clients, "alpha")
+            .await
+            .expect("cache a client for alpha");
+        {
+            let guard = clients.entries.lock().await;
+            assert!(
+                guard.keys().any(|(name, _)| name == "alpha"),
+                "alpha's client must be cached before deregistration"
+            );
+        }
+
+        registry.deregister("alpha");
+        registry.register(
+            "beta".to_string(),
+            format!("http://{beta_upstream_addr}/mcp"),
+            None,
+        );
+
+        resolve_upstream(&registry, &context, &clients, "beta")
+            .await
+            .expect("cache a client for beta; this call also sweeps stale entries");
+
+        let guard = clients.entries.lock().await;
+        assert!(
+            !guard.keys().any(|(name, _)| name == "alpha"),
+            "alpha's cached client must be evicted once its registration is gone"
+        );
+        assert!(
+            guard.keys().any(|(name, _)| name == "beta"),
+            "beta's client must still be cached"
+        );
+    }
+
+    /// Same as above but for TTL expiry rather than explicit deregistration:
+    /// `McpRegistry::resolve` returns `None` for an expired entry just as it
+    /// does for a deregistered one, so the same sweep must evict it too.
+    #[tokio::test]
+    async fn ttl_expired_server_client_is_evicted_on_next_sweep() {
+        let alpha_upstream_addr = spawn_echo_upstream().await;
+        let beta_upstream_addr = spawn_echo_upstream().await;
+
+        let registry = McpRegistry::new();
+        registry.register(
+            "alpha".to_string(),
+            format!("http://{alpha_upstream_addr}/mcp"),
+            Some(std::time::Duration::from_millis(20)),
+        );
+        let context = bound_context();
+        let clients = ClientCache::default();
+
+        resolve_upstream(&registry, &context, &clients, "alpha")
+            .await
+            .expect("cache a client for alpha before it expires");
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        registry.register(
+            "beta".to_string(),
+            format!("http://{beta_upstream_addr}/mcp"),
+            None,
+        );
+        resolve_upstream(&registry, &context, &clients, "beta")
+            .await
+            .expect("cache a client for beta; this call also sweeps expired entries");
+
+        let guard = clients.entries.lock().await;
+        assert!(
+            !guard.keys().any(|(name, _)| name == "alpha"),
+            "alpha's cached client must be evicted once its TTL expires"
+        );
+        assert!(
+            guard.keys().any(|(name, _)| name == "beta"),
+            "beta's client must still be cached"
+        );
     }
 }
