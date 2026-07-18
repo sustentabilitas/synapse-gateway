@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    tags: ["synapse-gateway-v*", "synapse-proxy-v*"]
+    tags: ["synapse-gateway-v*", "synapse-proxy-v*", "synapse-mcp-v*", "synapse-context-v*"]
     branches: [main]
   workflow_dispatch:
     inputs:
@@ -10,7 +10,7 @@ on:
         description: Crate to release
         required: true
         type: choice
-        options: [synapse-gateway, synapse-proxy]
+        options: [synapse-gateway, synapse-proxy, synapse-mcp, synapse-context]
 
 permissions:
   contents: read
@@ -92,7 +92,8 @@ jobs:
   docker:
     name: Build & push image (Docker Hub)
     needs: resolve
-    if: needs.resolve.outputs.crate != '' && (needs.resolve.outputs.is_tag == 'true' || github.event_name == 'workflow_dispatch')
+    # Only the binary crates ship a Docker image; synapse-context / synapse-mcp are libraries.
+    if: needs.resolve.outputs.crate != '' && (needs.resolve.outputs.is_tag == 'true' || github.event_name == 'workflow_dispatch') && contains(fromJSON('["synapse-gateway", "synapse-proxy"]'), needs.resolve.outputs.crate)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
