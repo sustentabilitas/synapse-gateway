@@ -49,8 +49,10 @@
 //! per-identity clients keyed by the resolved header values — but it
 //! categorically cannot rely on mutating headers on one long-lived client.
 
+pub mod admin;
 pub mod gateway;
 pub mod registry;
 
+pub use admin::mcp_admin_router;
 pub use gateway::mcp_gateway_router;
 pub use registry::{McpRegistry, RegisteredUpstream};
