@@ -65,7 +65,11 @@ impl Identity {
     /// Fail closed if any of `org`/`workspace`/`user` is absent from the
     /// resolved context (mirrors `transform/inject.rs`'s per-key contract).
     fn from_context(ctx: &ResolvedContext) -> Result<Self, GatewayError> {
-        let get = |key: &'static str| ctx.get(key).map(str::to_string).ok_or(GatewayError::Unbound(key));
+        let get = |key: &'static str| {
+            ctx.get(key)
+                .map(str::to_string)
+                .ok_or(GatewayError::Unbound(key))
+        };
         Ok(Self {
             org: get("org")?,
             workspace: get("workspace")?,
@@ -79,12 +83,18 @@ impl Identity {
     /// all, so a client-supplied `x-org-id` etc. cannot leak upstream.
     fn header_map(&self) -> Result<HashMap<HeaderName, HeaderValue>, GatewayError> {
         let mut headers = HashMap::with_capacity(3);
-        headers.insert(HeaderName::from_static("x-org-id"), to_header_value(&self.org)?);
+        headers.insert(
+            HeaderName::from_static("x-org-id"),
+            to_header_value(&self.org)?,
+        );
         headers.insert(
             HeaderName::from_static("x-workspace-id"),
             to_header_value(&self.workspace)?,
         );
-        headers.insert(HeaderName::from_static("x-user-id"), to_header_value(&self.user)?);
+        headers.insert(
+            HeaderName::from_static("x-user-id"),
+            to_header_value(&self.user)?,
+        );
         Ok(headers)
     }
 }
@@ -108,9 +118,10 @@ enum GatewayError {
 impl GatewayError {
     fn into_mcp_error(self) -> McpError {
         match self {
-            GatewayError::UnknownServer(name) => {
-                McpError::resource_not_found(format!("unknown or expired mcp server '{name}'"), None)
-            }
+            GatewayError::UnknownServer(name) => McpError::resource_not_found(
+                format!("unknown or expired mcp server '{name}'"),
+                None,
+            ),
             GatewayError::Unbound(key) => McpError::invalid_request(
                 format!("context not bound: missing identity key '{key}'"),
                 None,
@@ -184,18 +195,21 @@ impl ClientCache {
     }
 }
 
-async fn build_upstream_client(url: &str, identity: &Identity) -> Result<UpstreamClient, GatewayError> {
+async fn build_upstream_client(
+    url: &str,
+    identity: &Identity,
+) -> Result<UpstreamClient, GatewayError> {
     let headers = identity.header_map()?;
-    let config = StreamableHttpClientTransportConfig::with_uri(url.to_string()).custom_headers(headers);
+    let config =
+        StreamableHttpClientTransportConfig::with_uri(url.to_string()).custom_headers(headers);
     let transport = StreamableHttpClientTransport::from_config(config);
     let client_info = ClientInfo::new(
         ClientCapabilities::default(),
         rmcp::model::Implementation::new("synapse-mcp-gateway", env!("CARGO_PKG_VERSION")),
     );
-    client_info
-        .serve(transport)
-        .await
-        .map_err(|e| GatewayError::Internal(format!("connecting upstream mcp server at '{url}': {e}")))
+    client_info.serve(transport).await.map_err(|e| {
+        GatewayError::Internal(format!("connecting upstream mcp server at '{url}': {e}"))
+    })
 }
 
 /// The core dispatch: resolve the registry, fail closed on an unbound
@@ -241,7 +255,10 @@ struct GatewayHandler {
 }
 
 impl GatewayHandler {
-    async fn upstream_for(&self, context: &RequestContext<RoleServer>) -> Result<Arc<UpstreamClient>, McpError> {
+    async fn upstream_for(
+        &self,
+        context: &RequestContext<RoleServer>,
+    ) -> Result<Arc<UpstreamClient>, McpError> {
         let server = server_name_from_context(context).map_err(GatewayError::into_mcp_error)?;
         resolve_upstream(&self.registry, &self.context, &self.clients, &server)
             .await
@@ -316,7 +333,8 @@ pub fn mcp_gateway_router(registry: Arc<McpRegistry>, context: Arc<ContextStore>
 mod tests {
     use super::*;
     use rmcp::model::{
-        CallToolRequestMethod, ContentBlock, ServerCapabilities as SrvCaps, ServerInfo as SrvInfo, Tool,
+        CallToolRequestMethod, ContentBlock, ServerCapabilities as SrvCaps, ServerInfo as SrvInfo,
+        Tool,
     };
     use rmcp::transport::streamable_http_server::StreamableHttpService as SrvHttpService;
     use std::net::SocketAddr;
@@ -399,6 +417,37 @@ mod tests {
         assert_eq!(err, GatewayError::Unbound("user"));
     }
 
+    // ---- DNS-rebinding protection (rmcp default allowed_hosts) -------
+
+    /// A request with a non-loopback `Host` must be rejected by rmcp's
+    /// built-in DNS-rebinding guard (`StreamableHttpServerConfig::default()`
+    /// allows only `localhost`/`127.0.0.1`/`::1`), NOT reach the gateway
+    /// handler. Proves we rely on the default rather than disabling it.
+    #[tokio::test]
+    async fn spoofed_host_is_rejected_by_dns_rebinding_guard() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt as _;
+
+        let registry = Arc::new(McpRegistry::new());
+        let context = Arc::new(bound_context());
+        let router = mcp_gateway_router(registry, context);
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/mcp/platform")
+            .header("host", "evil.example.com")
+            .header("content-type", "application/json")
+            .header("accept", "application/json, text/event-stream")
+            .body(Body::from(
+                r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+            ))
+            .unwrap();
+
+        let resp = router.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::FORBIDDEN);
+    }
+
     // ---- Happy-path identity-injection proof, end to end -------------
 
     /// Single-tool in-process MCP server: `echo` returns the caller's
@@ -455,7 +504,9 @@ mod tests {
             .expect("bind loopback listener");
         let addr = listener.local_addr().expect("local addr");
         tokio::spawn(async move {
-            axum::serve(listener, router).await.expect("axum::serve exited");
+            axum::serve(listener, router)
+                .await
+                .expect("axum::serve exited");
         });
         addr
     }
@@ -467,7 +518,9 @@ mod tests {
             .expect("bind loopback listener");
         let addr = listener.local_addr().expect("local addr");
         tokio::spawn(async move {
-            axum::serve(listener, router).await.expect("axum::serve exited");
+            axum::serve(listener, router)
+                .await
+                .expect("axum::serve exited");
         });
         addr
     }
@@ -486,7 +539,10 @@ mod tests {
             ClientCapabilities::default(),
             rmcp::model::Implementation::new("sandbox-test-client", "0.0.1"),
         );
-        client_info.serve(transport).await.expect("sandbox client connect")
+        client_info
+            .serve(transport)
+            .await
+            .expect("sandbox client connect")
     }
 
     async fn call_echo(client: &rmcp::service::RunningService<RoleClient, ClientInfo>) -> String {
@@ -630,7 +686,9 @@ mod tests {
             .expect("bind loopback listener");
         let addr = listener.local_addr().expect("local addr");
         tokio::spawn(async move {
-            axum::serve(listener, router).await.expect("axum::serve exited");
+            axum::serve(listener, router)
+                .await
+                .expect("axum::serve exited");
         });
         addr
     }
@@ -644,7 +702,11 @@ mod tests {
         let upstream_b_addr = spawn_marker_upstream().await;
 
         let registry = Arc::new(McpRegistry::new());
-        registry.register("alpha".to_string(), format!("http://{upstream_a_addr}/mcp"), None);
+        registry.register(
+            "alpha".to_string(),
+            format!("http://{upstream_a_addr}/mcp"),
+            None,
+        );
 
         let context = Arc::new(ContextStore::new(HashMap::new()));
         context.push(
@@ -660,11 +722,18 @@ mod tests {
         let client = connect_sandbox_client(gateway_addr, "alpha", HashMap::new()).await;
 
         let first = call_echo(&client).await;
-        assert_eq!(first, "acme-corp", "first call must hit upstream A and cache against it");
+        assert_eq!(
+            first, "acme-corp",
+            "first call must hit upstream A and cache against it"
+        );
 
         // Hot-swap the registry entry to a DIFFERENT in-process server under
         // the same name; the bound identity does not change.
-        registry.register("alpha".to_string(), format!("http://{upstream_b_addr}/mcp"), None);
+        registry.register(
+            "alpha".to_string(),
+            format!("http://{upstream_b_addr}/mcp"),
+            None,
+        );
 
         let second = call_echo(&client).await;
         assert_eq!(
@@ -707,7 +776,10 @@ mod tests {
 
         let echoed = call_echo(&client).await;
 
-        assert_eq!(echoed, "acme-corp", "spoofed client header must not reach upstream");
+        assert_eq!(
+            echoed, "acme-corp",
+            "spoofed client header must not reach upstream"
+        );
         client.cancel().await.ok();
     }
 

@@ -57,9 +57,8 @@ mod tests {
         let registry = Arc::new(McpRegistry::new());
         let app = mcp_admin_router(registry.clone());
 
-        let body =
-            serde_json::json!({ "name": "x", "url": "http://x.local", "ttl_seconds": 3600 })
-                .to_string();
+        let body = serde_json::json!({ "name": "x", "url": "http://x.local", "ttl_seconds": 3600 })
+            .to_string();
         let resp = app
             .clone()
             .oneshot(

@@ -15,15 +15,15 @@ use std::net::SocketAddr;
 use axum::Router;
 use http::{HeaderName, HeaderValue};
 use rmcp::model::{
-    CallToolRequestMethod, CallToolRequestParams, CallToolResult, ClientCapabilities,
-    ClientInfo, ContentBlock, Implementation, ListToolsResult, PaginatedRequestParams,
-    ServerCapabilities, ServerInfo, Tool,
+    CallToolRequestMethod, CallToolRequestParams, CallToolResult, ClientCapabilities, ClientInfo,
+    ContentBlock, Implementation, ListToolsResult, PaginatedRequestParams, ServerCapabilities,
+    ServerInfo, Tool,
 };
 use rmcp::service::{RequestContext, RoleServer};
-use rmcp::transport::StreamableHttpClientTransport;
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
+use rmcp::transport::StreamableHttpClientTransport;
 use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt};
 
 /// Single-tool MCP server: `echo` returns the caller's `x-org-id` header
@@ -103,9 +103,7 @@ fn config_with_org_header(addr: SocketAddr, org_id: &str) -> StreamableHttpClien
 /// Connect a client from `config`, call `echo` once, and return the echoed
 /// text. Leaves the client connected so callers can issue further calls on
 /// the same connection.
-async fn call_echo(
-    client: &rmcp::service::RunningService<rmcp::RoleClient, ClientInfo>,
-) -> String {
+async fn call_echo(client: &rmcp::service::RunningService<rmcp::RoleClient, ClientInfo>) -> String {
     let result = client
         .call_tool(CallToolRequestParams::new("echo").with_arguments(serde_json::Map::new()))
         .await
