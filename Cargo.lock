@@ -4125,7 +4125,7 @@ version = "0.1.0"
 
 [[package]]
 name = "synapse-gateway"
-version = "0.5.11"
+version = "0.5.12"
 dependencies = [
  "anyhow",
  "async-trait",
