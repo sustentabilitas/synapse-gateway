@@ -20,6 +20,10 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
+# Optional gateway metrics: instruments are built on a `Meter` the broker
+# hands in (from synapse-proxy's shared `SdkMeterProvider`), so this crate only
+# needs the OTel API, not the SDK/exporters.
+opentelemetry = "0.32"
 # Must match the `http` crate version rmcp uses internally (it inserts
 # `http::request::Parts` into `RequestContext::extensions` by concrete
 # TypeId, so this crate needs the identical type to read it back).
@@ -28,3 +32,8 @@ http = "1"
 [dev-dependencies]
 http-body-util = "0.1"
 tower = { workspace = true, features = ["util"] }
+# Read the emitted metrics back in tests: build a real `SdkMeterProvider` with a
+# Prometheus reader, hand its `Meter` to `GatewayMetrics`, and assert the series.
+opentelemetry_sdk = "0.32"
+opentelemetry-prometheus = "0.32"
+prometheus = "0.14"

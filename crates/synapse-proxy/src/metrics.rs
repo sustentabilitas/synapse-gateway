@@ -5,9 +5,11 @@ use axum::http::{header, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
-use opentelemetry::metrics::{Counter, Histogram, MeterProvider as _};
+use opentelemetry::metrics::{Counter, Histogram, Meter, MeterProvider as _};
 use opentelemetry::KeyValue;
-use opentelemetry_sdk::metrics::SdkMeterProvider;
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
+use opentelemetry_sdk::Resource;
 use prometheus::{Encoder, Registry, TextEncoder};
 
 pub struct Metrics {
@@ -15,17 +17,46 @@ pub struct Metrics {
     duration: Histogram<f64>,
     upstream_errors: Counter<u64>,
     transform_errors: Counter<u64>,
-    _provider: SdkMeterProvider,
+    provider: SdkMeterProvider,
 }
 
 impl Metrics {
-    /// Build the meter provider wired to a fresh Prometheus registry; returns both.
+    /// Prometheus-only (unchanged behaviour). Retained for existing callers.
     pub fn new() -> anyhow::Result<(Self, Registry)> {
+        Self::with_otlp(None, "synapse-proxy")
+    }
+
+    /// Prometheus reader (always, exported on `:9090`) plus an OTLP/HTTP
+    /// `PeriodicReader` when `otlp_endpoint` is `Some`. `service_name` is
+    /// attached as the `service.name` resource attribute so OTLP series carry
+    /// e.g. `service_name=sandbox-broker`.
+    ///
+    /// `otlp_endpoint` is a base collector URL like `http://host:4318`; the
+    /// `/v1/metrics` signal path is appended here (a programmatically-supplied
+    /// endpoint is used verbatim by opentelemetry-otlp 0.32, so we must append
+    /// the path ourselves).
+    pub fn with_otlp(
+        otlp_endpoint: Option<&str>,
+        service_name: &str,
+    ) -> anyhow::Result<(Self, Registry)> {
         let registry = Registry::new();
-        let exporter = opentelemetry_prometheus::exporter()
+        let prom = opentelemetry_prometheus::exporter()
             .with_registry(registry.clone())
             .build()?;
-        let provider = SdkMeterProvider::builder().with_reader(exporter).build();
+        let resource = Resource::builder()
+            .with_service_name(service_name.to_string())
+            .build();
+        let mut builder = SdkMeterProvider::builder()
+            .with_reader(prom)
+            .with_resource(resource);
+        if let Some(endpoint) = otlp_endpoint {
+            let exporter = opentelemetry_otlp::MetricExporter::builder()
+                .with_http()
+                .with_endpoint(format!("{}/v1/metrics", endpoint.trim_end_matches('/')))
+                .build()?;
+            builder = builder.with_reader(PeriodicReader::builder(exporter).build());
+        }
+        let provider = builder.build();
         let meter = provider.meter("synapse-proxy");
         let metrics = Self {
             requests: meter.u64_counter("synapse_proxy_requests_total").build(),
@@ -38,9 +69,16 @@ impl Metrics {
             transform_errors: meter
                 .u64_counter("synapse_proxy_transform_errors_total")
                 .build(),
-            _provider: provider,
+            provider,
         };
         Ok((metrics, registry))
+    }
+
+    /// A meter on the SAME provider (so downstream crates such as synapse-mcp
+    /// build instruments that share this provider's OTLP + Prometheus readers
+    /// and single `service.name` resource).
+    pub fn meter(&self) -> Meter {
+        self.provider.meter("sandbox-broker")
     }
 
     pub fn record(&self, route: &str, method: &str, status: u16, outcome: &str, secs: f64) {
@@ -113,5 +151,21 @@ mod tests {
         let text = String::from_utf8(buf).unwrap();
         assert!(text.contains("synapse_proxy_requests_total"));
         assert!(text.contains("route=\"cortex\""));
+    }
+
+    #[test]
+    fn otlp_and_prometheus_readers_coexist() {
+        // With an OTLP endpoint set, the Prometheus registry still exports the proxy series.
+        let (m, registry) =
+            Metrics::with_otlp(Some("http://127.0.0.1:4318"), "sandbox-broker").unwrap();
+        m.record("cortex", "POST", 200, "forwarded", 0.01);
+        let mut buf = Vec::new();
+        TextEncoder::new()
+            .encode(&registry.gather(), &mut buf)
+            .unwrap();
+        let text = String::from_utf8(buf).unwrap();
+        assert!(text.contains("synapse_proxy_requests_total"));
+        // The exposed meter creates instruments on the same provider.
+        let _c = m.meter().u64_counter("probe_total").build();
     }
 }

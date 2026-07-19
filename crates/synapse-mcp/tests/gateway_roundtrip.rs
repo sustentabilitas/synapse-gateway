@@ -123,7 +123,7 @@ async fn spawn_gateway(
     context: std::sync::Arc<ContextStore>,
     config: std::sync::Arc<McpGatewayConfig>,
 ) -> SocketAddr {
-    let router = mcp_gateway_router(registry, context, config);
+    let router = mcp_gateway_router(registry, context, config, None);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind loopback listener");
