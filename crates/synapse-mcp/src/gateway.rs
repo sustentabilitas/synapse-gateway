@@ -1226,7 +1226,10 @@ mod tests {
             text.contains("broker_mcp_requests_total"),
             "requests counter missing:\n{text}"
         );
-        assert!(text.contains("tool=\"echo\""), "tool label missing:\n{text}");
+        assert!(
+            text.contains("tool=\"echo\""),
+            "tool label missing:\n{text}"
+        );
         assert!(
             text.contains("upstream=\"platform\""),
             "upstream label missing:\n{text}"
@@ -1267,14 +1270,15 @@ mod tests {
         let context = Arc::new(ContextStore::new(HashMap::new())); // nothing bound
         let config = Arc::new(three_required_rules());
 
-        let router =
-            mcp_gateway_router(mcp_registry, context, config, Some(metrics.clone()));
+        let router = mcp_gateway_router(mcp_registry, context, config, Some(metrics.clone()));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind loopback listener");
         let addr = listener.local_addr().expect("local addr");
         tokio::spawn(async move {
-            axum::serve(listener, router).await.expect("axum::serve exited");
+            axum::serve(listener, router)
+                .await
+                .expect("axum::serve exited");
         });
 
         let client = connect_sandbox_client(addr, "alpha", HashMap::new()).await;
