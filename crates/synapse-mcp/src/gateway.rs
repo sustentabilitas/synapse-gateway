@@ -34,6 +34,8 @@ use axum::extract::Request;
 use axum::response::IntoResponse;
 use axum::Router;
 use http::{HeaderName, HeaderValue};
+use opentelemetry::metrics::{Counter, Histogram, Meter};
+use opentelemetry::KeyValue;
 use rmcp::model::{
     CallToolRequestParams, CallToolResult, ClientCapabilities, ClientInfo, ListToolsResult,
     PaginatedRequestParams, ServerCapabilities, ServerInfo,
@@ -75,6 +77,72 @@ pub struct IdentityHeaderRule {
 pub struct McpGatewayConfig {
     #[serde(default)]
     pub inject: Vec<IdentityHeaderRule>,
+}
+
+/// OpenTelemetry instruments for the gateway, built on a `Meter` the broker
+/// supplies (from synapse-proxy's shared `SdkMeterProvider`, so these series go
+/// out the same OTLP+Prometheus pipeline under `service.name=sandbox-broker`).
+///
+/// Threaded through the gateway as `Option<GatewayMetrics>`: `None` ⇒ every
+/// recording site is a no-op, so a broker built without metrics behaves exactly
+/// as before. Recording NEVER changes control flow, status codes, or error
+/// mapping — it only observes.
+///
+/// Exact metric names / attribute keys are load-bearing (a Grafana dashboard
+/// queries them):
+/// - `broker_mcp_requests_total{tool,upstream,outcome}` (`outcome`=`ok`|`error`)
+/// - `broker_mcp_request_duration_seconds{tool,upstream}` (histogram, seconds)
+/// - `broker_identity_injection_failures_total{reason}`
+#[derive(Clone)]
+pub struct GatewayMetrics {
+    requests: Counter<u64>,
+    duration: Histogram<f64>,
+    injection_failures: Counter<u64>,
+}
+
+impl GatewayMetrics {
+    /// Build the three gateway instruments on `meter`.
+    pub fn new(meter: &Meter) -> Self {
+        Self {
+            requests: meter.u64_counter("broker_mcp_requests_total").build(),
+            duration: meter
+                .f64_histogram("broker_mcp_request_duration_seconds")
+                .build(),
+            injection_failures: meter
+                .u64_counter("broker_identity_injection_failures_total")
+                .build(),
+        }
+    }
+
+    /// Record one delegated tool call: `tool` is the requested MCP tool name,
+    /// `upstream` the resolved `/mcp/{server}` name it was forwarded to,
+    /// `outcome` is `"ok"` or `"error"`, and `secs` is the elapsed wall time.
+    pub fn record_call(&self, tool: &str, upstream: &str, outcome: &str, secs: f64) {
+        let attrs = [
+            KeyValue::new("tool", tool.to_string()),
+            KeyValue::new("upstream", upstream.to_string()),
+            KeyValue::new("outcome", outcome.to_string()),
+        ];
+        self.requests.add(1, &attrs);
+        // Duration is labelled by tool+upstream only (outcome omitted so p95s
+        // aggregate across ok/error without a label explosion).
+        self.duration.record(
+            secs,
+            &[
+                KeyValue::new("tool", tool.to_string()),
+                KeyValue::new("upstream", upstream.to_string()),
+            ],
+        );
+    }
+
+    /// Record a fail-closed identity-injection failure. `reason` is a stable,
+    /// low-cardinality label; the gateway only ever passes
+    /// `"missing_context_key"` (a `required` rule whose `context_key` was
+    /// absent from the resolved context — `ResolvedInjection::resolve`).
+    pub fn record_injection_failure(&self, reason: &str) {
+        self.injection_failures
+            .add(1, &[KeyValue::new("reason", reason.to_string())]);
+    }
 }
 
 /// The resolved `(header, value)` pairs for one forwarded call, computed by
@@ -306,15 +374,25 @@ struct GatewayHandler {
     context: Arc<ContextStore>,
     clients: Arc<ClientCache>,
     config: Arc<McpGatewayConfig>,
+    /// Optional observability. `None` ⇒ all recording is a no-op.
+    metrics: Option<GatewayMetrics>,
 }
 
 impl GatewayHandler {
+    /// Resolve the target upstream for this request, returning the resolved
+    /// `/mcp/{server}` name alongside its client so callers can label metrics.
+    ///
+    /// This is the fail-closed identity-injection point: on
+    /// `GatewayError::Unbound` (a `required` rule's `context_key` absent from
+    /// the resolved context) it records `broker_identity_injection_failures_total
+    /// {reason="missing_context_key"}` before mapping to the MCP error. The
+    /// error mapping itself is unchanged — the metric is observe-only.
     async fn upstream_for(
         &self,
         context: &RequestContext<RoleServer>,
-    ) -> Result<Arc<UpstreamClient>, McpError> {
+    ) -> Result<(String, Arc<UpstreamClient>), McpError> {
         let server = server_name_from_context(context).map_err(GatewayError::into_mcp_error)?;
-        resolve_upstream(
+        match resolve_upstream(
             &self.registry,
             &self.context,
             &self.clients,
@@ -322,7 +400,15 @@ impl GatewayHandler {
             &server,
         )
         .await
-        .map_err(GatewayError::into_mcp_error)
+        {
+            Ok(client) => Ok((server, client)),
+            Err(err) => {
+                if let (GatewayError::Unbound(_), Some(metrics)) = (&err, &self.metrics) {
+                    metrics.record_injection_failure("missing_context_key");
+                }
+                Err(err.into_mcp_error())
+            }
+        }
     }
 }
 
@@ -336,7 +422,7 @@ impl ServerHandler for GatewayHandler {
         request: Option<PaginatedRequestParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
-        let client = self.upstream_for(&context).await?;
+        let (_upstream, client) = self.upstream_for(&context).await?;
         client
             .list_tools(request)
             .await
@@ -348,11 +434,26 @@ impl ServerHandler for GatewayHandler {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
-        let client = self.upstream_for(&context).await?;
-        client
+        // `tool` is the requested MCP tool name; capture it before `request` is
+        // moved into the delegated call.
+        let tool = request.name.to_string();
+        // Time the whole delegated call (resolution + upstream forward). The
+        // request-count/duration metrics are only recorded once the upstream is
+        // resolved — an unresolved call (unknown server / unbound identity)
+        // exits via `?` above; unbound is captured by the injection-failure
+        // counter, and the request counter's `upstream` label would otherwise
+        // be meaningless.
+        let started = std::time::Instant::now();
+        let (upstream, client) = self.upstream_for(&context).await?;
+        let result = client
             .call_tool(request)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))
+            .map_err(|e| McpError::internal_error(e.to_string(), None));
+        if let Some(metrics) = &self.metrics {
+            let outcome = if result.is_ok() { "ok" } else { "error" };
+            metrics.record_call(&tool, &upstream, outcome, started.elapsed().as_secs_f64());
+        }
+        result
     }
 }
 
@@ -364,16 +465,23 @@ impl ServerHandler for GatewayHandler {
 /// `config` supplies the context-key → header injection rules; this crate
 /// has no built-in notion of tenant identity, so an empty `config.inject`
 /// forwards calls with no injected headers at all (see `McpGatewayConfig`).
+///
+/// `metrics` is optional observability: `Some(GatewayMetrics)` records MCP
+/// request counts/durations and fail-closed identity-injection failures on the
+/// broker's shared meter; `None` makes every recording site a no-op (behaviour
+/// is otherwise identical).
 pub fn mcp_gateway_router(
     registry: Arc<McpRegistry>,
     context: Arc<ContextStore>,
     config: Arc<McpGatewayConfig>,
+    metrics: Option<GatewayMetrics>,
 ) -> Router {
     let handler = GatewayHandler {
         registry,
         context,
         clients: Arc::new(ClientCache::default()),
         config,
+        metrics,
     };
     let service = StreamableHttpService::new(
         move || Ok(handler.clone()),
@@ -577,7 +685,7 @@ mod tests {
         let registry = Arc::new(McpRegistry::new());
         let context = Arc::new(bound_context());
         let config = Arc::new(three_required_rules());
-        let router = mcp_gateway_router(registry, context, config);
+        let router = mcp_gateway_router(registry, context, config, None);
 
         let req = Request::builder()
             .method("POST")
@@ -662,7 +770,7 @@ mod tests {
         context: Arc<ContextStore>,
         config: Arc<McpGatewayConfig>,
     ) -> SocketAddr {
-        let router = mcp_gateway_router(registry, context, config);
+        let router = mcp_gateway_router(registry, context, config, None);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind loopback listener");
@@ -1068,6 +1176,119 @@ mod tests {
         assert!(
             guard.keys().any(|(name, _)| name == "beta"),
             "beta's client must still be cached"
+        );
+    }
+
+    // ---- Gateway metrics --------------------------------------------
+
+    /// Build a real `SdkMeterProvider` with a Prometheus reader plus a
+    /// `GatewayMetrics` on its meter, returning both so a test can record
+    /// through the metrics and then scrape the resulting series as text.
+    fn metrics_with_registry() -> (GatewayMetrics, prometheus::Registry) {
+        use opentelemetry::metrics::MeterProvider as _;
+        let registry = prometheus::Registry::new();
+        let reader = opentelemetry_prometheus::exporter()
+            .with_registry(registry.clone())
+            .build()
+            .expect("build prometheus reader");
+        let provider = opentelemetry_sdk::metrics::SdkMeterProvider::builder()
+            .with_reader(reader)
+            .build();
+        let meter = provider.meter("test");
+        // Keep the provider alive for the test's lifetime by leaking it — the
+        // Prometheus registry reads from it lazily on `gather()`, and a test
+        // process is short-lived.
+        let metrics = GatewayMetrics::new(&meter);
+        std::mem::forget(provider);
+        (metrics, registry)
+    }
+
+    fn scrape(registry: &prometheus::Registry) -> String {
+        use prometheus::Encoder as _;
+        let mut buf = Vec::new();
+        prometheus::TextEncoder::new()
+            .encode(&registry.gather(), &mut buf)
+            .expect("encode prometheus text");
+        String::from_utf8(buf).expect("utf8 metrics")
+    }
+
+    #[test]
+    fn gateway_metrics_record_call_and_injection_failure_with_expected_attributes() {
+        let (metrics, registry) = metrics_with_registry();
+
+        metrics.record_call("echo", "platform", "ok", 0.01);
+        metrics.record_injection_failure("missing_context_key");
+
+        let text = scrape(&registry);
+
+        // Request counter with tool/upstream/outcome labels.
+        assert!(
+            text.contains("broker_mcp_requests_total"),
+            "requests counter missing:\n{text}"
+        );
+        assert!(text.contains("tool=\"echo\""), "tool label missing:\n{text}");
+        assert!(
+            text.contains("upstream=\"platform\""),
+            "upstream label missing:\n{text}"
+        );
+        assert!(
+            text.contains("outcome=\"ok\""),
+            "outcome label missing:\n{text}"
+        );
+        // Duration histogram.
+        assert!(
+            text.contains("broker_mcp_request_duration_seconds"),
+            "duration histogram missing:\n{text}"
+        );
+        // Fail-closed identity-injection counter with the stable reason label.
+        assert!(
+            text.contains("broker_identity_injection_failures_total"),
+            "injection-failure counter missing:\n{text}"
+        );
+        assert!(
+            text.contains("reason=\"missing_context_key\""),
+            "reason label missing:\n{text}"
+        );
+    }
+
+    /// End-to-end proof that the fail-closed `Unbound` path actually invokes
+    /// `record_injection_failure`: a gateway wired with `Some(metrics)` and a
+    /// `required` rule whose `context_key` is unbound must, on a tool call,
+    /// increment `broker_identity_injection_failures_total{reason="missing_context_key"}`
+    /// (and never dial the unroutable upstream — it fails closed first).
+    #[tokio::test]
+    async fn unbound_required_key_records_injection_failure_end_to_end() {
+        let (metrics, registry) = metrics_with_registry();
+
+        let mcp_registry = Arc::new(McpRegistry::new());
+        // Unroutable upstream: a dial would fail/hang differently, proving the
+        // Unbound check fires before any network use.
+        mcp_registry.register("alpha".to_string(), "http://127.0.0.1:1".to_string(), None);
+        let context = Arc::new(ContextStore::new(HashMap::new())); // nothing bound
+        let config = Arc::new(three_required_rules());
+
+        let router =
+            mcp_gateway_router(mcp_registry, context, config, Some(metrics.clone()));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind loopback listener");
+        let addr = listener.local_addr().expect("local addr");
+        tokio::spawn(async move {
+            axum::serve(listener, router).await.expect("axum::serve exited");
+        });
+
+        let client = connect_sandbox_client(addr, "alpha", HashMap::new()).await;
+        let _err = client
+            .call_tool(CallToolRequestParams::new("echo").with_arguments(serde_json::Map::new()))
+            .await
+            .expect_err("unbound required identity must fail closed");
+        client.cancel().await.ok();
+
+        let text = scrape(&registry);
+        assert!(
+            text.contains("broker_identity_injection_failures_total")
+                && text.contains("reason=\"missing_context_key\""),
+            "the Unbound path must have recorded an injection failure:\n{text}"
         );
     }
 
