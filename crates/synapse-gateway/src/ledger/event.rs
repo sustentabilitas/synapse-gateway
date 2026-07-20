@@ -22,6 +22,12 @@ pub struct UsageEvent {
     /// End-user attribution within the namespace (`x-synapse-user`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
+    /// Conversation / agent thread (`x-synapse-thread`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<String>,
+    /// Chat / work message within the thread (`x-synapse-message`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
     pub request_id: String,
     pub timestamp: DateTime<Utc>,
     #[serde(rename = "type")]
@@ -44,6 +50,8 @@ impl From<&UsageEntry> for UsageEvent {
             namespace: e.tenant.clone(),
             workspace: e.workspace.clone(),
             user: e.user.clone(),
+            thread_id: e.thread.clone(),
+            message_id: e.message.clone(),
             request_id: e.request_id.clone(),
             timestamp: e.ts,
             event_type: "usage",
@@ -87,6 +95,8 @@ mod tests {
             tenant: "acme".into(),
             workspace: None,
             user: None,
+            thread: None,
+            message: None,
             route: "gemini-pro".into(),
             provider: "vertex".into(),
             model: "gemini-3-pro".into(),
@@ -115,6 +125,16 @@ mod tests {
         assert!(v.get("user").is_none());
         assert!(v.get("request_id").is_none());
         assert!(v.get("input_tokens").is_none());
+    }
+
+    #[test]
+    fn serializes_thread_and_message_when_present() {
+        let mut e = entry();
+        e.thread = Some("thread-9".into());
+        e.message = Some("msg-7".into());
+        let v = serde_json::to_value(UsageEvent::from(&e)).unwrap();
+        assert_eq!(v["threadId"], "thread-9");
+        assert_eq!(v["messageId"], "msg-7");
     }
 
     #[test]

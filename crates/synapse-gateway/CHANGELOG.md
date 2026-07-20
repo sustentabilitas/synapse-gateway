@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.16] - 2026-07-20
+
+### Added
+
+- **Thread / message attribution** — `RequestCtx` and ledger `UsageEntry` /
+  `UsageEvent` now carry optional `thread` / `message` (`threadId` /
+  `messageId` on the published event), stamped from `x-synapse-thread` /
+  `x-synapse-message` over HTTP. When `request_id` is unset, the gateway
+  falls back to `message` so a chat turn correlates with usage rows.
+
 ## [0.5.15] - 2026-07-20
 
 ## [0.5.14] - 2026-07-18

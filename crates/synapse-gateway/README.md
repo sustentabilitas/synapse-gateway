@@ -359,14 +359,17 @@ When a request is blocked, synapse-gateway returns `HTTP 400` with:
 
 ## Tenant attribution
 
-Two request headers control cost and observability attribution:
+Request headers control cost and observability attribution:
 
 | Header | Description |
 |--------|-------------|
 | `x-synapse-tenant` | Tenant identifier. Falls back to `SYNAPSE_DEFAULT_TENANT` (`unattributed`). |
 | `x-synapse-workspace` | Optional sub-grouping within a tenant (e.g. a project or team). |
+| `x-synapse-user` | Optional end-user identifier within a tenant, for per-user usage attribution. |
+| `x-synapse-thread` | Optional conversation / agent thread id. |
+| `x-synapse-message` | Optional chat / work message id within the thread. When set and no explicit request id is supplied, used as the ledger `request_id` for correlation. |
 
-Both values are recorded on ledger `usage_events` rows and carried as attributes on `gen_ai.*` spans.
+Tenant and workspace are recorded on ledger `usage_events` rows and carried as attributes on `gen_ai.*` spans; user / thread / message are recorded on ledger rows (and published events) but kept off metrics/spans to bound label cardinality.
 
 ---
 

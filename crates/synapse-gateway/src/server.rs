@@ -47,6 +47,8 @@ fn request_ctx(headers: &HeaderMap) -> RequestCtx {
         tenant: header("x-synapse-tenant"),
         workspace: header("x-synapse-workspace"),
         user: header("x-synapse-user"),
+        thread: header("x-synapse-thread"),
+        message: header("x-synapse-message"),
         request_id: None,
     }
 }
@@ -66,11 +68,15 @@ async fn chat_completions(
     headers: HeaderMap,
     Json(req): Json<ChatRequest>,
 ) -> Result<Response, GatewayError> {
-    let request_id = uuid::Uuid::new_v4().to_string();
-    // Share one id between the ledger row (via the gateway) and the response body.
+    // Prefer an explicit message id for correlation when the client stamps
+    // x-synapse-message; otherwise mint a UUID shared by ledger + response body.
+    let headers_ctx = request_ctx(&headers);
+    let request_id = headers_ctx
+        .resolved_request_id()
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let ctx = RequestCtx {
         request_id: Some(request_id.clone()),
-        ..request_ctx(&headers)
+        ..headers_ctx
     };
 
     if req.stream == Some(true) {
@@ -212,6 +218,8 @@ struct PassthroughUsageGuard {
     tenant: String,
     workspace: Option<String>,
     user: Option<String>,
+    thread: Option<String>,
+    message: Option<String>,
     model: String,
     request_id: String,
     input_tokens: u64,
@@ -230,8 +238,12 @@ impl PassthroughUsageGuard {
                 .unwrap_or_else(|| gateway.default_tenant.clone()),
             workspace: ctx.workspace.clone(),
             user: ctx.user.clone(),
+            thread: ctx.thread.clone(),
+            message: ctx.message.clone(),
             model: model.to_string(),
-            request_id: uuid::Uuid::new_v4().to_string(),
+            request_id: ctx
+                .resolved_request_id()
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
             input_tokens: 0,
             output_tokens: 0,
             status: "ok",
@@ -269,6 +281,8 @@ impl Drop for PassthroughUsageGuard {
             tenant: self.tenant.clone(),
             workspace: self.workspace.clone(),
             user: self.user.clone(),
+            thread: self.thread.clone(),
+            message: self.message.clone(),
             route: self.model.clone(),
             provider: "vertex".into(),
             model: self.model.clone(),

@@ -11,6 +11,8 @@ async fn records_and_persists_a_usage_row() {
         tenant: "acme".into(),
         workspace: Some("ws1".into()),
         user: Some("user-1".into()),
+        thread: Some("thread-1".into()),
+        message: Some("msg-1".into()),
         route: "fast".into(),
         provider: "vertex".into(),
         model: "gemini-3-flash".into(),

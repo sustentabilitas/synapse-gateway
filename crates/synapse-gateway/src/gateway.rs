@@ -49,10 +49,26 @@ pub struct RequestCtx {
     pub workspace: Option<String>,
     /// End-user attribution within the tenant (`x-synapse-user` over HTTP).
     pub user: Option<String>,
-    /// Correlation id for the ledger row. When `None` the gateway generates a
-    /// UUID. Embedders (and the HTTP layer) can pass their own so the ledger
-    /// row and any client-facing response id share one value.
+    /// Conversation / agent thread (`x-synapse-thread` over HTTP).
+    pub thread: Option<String>,
+    /// Chat / work message within the thread (`x-synapse-message` over HTTP).
+    pub message: Option<String>,
+    /// Correlation id for the ledger row. When `None`, falls back to `message`
+    /// (so a chat turn correlates with usage), then a generated UUID.
+    /// Embedders (and the HTTP layer) can pass their own so the ledger row and
+    /// any client-facing response id share one value.
     pub request_id: Option<String>,
+}
+
+impl RequestCtx {
+    /// Prefer an explicit `request_id`, else the chat `message` id, else `None`
+    /// (callers generate a UUID).
+    pub fn resolved_request_id(&self) -> Option<String> {
+        self.request_id
+            .clone()
+            .or_else(|| self.message.clone())
+            .filter(|s| !s.is_empty())
+    }
 }
 
 #[derive(Default)]
@@ -119,6 +135,8 @@ impl Gateway {
             tenant: self.tenant_of(ctx).to_string(),
             workspace: ctx.workspace.clone(),
             user: ctx.user.clone(),
+            thread: ctx.thread.clone(),
+            message: ctx.message.clone(),
             route: route.to_string(),
             provider: c.provider.clone(),
             model: c.model.clone(),
@@ -186,8 +204,7 @@ impl Gateway {
         let legs = self.resolve_legs(&req)?;
         self.guard_input(&req)?;
         let request_id = ctx
-            .request_id
-            .clone()
+            .resolved_request_id()
             .unwrap_or_else(|| Uuid::new_v4().to_string());
         let (committed, lane_str, legs_attempted) = match classify(&req) {
             Lane::Standard => (
@@ -212,6 +229,8 @@ impl Gateway {
             self.tenant_of(ctx).to_string(),
             ctx.workspace.clone(),
             ctx.user.clone(),
+            ctx.thread.clone(),
+            ctx.message.clone(),
             committed.provider.clone(),
             committed.model.clone(),
             lane_str,
@@ -233,8 +252,7 @@ impl Gateway {
         let legs = self.resolve_legs(&req)?;
         self.guard_input(&req)?;
         let request_id = ctx
-            .request_id
-            .clone()
+            .resolved_request_id()
             .unwrap_or_else(|| Uuid::new_v4().to_string());
         let (completion, lane_str, legs_n) = match classify(&req) {
             Lane::Standard => execute_buffered_with_timeouts(
@@ -369,6 +387,8 @@ impl Gateway {
             tenant: self.tenant_of(ctx).to_string(),
             workspace: ctx.workspace.clone(),
             user: ctx.user.clone(),
+            thread: ctx.thread.clone(),
+            message: ctx.message.clone(),
             route: alias.to_string(),
             provider: leg.provider.clone(),
             model: leg.model.clone(),
@@ -377,8 +397,7 @@ impl Gateway {
             output_tokens: 0,
             cost_usd: cost,
             request_id: ctx
-                .request_id
-                .clone()
+                .resolved_request_id()
                 .unwrap_or_else(|| Uuid::new_v4().to_string()),
             status: "ok".into(),
             op: "embedding".into(),
@@ -477,6 +496,8 @@ pub(crate) struct StreamSideEffects {
     tenant: String,
     workspace: Option<String>,
     user: Option<String>,
+    thread: Option<String>,
+    message: Option<String>,
     provider: String,
     model: String,
     lane: &'static str, // "standard" | "native"
@@ -498,6 +519,8 @@ impl StreamSideEffects {
         tenant: String,
         workspace: Option<String>,
         user: Option<String>,
+        thread: Option<String>,
+        message: Option<String>,
         provider: String,
         model: String,
         lane: &'static str,
@@ -512,6 +535,8 @@ impl StreamSideEffects {
             tenant,
             workspace,
             user,
+            thread,
+            message,
             provider,
             model,
             lane,
@@ -563,6 +588,8 @@ impl Drop for StreamSideEffects {
             tenant: self.tenant.clone(),
             workspace: self.workspace.clone(),
             user: self.user.clone(),
+            thread: self.thread.clone(),
+            message: self.message.clone(),
             route: self.route.clone(),
             provider: self.provider.clone(),
             model: self.model.clone(),
@@ -734,6 +761,8 @@ mod tests {
                 "tenant".into(),
                 None,
                 None,
+                None,
+                None,
                 "p".into(),
                 "m".into(),
                 "standard",
@@ -775,6 +804,8 @@ mod tests {
             Arc::new(PricingTable::default()),
             "route".into(),
             "acme".into(),
+            None,
+            None,
             None,
             None,
             "p".into(),
@@ -833,9 +864,11 @@ mod tests {
         .unwrap();
         let ctx = RequestCtx {
             tenant: Some("acme".into()),
-            workspace: None,
             user: Some("user-42".into()),
+            thread: Some("thread-9".into()),
+            message: Some("msg-7".into()),
             request_id: Some("corr-123".into()),
+            ..Default::default()
         };
         let c = gw.chat(req, &ctx).await.unwrap();
         assert_eq!(c.content, "hi");
@@ -845,6 +878,8 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].tenant, "acme");
         assert_eq!(rows[0].user.as_deref(), Some("user-42"));
+        assert_eq!(rows[0].thread.as_deref(), Some("thread-9"));
+        assert_eq!(rows[0].message.as_deref(), Some("msg-7"));
         // A caller-supplied request_id propagates to the ledger row.
         assert_eq!(rows[0].request_id, "corr-123");
     }

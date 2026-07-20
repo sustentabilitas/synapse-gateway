@@ -43,6 +43,12 @@ impl SqliteLedger {
         let _ = sqlx::query("ALTER TABLE usage_events ADD COLUMN user_id TEXT")
             .execute(&pool)
             .await;
+        let _ = sqlx::query("ALTER TABLE usage_events ADD COLUMN thread_id TEXT")
+            .execute(&pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE usage_events ADD COLUMN message_id TEXT")
+            .execute(&pool)
+            .await;
 
         Ok(Self { pool })
     }
@@ -53,14 +59,16 @@ impl LedgerStore for SqliteLedger {
     async fn record(&self, e: &UsageEntry) -> Result<(), LedgerError> {
         sqlx::query(
             "INSERT INTO usage_events \
-             (ts, tenant, workspace, user_id, route, provider, model, lane, \
+             (ts, tenant, workspace, user_id, thread_id, message_id, route, provider, model, lane, \
               input_tokens, output_tokens, cost_usd, request_id, status) \
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .bind(e.ts.to_rfc3339())
         .bind(&e.tenant)
         .bind(&e.workspace)
         .bind(&e.user)
+        .bind(&e.thread)
+        .bind(&e.message)
         .bind(&e.route)
         .bind(&e.provider)
         .bind(&e.model)
