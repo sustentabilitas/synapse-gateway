@@ -1,6 +1,10 @@
 # Changelog
 
 
+## 0.1.3
+
+- Bound upstream MCP connect, `list_tools`, and `call_tool` with a 30s timeout; return a stable `upstream MCP call timed out` error instead of hanging the sandbox-facing SSE stream.
+
 ## 0.1.2
 
 

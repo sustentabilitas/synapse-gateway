@@ -54,6 +54,33 @@ use crate::registry::McpRegistry;
 
 type UpstreamClient = rmcp::service::RunningService<RoleClient, ClientInfo>;
 
+/// Default bound for upstream MCP connect + list_tools/call_tool.
+/// Aligned with sandbox `BROKER_TIMEOUT_SEC` (30).
+const DEFAULT_UPSTREAM_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+const UPSTREAM_TIMEOUT_MESSAGE: &str = "upstream MCP call timed out";
+
+async fn with_upstream_timeout<T>(
+    fut: impl std::future::Future<Output = Result<T, GatewayError>>,
+    timeout: std::time::Duration,
+) -> Result<T, GatewayError> {
+    match tokio::time::timeout(timeout, fut).await {
+        Ok(inner) => inner,
+        Err(_) => {
+            tracing::warn!(?timeout, "upstream MCP call timed out");
+            Err(GatewayError::Internal(UPSTREAM_TIMEOUT_MESSAGE.into()))
+        }
+    }
+}
+
+fn upstream_timeout_mcp_error() -> McpError {
+    tracing::warn!(
+        timeout = ?DEFAULT_UPSTREAM_TIMEOUT,
+        "upstream MCP call timed out"
+    );
+    McpError::internal_error(UPSTREAM_TIMEOUT_MESSAGE, None)
+}
+
 /// A single "context key → forwarded header" injection rule. The downstream
 /// broker supplies the concrete rules (e.g. `org` → `x-org-id`); this crate
 /// has no built-in notion of what identity looks like.
@@ -220,6 +247,10 @@ impl GatewayError {
                 None,
             ),
             GatewayError::Internal(message) => {
+                if message == UPSTREAM_TIMEOUT_MESSAGE {
+                    tracing::warn!(error = %message, "gateway upstream timeout");
+                    return McpError::internal_error(UPSTREAM_TIMEOUT_MESSAGE, None);
+                }
                 // The detailed message (upstream URL, raw transport error
                 // text, ...) is operational detail for us, not for the
                 // sandbox-facing caller — log it here and hand back a
@@ -325,9 +356,15 @@ async fn build_upstream_client(
         ClientCapabilities::default(),
         rmcp::model::Implementation::new("synapse-mcp-gateway", env!("CARGO_PKG_VERSION")),
     );
-    client_info.serve(transport).await.map_err(|e| {
-        GatewayError::Internal(format!("connecting upstream mcp server at '{url}': {e}"))
-    })
+    with_upstream_timeout(
+        async {
+            client_info.serve(transport).await.map_err(|e| {
+                GatewayError::Internal(format!("connecting upstream mcp server at '{url}': {e}"))
+            })
+        },
+        DEFAULT_UPSTREAM_TIMEOUT,
+    )
+    .await
 }
 
 /// The core dispatch: resolve the registry, fail closed on any `required`
@@ -422,11 +459,18 @@ impl ServerHandler for GatewayHandler {
         request: Option<PaginatedRequestParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
-        let (_upstream, client) = self.upstream_for(&context).await?;
-        client
-            .list_tools(request)
-            .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))
+        match tokio::time::timeout(DEFAULT_UPSTREAM_TIMEOUT, async {
+            let (_upstream, client) = self.upstream_for(&context).await?;
+            client
+                .list_tools(request)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))
+        })
+        .await
+        {
+            Ok(inner) => inner,
+            Err(_) => Err(upstream_timeout_mcp_error()),
+        }
     }
 
     async fn call_tool(
@@ -444,16 +488,32 @@ impl ServerHandler for GatewayHandler {
         // counter, and the request counter's `upstream` label would otherwise
         // be meaningless.
         let started = std::time::Instant::now();
-        let (upstream, client) = self.upstream_for(&context).await?;
-        let result = client
-            .call_tool(request)
-            .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None));
-        if let Some(metrics) = &self.metrics {
-            let outcome = if result.is_ok() { "ok" } else { "error" };
-            metrics.record_call(&tool, &upstream, outcome, started.elapsed().as_secs_f64());
+        match tokio::time::timeout(DEFAULT_UPSTREAM_TIMEOUT, async {
+            let (upstream, client) = self.upstream_for(&context).await?;
+            let result = client
+                .call_tool(request)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None));
+            Ok::<_, McpError>((upstream, result))
+        })
+        .await
+        {
+            Ok(Ok((upstream, Ok(result)))) => {
+                if let Some(metrics) = &self.metrics {
+                    metrics.record_call(&tool, &upstream, "ok", started.elapsed().as_secs_f64());
+                }
+                Ok(result)
+            }
+            Ok(Ok((upstream, Err(e)))) => {
+                if let Some(metrics) = &self.metrics {
+                    metrics.record_call(&tool, &upstream, "error", started.elapsed().as_secs_f64());
+                }
+                Err(e)
+            }
+            Ok(Err(e)) => Err(e),
+            // End-to-end timeout (connect or RPC): upstream may be unknown — skip metrics.
+            Err(_) => Err(upstream_timeout_mcp_error()),
         }
-        result
     }
 }
 
@@ -551,6 +611,24 @@ mod tests {
     }
 
     // ---- Fail-closed unit tests: no network involved -----------------
+
+    #[tokio::test]
+    async fn upstream_timeout_maps_to_internal_error_message() {
+        use std::time::Duration;
+        let err = with_upstream_timeout(
+            async {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                Ok::<(), GatewayError>(())
+            },
+            Duration::from_millis(50),
+        )
+        .await
+        .expect_err("must time out");
+        let mcp = err.into_mcp_error();
+        assert_eq!(mcp.message, UPSTREAM_TIMEOUT_MESSAGE);
+        assert!(!mcp.message.to_lowercase().contains("http"));
+        assert!(!mcp.message.contains("://"));
+    }
 
     #[tokio::test]
     async fn unknown_server_errors_without_contacting_upstream() {
