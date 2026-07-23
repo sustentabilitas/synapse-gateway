@@ -54,6 +54,29 @@ use crate::registry::McpRegistry;
 
 type UpstreamClient = rmcp::service::RunningService<RoleClient, ClientInfo>;
 
+/// Default bound for upstream MCP connect + list_tools/call_tool.
+/// Aligned with sandbox `BROKER_TIMEOUT_SEC` (30).
+const DEFAULT_UPSTREAM_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+const UPSTREAM_TIMEOUT_MESSAGE: &str = "upstream MCP call timed out";
+
+async fn with_upstream_timeout<T>(
+    fut: impl std::future::Future<Output = Result<T, GatewayError>>,
+    timeout: std::time::Duration,
+) -> Result<T, GatewayError> {
+    match tokio::time::timeout(timeout, fut).await {
+        Ok(inner) => inner,
+        Err(_) => {
+            tracing::warn!(?timeout, "upstream MCP call timed out");
+            Err(GatewayError::Internal(UPSTREAM_TIMEOUT_MESSAGE.into()))
+        }
+    }
+}
+
+fn upstream_timeout_mcp_error() -> McpError {
+    McpError::internal_error(UPSTREAM_TIMEOUT_MESSAGE, None)
+}
+
 /// A single "context key → forwarded header" injection rule. The downstream
 /// broker supplies the concrete rules (e.g. `org` → `x-org-id`); this crate
 /// has no built-in notion of what identity looks like.
@@ -220,6 +243,10 @@ impl GatewayError {
                 None,
             ),
             GatewayError::Internal(message) => {
+                if message == UPSTREAM_TIMEOUT_MESSAGE {
+                    tracing::warn!(error = %message, "gateway upstream timeout");
+                    return McpError::internal_error(UPSTREAM_TIMEOUT_MESSAGE, None);
+                }
                 // The detailed message (upstream URL, raw transport error
                 // text, ...) is operational detail for us, not for the
                 // sandbox-facing caller — log it here and hand back a
@@ -325,9 +352,15 @@ async fn build_upstream_client(
         ClientCapabilities::default(),
         rmcp::model::Implementation::new("synapse-mcp-gateway", env!("CARGO_PKG_VERSION")),
     );
-    client_info.serve(transport).await.map_err(|e| {
-        GatewayError::Internal(format!("connecting upstream mcp server at '{url}': {e}"))
-    })
+    with_upstream_timeout(
+        async {
+            client_info.serve(transport).await.map_err(|e| {
+                GatewayError::Internal(format!("connecting upstream mcp server at '{url}': {e}"))
+            })
+        },
+        DEFAULT_UPSTREAM_TIMEOUT,
+    )
+    .await
 }
 
 /// The core dispatch: resolve the registry, fail closed on any `required`
@@ -423,10 +456,14 @@ impl ServerHandler for GatewayHandler {
         context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
         let (_upstream, client) = self.upstream_for(&context).await?;
-        client
-            .list_tools(request)
-            .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))
+        match tokio::time::timeout(DEFAULT_UPSTREAM_TIMEOUT, client.list_tools(request)).await {
+            Ok(Ok(result)) => Ok(result),
+            Ok(Err(e)) => Err(McpError::internal_error(e.to_string(), None)),
+            Err(_) => {
+                tracing::warn!(?DEFAULT_UPSTREAM_TIMEOUT, "upstream MCP call timed out");
+                Err(upstream_timeout_mcp_error())
+            }
+        }
     }
 
     async fn call_tool(
@@ -445,10 +482,15 @@ impl ServerHandler for GatewayHandler {
         // be meaningless.
         let started = std::time::Instant::now();
         let (upstream, client) = self.upstream_for(&context).await?;
-        let result = client
-            .call_tool(request)
-            .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None));
+        let result =
+            match tokio::time::timeout(DEFAULT_UPSTREAM_TIMEOUT, client.call_tool(request)).await {
+                Ok(Ok(result)) => Ok(result),
+                Ok(Err(e)) => Err(McpError::internal_error(e.to_string(), None)),
+                Err(_) => {
+                    tracing::warn!(?DEFAULT_UPSTREAM_TIMEOUT, "upstream MCP call timed out");
+                    Err(upstream_timeout_mcp_error())
+                }
+            };
         if let Some(metrics) = &self.metrics {
             let outcome = if result.is_ok() { "ok" } else { "error" };
             metrics.record_call(&tool, &upstream, outcome, started.elapsed().as_secs_f64());
@@ -555,18 +597,17 @@ mod tests {
     #[tokio::test]
     async fn upstream_timeout_maps_to_internal_error_message() {
         use std::time::Duration;
-        let err = with_upstream_timeout(async {
-            tokio::time::sleep(Duration::from_secs(60)).await;
-            Ok::<(), GatewayError>(())
-        }, Duration::from_millis(50))
+        let err = with_upstream_timeout(
+            async {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                Ok::<(), GatewayError>(())
+            },
+            Duration::from_millis(50),
+        )
         .await
         .expect_err("must time out");
         let mcp = err.into_mcp_error();
-        assert!(
-            mcp.message.contains("timed out"),
-            "message={}",
-            mcp.message
-        );
+        assert!(mcp.message.contains("timed out"), "message={}", mcp.message);
     }
 
     #[tokio::test]
