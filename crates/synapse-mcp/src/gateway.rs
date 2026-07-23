@@ -553,6 +553,23 @@ mod tests {
     // ---- Fail-closed unit tests: no network involved -----------------
 
     #[tokio::test]
+    async fn upstream_timeout_maps_to_internal_error_message() {
+        use std::time::Duration;
+        let err = with_upstream_timeout(async {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            Ok::<(), GatewayError>(())
+        }, Duration::from_millis(50))
+        .await
+        .expect_err("must time out");
+        let mcp = err.into_mcp_error();
+        assert!(
+            mcp.message.contains("timed out"),
+            "message={}",
+            mcp.message
+        );
+    }
+
+    #[tokio::test]
     async fn unknown_server_errors_without_contacting_upstream() {
         let registry = McpRegistry::new();
         let context = bound_context();
