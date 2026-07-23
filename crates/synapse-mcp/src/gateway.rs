@@ -74,6 +74,10 @@ async fn with_upstream_timeout<T>(
 }
 
 fn upstream_timeout_mcp_error() -> McpError {
+    tracing::warn!(
+        timeout = ?DEFAULT_UPSTREAM_TIMEOUT,
+        "upstream MCP call timed out"
+    );
     McpError::internal_error(UPSTREAM_TIMEOUT_MESSAGE, None)
 }
 
@@ -455,14 +459,17 @@ impl ServerHandler for GatewayHandler {
         request: Option<PaginatedRequestParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
-        let (_upstream, client) = self.upstream_for(&context).await?;
-        match tokio::time::timeout(DEFAULT_UPSTREAM_TIMEOUT, client.list_tools(request)).await {
-            Ok(Ok(result)) => Ok(result),
-            Ok(Err(e)) => Err(McpError::internal_error(e.to_string(), None)),
-            Err(_) => {
-                tracing::warn!(?DEFAULT_UPSTREAM_TIMEOUT, "upstream MCP call timed out");
-                Err(upstream_timeout_mcp_error())
-            }
+        match tokio::time::timeout(DEFAULT_UPSTREAM_TIMEOUT, async {
+            let (_upstream, client) = self.upstream_for(&context).await?;
+            client
+                .list_tools(request)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))
+        })
+        .await
+        {
+            Ok(inner) => inner,
+            Err(_) => Err(upstream_timeout_mcp_error()),
         }
     }
 
@@ -481,21 +488,32 @@ impl ServerHandler for GatewayHandler {
         // counter, and the request counter's `upstream` label would otherwise
         // be meaningless.
         let started = std::time::Instant::now();
-        let (upstream, client) = self.upstream_for(&context).await?;
-        let result =
-            match tokio::time::timeout(DEFAULT_UPSTREAM_TIMEOUT, client.call_tool(request)).await {
-                Ok(Ok(result)) => Ok(result),
-                Ok(Err(e)) => Err(McpError::internal_error(e.to_string(), None)),
-                Err(_) => {
-                    tracing::warn!(?DEFAULT_UPSTREAM_TIMEOUT, "upstream MCP call timed out");
-                    Err(upstream_timeout_mcp_error())
+        match tokio::time::timeout(DEFAULT_UPSTREAM_TIMEOUT, async {
+            let (upstream, client) = self.upstream_for(&context).await?;
+            let result = client
+                .call_tool(request)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None));
+            Ok::<_, McpError>((upstream, result))
+        })
+        .await
+        {
+            Ok(Ok((upstream, Ok(result)))) => {
+                if let Some(metrics) = &self.metrics {
+                    metrics.record_call(&tool, &upstream, "ok", started.elapsed().as_secs_f64());
                 }
-            };
-        if let Some(metrics) = &self.metrics {
-            let outcome = if result.is_ok() { "ok" } else { "error" };
-            metrics.record_call(&tool, &upstream, outcome, started.elapsed().as_secs_f64());
+                Ok(result)
+            }
+            Ok(Ok((upstream, Err(e)))) => {
+                if let Some(metrics) = &self.metrics {
+                    metrics.record_call(&tool, &upstream, "error", started.elapsed().as_secs_f64());
+                }
+                Err(e)
+            }
+            Ok(Err(e)) => Err(e),
+            // End-to-end timeout (connect or RPC): upstream may be unknown — skip metrics.
+            Err(_) => Err(upstream_timeout_mcp_error()),
         }
-        result
     }
 }
 
@@ -607,7 +625,9 @@ mod tests {
         .await
         .expect_err("must time out");
         let mcp = err.into_mcp_error();
-        assert!(mcp.message.contains("timed out"), "message={}", mcp.message);
+        assert_eq!(mcp.message, UPSTREAM_TIMEOUT_MESSAGE);
+        assert!(!mcp.message.to_lowercase().contains("http"));
+        assert!(!mcp.message.contains("://"));
     }
 
     #[tokio::test]
