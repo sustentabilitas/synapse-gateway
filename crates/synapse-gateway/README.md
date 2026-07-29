@@ -529,7 +529,6 @@ The following are **not** present in v1 and are planned for future releases:
 
 - Authentication / API key enforcement on inbound requests.
 - Rate limiting.
-- Multi-region Vertex endpoint routing.
 - Admin API for dynamic route reloading.
 
 ---

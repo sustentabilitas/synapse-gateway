@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.18] - 2026-07-29
+
+### Added
+
+- **Multi-region Vertex endpoint routing** — location ids `us` and `eu` resolve
+  to `https://aiplatform.{us|eu}.rep.googleapis.com` with `locations/{us|eu}`
+  (alongside existing `global` and single-region hosts). Shared by the native
+  Vertex lane, genai Vertex provider, and Vertex embeddings.
+
 ## [0.5.17] - 2026-07-20
 
 ## [0.5.16] - 2026-07-20
