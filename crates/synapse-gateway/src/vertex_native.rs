@@ -10,6 +10,7 @@ use crate::providers::vertex_auth::VertexAuth;
 use crate::routing::executor::Completion;
 use crate::routing::request::{ChatRequest, VertexExt};
 use crate::routing::stream::{FinishReason, StreamItem};
+use crate::vertex_endpoint::vertex_endpoint_base;
 
 /// Total-response ceiling for streamed passthrough requests, overriding the
 /// shared client timeout (which is sized for buffered calls).
@@ -49,14 +50,13 @@ impl VertexNativeProvider {
     }
 
     /// Resolve the API host for a region: the explicit override if configured,
-    /// else Vertex's regional host (`global` has its own non-prefixed host).
+    /// else Vertex's host for that location (`global`, multi-region `us`/`eu`,
+    /// or a single region).
     fn endpoint_for(&self, region: &str) -> String {
         if let Some(base) = &self.endpoint_override {
             base.clone()
-        } else if region == "global" {
-            "https://aiplatform.googleapis.com".into()
         } else {
-            format!("https://{region}-aiplatform.googleapis.com")
+            vertex_endpoint_base(region)
         }
     }
 
@@ -716,7 +716,7 @@ mod tests {
     }
 
     #[test]
-    fn endpoint_for_region_picks_regional_or_global_host() {
+    fn endpoint_for_region_picks_global_multi_or_single_host() {
         let auth = Arc::new(VertexAuth::with_fetcher(|| {
             Box::pin(async { Ok(("t".into(), Duration::from_secs(3600))) })
         }));
@@ -730,6 +730,14 @@ mod tests {
         assert_eq!(
             provider.endpoint_for("global"),
             "https://aiplatform.googleapis.com"
+        );
+        assert_eq!(
+            provider.endpoint_for("us"),
+            "https://aiplatform.us.rep.googleapis.com"
+        );
+        assert_eq!(
+            provider.endpoint_for("eu"),
+            "https://aiplatform.eu.rep.googleapis.com"
         );
         assert_eq!(
             provider.endpoint_for("us-central1"),
@@ -769,6 +777,40 @@ mod tests {
                 &req_with(VertexExt::default()),
                 Some("us-central1"),
             )
+            .await
+            .unwrap();
+        assert_eq!(c.content, "ok");
+    }
+
+    #[tokio::test]
+    async fn generate_uses_multi_region_us_override_in_url() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(
+                "/v1/projects/p/locations/us/publishers/google/models/gemini-lite:generateContent",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "candidates": [{"content": {"parts": [{"text": "ok"}], "role": "model"}}],
+                "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 1}
+            })))
+            .mount(&mock)
+            .await;
+
+        let auth = Arc::new(VertexAuth::with_fetcher(|| {
+            Box::pin(async { Ok(("test-token".into(), Duration::from_secs(3600))) })
+        }));
+        let provider = VertexNativeProvider::new(
+            auth,
+            "p".into(),
+            "global".into(),
+            Duration::from_secs(5),
+            Some(mock.uri()),
+        );
+        let c = provider
+            .generate("gemini-lite", &req_with(VertexExt::default()), Some("us"))
             .await
             .unwrap();
         assert_eq!(c.content, "ok");

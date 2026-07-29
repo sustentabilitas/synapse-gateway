@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::embeddings::{EmbedOut, EmbeddingProvider};
 use crate::error::GatewayError;
 use crate::providers::vertex_auth::VertexAuth;
+use crate::vertex_endpoint::vertex_endpoint_base;
 
 pub const VERTEX_EMBED_BATCH: usize = 250;
 
@@ -20,11 +21,7 @@ pub struct VertexEmbedder {
 
 impl VertexEmbedder {
     pub fn new(auth: Arc<VertexAuth>, project: String, region: String, timeout: Duration) -> Self {
-        let endpoint_base = if region == "global" {
-            "https://aiplatform.googleapis.com".to_string()
-        } else {
-            format!("https://{region}-aiplatform.googleapis.com")
-        };
+        let endpoint_base = vertex_endpoint_base(&region);
         let client = reqwest::Client::builder()
             .timeout(timeout)
             .build()
@@ -193,5 +190,22 @@ mod tests {
         assert_eq!(out.vectors.len(), 2);
         assert_eq!(out.vectors[0], vec![0.1, 0.2]);
         assert_eq!(out.input_tokens, 7);
+    }
+
+    #[test]
+    fn predict_url_uses_multi_region_host() {
+        let auth = Arc::new(VertexAuth::with_fetcher(|| {
+            Box::pin(async { Ok(("t".into(), Duration::from_secs(3600))) })
+        }));
+        let embedder = VertexEmbedder::new(
+            auth,
+            "p".into(),
+            "us".into(),
+            Duration::from_secs(5),
+        );
+        assert_eq!(
+            embedder.predict_url("text-embedding-004"),
+            "https://aiplatform.us.rep.googleapis.com/v1/projects/p/locations/us/publishers/google/models/text-embedding-004:predict"
+        );
     }
 }

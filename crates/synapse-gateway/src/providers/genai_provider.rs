@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use crate::providers::vertex_auth::VertexAuth;
 use crate::resilience::{CircuitBreaker, Profile};
+use crate::vertex_endpoint::vertex_endpoint_base;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProviderKind {
@@ -74,15 +75,10 @@ pub fn build_vertex_provider(
     config: VertexProviderConfig,
     auth: Arc<VertexAuth>,
 ) -> anyhow::Result<Provider> {
-    let endpoint_host = if config.region == "global" {
-        "aiplatform.googleapis.com".to_string()
-    } else {
-        format!("{}-aiplatform.googleapis.com", config.region)
-    };
     let endpoint_base = config
         .endpoint_override
         .clone()
-        .unwrap_or_else(|| format!("https://{endpoint_host}"));
+        .unwrap_or_else(|| vertex_endpoint_base(&config.region));
 
     let project = config.project.clone();
     let region = config.region.clone();
