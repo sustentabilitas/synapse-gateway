@@ -197,12 +197,7 @@ mod tests {
         let auth = Arc::new(VertexAuth::with_fetcher(|| {
             Box::pin(async { Ok(("t".into(), Duration::from_secs(3600))) })
         }));
-        let embedder = VertexEmbedder::new(
-            auth,
-            "p".into(),
-            "us".into(),
-            Duration::from_secs(5),
-        );
+        let embedder = VertexEmbedder::new(auth, "p".into(), "us".into(), Duration::from_secs(5));
         assert_eq!(
             embedder.predict_url("text-embedding-004"),
             "https://aiplatform.us.rep.googleapis.com/v1/projects/p/locations/us/publishers/google/models/text-embedding-004:predict"
