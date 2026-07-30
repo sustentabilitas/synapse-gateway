@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`vertex.thinking_config` selects the native Vertex lane** — the extension
+  was already parsed and applied on native requests, but lane classification
+  only keyed off `cached_content` / `response_schema` / `gs://` media URIs.
+  Requests that only set `thinking_config` (e.g. `thinkingBudget: 0` for
+  cheap autocomplete) stayed on the standard lane, so the config was ignored.
+
 ## [0.5.21] - 2026-07-30
 
 ## [0.5.20] - 2026-07-30
