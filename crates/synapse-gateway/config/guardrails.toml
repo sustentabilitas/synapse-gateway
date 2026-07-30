@@ -9,12 +9,21 @@
 scanners = [
   "prompt_injection",
   "secrets",
-  "invisible_text",
-  { type = "token_limit", max_chars = 32000 },
+  # Scraped website/PDF markdown often embeds zero-width/bidi marks;
+  # keep invisible_text on `strict` only.
+  { type = "token_limit", max_chars = 200000 },
+]
+
+# Scraped website/PDF markdown — omit invisible_text.
+[guardrails.scraped]
+scanners = [
+  "prompt_injection",
+  "secrets",
+  { type = "token_limit", max_chars = 200000 },
 ]
 
 [guardrails.strict]
-scanners = ["prompt_injection", "secrets", "pii", "role_override"]
+scanners = ["prompt_injection", "secrets", "pii", "role_override", "invisible_text"]
 
 [guardrails.canary]
 mode = "observe"

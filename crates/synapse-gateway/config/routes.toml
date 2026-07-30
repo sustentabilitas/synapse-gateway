@@ -1,18 +1,105 @@
-[routes."gemini-pro"]
+# Prefer multi-region `us` or single-region when the model supports it;
+# use `global` only for global-only models (3.6 Flash, flash-lite-image, pro-preview).
+# Requires synapse-gateway >= 0.5.19 for us/eu hosts.
+# visual: image → Flash → Qwen. Consumers without a real DashScope key
+# must set DASHSCOPE_API_KEY=placeholder so Synapse can boot (it
+# validates every provider leg at startup).
+
+[routes."visual"]
+policy = "default"
 legs = [
-  { provider = "vertex", model = "gemini-3-pro" },
-  { provider = "qwen", model = "qwen-max" },
+  { provider = "vertex", model = "gemini-3.1-flash-lite-image", region = "global" },
+  { provider = "vertex", model = "gemini-3.6-flash", region = "global" },
+  { provider = "qwen", model = "qwen3-vl-plus" },
 ]
 
-[routes."fast"]
-legs = [{ provider = "vertex", model = "gemini-3-flash" }]
+[routes."deep"]
+policy = "default"
+legs = [
+  { provider = "vertex", model = "gemini-3.1-pro-preview", region = "global" },
+  { provider = "vertex", model = "gemini-2.5-pro", region = "us-central1" },
+]
 
+[routes."conversation"]
+policy = "default"
+legs = [
+  { provider = "vertex", model = "gemini-3.1-pro-preview", region = "global" },
+  { provider = "vertex", model = "gemini-2.5-pro", region = "us-central1" },
+]
+
+[routes."planning"]
+policy = "default"
+legs = [
+  { provider = "vertex", model = "gemini-3.1-pro-preview", region = "global" },
+  { provider = "vertex", model = "gemini-2.5-pro", region = "us-central1" },
+]
+
+# LinkedIn / firmographic markdown often hits `fast` (agent default route).
+[routes."fast"]
+policy = "scraped"
+legs = [{ provider = "vertex", model = "gemini-3.6-flash", region = "global" }]
+
+[routes."lite"]
+policy = "scraped"
+legs = [{ provider = "vertex", model = "gemini-3.5-flash-lite", region = "us" }]
+
+# Talos structuring on scraped markdown — guardrails.scraped omits invisible_text.
+[routes."structuring"]
+policy = "scraped"
+legs = [{ provider = "vertex", model = "gemini-3.5-flash-lite", region = "us" }]
+
+# Native-Vertex structured extraction (response_schema on the extract route).
+[routes."extract"]
+policy = "scraped"
+legs = [{ provider = "vertex", model = "gemini-3.5-flash-lite", region = "us" }]
+
+# wine2o2: multimodal document extract (PDF/image → structured JSON).
+[routes."doc-extract"]
+policy = "scraped"
+legs = [
+  { provider = "vertex", model = "gemini-3.6-flash", region = "global" },
+  { provider = "qwen", model = "qwen3-vl-plus" },
+]
+
+# wine2o2: per-page scanned PDF → markdown.
+[routes."pdf-ocr"]
+policy = "scraped"
+legs = [{ provider = "vertex", model = "gemini-3.5-flash-lite", region = "us" }]
+
+# wine2o2: schedio OCR text → cited facts JSON.
+[routes."structured"]
+policy = "scraped"
+legs = [{ provider = "vertex", model = "gemini-3.5-flash-lite", region = "us" }]
+
+# Cortex VFS — cortex-specific aliases (additive; keep extract/fast/default-embed).
+[routes."graph-extract"]
+policy = "scraped"
+legs = [{ provider = "vertex", model = "gemini-3.5-flash-lite", region = "us" }]
+
+[routes."graph-llm"]
+policy = "default"
+legs = [{ provider = "vertex", model = "gemini-3.6-flash", region = "global" }]
+
+[routes."nl-fast"]
+policy = "default"
+legs = [{ provider = "vertex", model = "gemini-3.6-flash", region = "global" }]
+
+[routes."nl-plan"]
+policy = "default"
+legs = [
+  { provider = "vertex", model = "gemini-3.1-pro-preview", region = "global" },
+  { provider = "vertex", model = "gemini-2.5-pro", region = "us-central1" },
+]
+
+# Sandbox browser-agent tool loop (tools allowed via browser_agent policy).
 [routes."browser-agent"]
 policy = "browser_agent"
-legs = [{ provider = "vertex", model = "gemini-3-flash" }]
+legs = [{ provider = "vertex", model = "gemini-3.6-flash", region = "global" }]
 
 [embeddings."default-embed"]
 dimensions = 768
-legs = [
-  { provider = "vertex", model = "text-embedding-004" },
-]
+legs = [{ provider = "vertex", model = "text-embedding-004" }]
+
+[embeddings."vector-embed"]
+dimensions = 768
+legs = [{ provider = "vertex", model = "text-embedding-004" }]
