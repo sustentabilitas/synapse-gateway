@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.20] - 2026-07-30
+
+### Changed
+
+- **Default `config/{routes,pricing,guardrails}.toml`** — align with the
+  shared cluster catalog: Gemini 3.5/3.6 pins + multi-region legs, cortex
+  aliases (`graph-*`, `nl-*`, `vector-embed`), wine2o2/talos routes,
+  `browser-agent` on `gemini-3.6-flash`, `scraped` policy, and
+  `invisible_text` removed from `guardrails.default`.
+
 ## [0.5.19] - 2026-07-29
 
 ## [0.5.18] - 2026-07-29
