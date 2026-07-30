@@ -17,6 +17,7 @@ pub fn classify(req: &ChatRequest) -> Lane {
     };
     let triggers_native = v.cached_content.is_some()
         || v.response_schema.is_some()
+        || v.thinking_config.is_some()
         || v.media_uris
             .as_ref()
             .is_some_and(|uris| uris.iter().any(|u| u.starts_with("gs://")));
@@ -86,5 +87,17 @@ mod tests {
             ..base()
         };
         assert_eq!(classify(&https), Lane::Standard);
+    }
+
+    #[test]
+    fn thinking_config_is_native() {
+        let req = ChatRequest {
+            vertex: Some(VertexExt {
+                thinking_config: Some(serde_json::json!({ "thinkingBudget": 0 })),
+                ..Default::default()
+            }),
+            ..base()
+        };
+        assert_eq!(classify(&req), Lane::NativeVertex);
     }
 }

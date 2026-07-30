@@ -58,7 +58,7 @@ Requests without a `vertex` extension block are handled by the standard lane, wh
 
 ### Native Vertex lane
 
-If the request body contains a `vertex` extension object with any of `cached_content`, `media_uris`, or `response_schema`, the request is routed to the native Vertex lane. This lane speaks directly to the Vertex AI `generateContent` REST endpoint, translating the OpenAI message format while preserving Vertex-specific features:
+If the request body contains a `vertex` extension object with any of `cached_content`, `media_uris`, `response_schema`, or `thinking_config`, the request is routed to the native Vertex lane. This lane speaks directly to the Vertex AI `generateContent` REST endpoint, translating the OpenAI message format while preserving Vertex-specific features:
 
 - **`cached_content`** — a `cachedContents` resource name for context caching.
 - **`media_uris`** — `gs://` Cloud Storage URIs attached as inline parts.
