@@ -16,6 +16,28 @@ use crate::vertex_endpoint::vertex_endpoint_base;
 /// shared client timeout (which is sized for buffered calls).
 const PASSTHROUGH_STREAM_TIMEOUT: Duration = Duration::from_secs(3600);
 
+/// Map a Vertex HTTP failure to a gateway error. 429/408 are 4xx but transient —
+/// return `Upstream` so native multi-leg fallback can advance (same policy as
+/// `resilience::is_retryable_reqwest`).
+fn vertex_http_error(status: reqwest::StatusCode, body: String) -> crate::error::GatewayError {
+    if status.is_server_error()
+        || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+        || status == reqwest::StatusCode::REQUEST_TIMEOUT
+    {
+        crate::error::GatewayError::Upstream {
+            status: status.as_u16(),
+            body,
+        }
+    } else if status.is_client_error() {
+        crate::error::GatewayError::BadRequest(format!("vertex {}: {body}", status.as_u16()))
+    } else {
+        crate::error::GatewayError::Upstream {
+            status: status.as_u16(),
+            body,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct VertexNativeProvider {
     http: reqwest::Client,
@@ -114,17 +136,7 @@ impl VertexNativeProvider {
                 body: e.to_string(),
             })?;
         if !status.is_success() {
-            if status.is_client_error() {
-                return Err(crate::error::GatewayError::BadRequest(format!(
-                    "vertex {}: {}",
-                    status.as_u16(),
-                    value
-                )));
-            }
-            return Err(crate::error::GatewayError::Upstream {
-                status: status.as_u16(),
-                body: value.to_string(),
-            });
+            return Err(vertex_http_error(status, value.to_string()));
         }
         parse_response("vertex", model, &value)
     }
@@ -189,9 +201,10 @@ impl VertexNativeProvider {
     /// Open a Vertex SSE stream and normalize chunks into `StreamItem`s.
     ///
     /// The outer `Err` is the connection phase, returned as a `GatewayError` so
-    /// the handler preserves Vertex's status distinction (4xx -> 400 BadRequest,
-    /// 5xx/transport -> 502 Upstream) — the same mapping the non-stream
-    /// `generate` used. Per-item (mid-stream) errors remain `LegError`.
+    /// the handler preserves Vertex's status distinction (non-retryable 4xx →
+    /// BadRequest; 429/408/5xx/transport → Upstream for multi-leg fallback) —
+    /// the same mapping the non-stream `generate` used. Per-item (mid-stream)
+    /// errors remain `LegError`.
     pub async fn stream_generate(
         &self,
         model: &str,
@@ -233,16 +246,7 @@ impl VertexNativeProvider {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            if status.is_client_error() {
-                return Err(GatewayError::BadRequest(format!(
-                    "vertex {}: {body}",
-                    status.as_u16()
-                )));
-            }
-            return Err(GatewayError::Upstream {
-                status: status.as_u16(),
-                body,
-            });
+            return Err(vertex_http_error(status, body));
         }
 
         // State threaded across byte chunks via `unfold`: SSE line buffer,

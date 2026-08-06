@@ -154,10 +154,17 @@ fn to_genai_options(req: &ChatRequest) -> genai::chat::ChatOptions {
 /// `webc::Error::Reqwest(e)` with `e.is_timeout() || e.is_connect()`.
 /// `genai::Error::HttpError { status, .. }` is also matched for completeness.
 fn is_genai_retryable(e: &genai::Error) -> bool {
+    /// Align with `resilience::is_retryable_reqwest`: 5xx, 429, request timeout.
+    fn status_retryable(status: reqwest::StatusCode) -> bool {
+        status.is_server_error()
+            || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+            || status == reqwest::StatusCode::REQUEST_TIMEOUT
+    }
+
     /// Check whether a `genai::webc::Error` represents a transient/server error.
     fn webc_retryable(we: &genai::webc::Error) -> bool {
         match we {
-            genai::webc::Error::ResponseFailedStatus { status, .. } => status.is_server_error(),
+            genai::webc::Error::ResponseFailedStatus { status, .. } => status_retryable(*status),
             genai::webc::Error::Reqwest(re) => re.is_timeout() || re.is_connect(),
             _ => false,
         }
@@ -166,7 +173,7 @@ fn is_genai_retryable(e: &genai::Error) -> bool {
     match e {
         genai::Error::WebModelCall { webc_error, .. } => webc_retryable(webc_error),
         genai::Error::WebAdapterCall { webc_error, .. } => webc_retryable(webc_error),
-        genai::Error::HttpError { status, .. } => status.is_server_error(),
+        genai::Error::HttpError { status, .. } => status_retryable(*status),
         _ => false,
     }
 }
