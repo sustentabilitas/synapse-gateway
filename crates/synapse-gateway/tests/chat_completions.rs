@@ -157,6 +157,58 @@ async fn first_leg_5xx_falls_over_to_second_leg() {
     assert_eq!(c.provider, "openai");
 }
 
+/// Regression: 429 on leg-1 must failover like 5xx (quota / rate-limit).
+#[tokio::test]
+async fn first_leg_429_falls_over_to_second_leg() {
+    let mock1 = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(429))
+        .mount(&mock1)
+        .await;
+
+    let mock2 = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(ok_response("from-leg-2")))
+        .mount(&mock2)
+        .await;
+
+    let env = std::collections::HashMap::from([
+        ("DASHSCOPE_API_KEY".to_string(), "sk-test".to_string()),
+        (
+            "DASHSCOPE_BASE_URL".to_string(),
+            format!("{}/v1", mock1.uri()),
+        ),
+        ("OPENAI_API_KEY".to_string(), "sk-test".to_string()),
+        ("OPENAI_BASE_URL".to_string(), format!("{}/v1", mock2.uri())),
+    ]);
+    let catalog = synapse::providers::Catalog::build(
+        &env,
+        &std::collections::HashSet::from(["qwen".to_string(), "openai".to_string()]),
+        std::time::Duration::from_secs(5),
+    )
+    .unwrap();
+
+    let legs = vec![
+        ChainLeg {
+            provider: "qwen".into(),
+            model: "qwen-max".into(),
+            ..Default::default()
+        },
+        ChainLeg {
+            provider: "openai".into(),
+            model: "gpt-x".into(),
+            ..Default::default()
+        },
+    ];
+    let c = execute_chain(&catalog, "gemini-pro", &legs, &chat_body("gemini-pro"))
+        .await
+        .unwrap();
+    assert_eq!(c.content, "from-leg-2");
+    assert_eq!(c.provider, "openai");
+}
+
 #[tokio::test]
 async fn http_unknown_model_returns_404() {
     use axum::body::Body;

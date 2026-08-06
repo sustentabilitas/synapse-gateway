@@ -10,7 +10,7 @@ use chrono::Utc;
 use futures::stream::{BoxStream, Stream};
 use uuid::Uuid;
 
-use crate::error::GatewayError;
+use crate::error::{GatewayError, LegFailure};
 use crate::guard::GuardEngine;
 use crate::ledger::{LedgerHandle, UsageEntry};
 use crate::observability::GenAiSpan;
@@ -167,29 +167,60 @@ impl Gateway {
 
     /// Resolve the native Vertex committed stream (shared by chat/chat_stream).
     ///
-    /// NOTE: the native lane is bounded only by the reqwest client timeout
-    /// (`config.request_timeout`); the first-chunk/idle `StreamTimeouts` are not
-    /// applied here yet — a tracked follow-up alongside native-lane fallback.
+    /// Commit the first Vertex leg that can open a stream. On retryable upstream
+    /// failures (5xx, 429, 408, transport), advance to the next `provider=vertex`
+    /// leg. Non-retryable 4xx abort immediately. Non-vertex legs are skipped
+    /// (native features cannot be expressed on other providers).
+    ///
+    /// NOTE: bounded only by the reqwest client timeout (`config.request_timeout`);
+    /// the first-chunk/idle `StreamTimeouts` are not applied here yet.
     async fn native_committed(
         &self,
         req: &ChatRequest,
         legs: &[ChainLeg],
     ) -> Result<CommittedStream, GatewayError> {
-        let leg = legs
-            .iter()
-            .find(|l| l.provider == "vertex")
-            .ok_or_else(|| GatewayError::NativeFeatureUnsupported {
-                feature: "native-vertex".into(),
-                route: req.model.clone(),
-            })?;
         let provider = self
             .vertex_native
             .as_ref()
             .ok_or_else(|| GatewayError::BadRequest("native vertex lane not configured".into()))?;
-        provider
-            .stream_generate(&leg.model, req, leg.region.as_deref())
-            .await
-            .map(|stream| CommittedStream::single("vertex".into(), leg.model.clone(), stream))
+
+        let vertex_legs: Vec<&ChainLeg> = legs.iter().filter(|l| l.provider == "vertex").collect();
+        if vertex_legs.is_empty() {
+            return Err(GatewayError::NativeFeatureUnsupported {
+                feature: "native-vertex".into(),
+                route: req.model.clone(),
+            });
+        }
+
+        let mut failures: Vec<LegFailure> = Vec::new();
+        let mut last_retryable: Option<GatewayError> = None;
+        for leg in &vertex_legs {
+            match provider
+                .stream_generate(&leg.model, req, leg.region.as_deref())
+                .await
+            {
+                Ok(stream) => {
+                    return Ok(CommittedStream::single(
+                        "vertex".into(),
+                        leg.model.clone(),
+                        stream,
+                    ));
+                }
+                Err(e) if native_start_retryable(&e) => {
+                    failures.push(LegFailure {
+                        provider: leg.provider.clone(),
+                        model: leg.model.clone(),
+                        message: e.to_string(),
+                    });
+                    last_retryable = Some(e);
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Err(last_retryable.unwrap_or_else(|| GatewayError::AllLegsFailed {
+            route: req.model.clone(),
+            failures,
+        }))
     }
 
     /// Streaming in-process chat: commit a leg on the first item; returns a
@@ -206,6 +237,8 @@ impl Gateway {
         let request_id = ctx
             .resolved_request_id()
             .unwrap_or_else(|| Uuid::new_v4().to_string());
+        let vertex_leg_count =
+            legs.iter().filter(|l| l.provider == "vertex").count() as u32;
         let (committed, lane_str, legs_attempted) = match classify(&req) {
             Lane::Standard => (
                 execute_streaming_with_timeouts(
@@ -219,7 +252,11 @@ impl Gateway {
                 "standard",
                 legs.len() as u32,
             ),
-            Lane::NativeVertex => (self.native_committed(&req, &legs).await?, "native", 1),
+            Lane::NativeVertex => (
+                self.native_committed(&req, &legs).await?,
+                "native",
+                vertex_leg_count.max(1),
+            ),
         };
         let model = committed.model.clone();
         let guard = StreamSideEffects::new(
@@ -265,8 +302,9 @@ impl Gateway {
             .await
             .map(|c| (c, "standard", legs.len() as u32))?,
             Lane::NativeVertex => {
+                let vertex_n = legs.iter().filter(|l| l.provider == "vertex").count() as u32;
                 let committed = self.native_committed(&req, &legs).await?;
-                (collect_committed(committed).await?, "native", 1)
+                (collect_committed(committed).await?, "native", vertex_n.max(1))
             }
         };
         self.record(
@@ -402,6 +440,20 @@ impl Gateway {
             status: "ok".into(),
             op: "embedding".into(),
         });
+    }
+}
+
+/// True when a native-lane stream **start** failure should advance to the next
+/// Vertex leg (aligned with standard-lane / reqwest retryable policy).
+fn native_start_retryable(e: &GatewayError) -> bool {
+    match e {
+        GatewayError::Upstream { status, .. } => {
+            *status >= 500
+                || *status == reqwest::StatusCode::TOO_MANY_REQUESTS.as_u16()
+                || *status == reqwest::StatusCode::REQUEST_TIMEOUT.as_u16()
+        }
+        GatewayError::UpstreamTimeout => true,
+        _ => false,
     }
 }
 
