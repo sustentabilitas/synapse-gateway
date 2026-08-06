@@ -217,10 +217,12 @@ impl Gateway {
                 Err(e) => return Err(e),
             }
         }
-        Err(last_retryable.unwrap_or_else(|| GatewayError::AllLegsFailed {
-            route: req.model.clone(),
-            failures,
-        }))
+        Err(
+            last_retryable.unwrap_or_else(|| GatewayError::AllLegsFailed {
+                route: req.model.clone(),
+                failures,
+            }),
+        )
     }
 
     /// Streaming in-process chat: commit a leg on the first item; returns a
@@ -237,8 +239,7 @@ impl Gateway {
         let request_id = ctx
             .resolved_request_id()
             .unwrap_or_else(|| Uuid::new_v4().to_string());
-        let vertex_leg_count =
-            legs.iter().filter(|l| l.provider == "vertex").count() as u32;
+        let vertex_leg_count = legs.iter().filter(|l| l.provider == "vertex").count() as u32;
         let (committed, lane_str, legs_attempted) = match classify(&req) {
             Lane::Standard => (
                 execute_streaming_with_timeouts(
@@ -304,7 +305,11 @@ impl Gateway {
             Lane::NativeVertex => {
                 let vertex_n = legs.iter().filter(|l| l.provider == "vertex").count() as u32;
                 let committed = self.native_committed(&req, &legs).await?;
-                (collect_committed(committed).await?, "native", vertex_n.max(1))
+                (
+                    collect_committed(committed).await?,
+                    "native",
+                    vertex_n.max(1),
+                )
             }
         };
         self.record(
