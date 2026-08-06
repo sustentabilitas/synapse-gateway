@@ -72,6 +72,68 @@ impl RouteTable {
             .map(|l| l.provider.clone())
             .collect()
     }
+
+    /// Consecutive Vertex legs for Gemini-native passthrough fallback.
+    ///
+    /// Prefer a route whose first leg is `vertex` + `model` (lexicographically
+    /// first alias if several match). Otherwise start at the first matching
+    /// vertex leg in the lex-first route that contains it. Stop before the first
+    /// non-vertex leg. If nothing matches, return a single synthetic leg so
+    /// callers always have ≥1 attempt (same as today's single forward).
+    pub fn vertex_fallback_chain(&self, model: &str) -> VertexPassthroughChain {
+        let mut aliases: Vec<&String> = self.routes.keys().collect();
+        aliases.sort();
+
+        let from_first = aliases.iter().find_map(|alias| {
+            let legs = self.routes.get(*alias)?;
+            let first = legs.first()?;
+            if first.provider == "vertex" && first.model == model {
+                Some(((*alias).clone(), 0usize))
+            } else {
+                None
+            }
+        });
+
+        let resolved = from_first.or_else(|| {
+            aliases.iter().find_map(|alias| {
+                let legs = self.routes.get(*alias)?;
+                legs.iter()
+                    .position(|l| l.provider == "vertex" && l.model == model)
+                    .map(|idx| ((*alias).clone(), idx))
+            })
+        });
+
+        match resolved {
+            Some((route, start)) => {
+                let legs = self.routes.get(&route).expect("alias from routes keys");
+                let chain: Vec<ChainLeg> = legs[start..]
+                    .iter()
+                    .take_while(|l| l.provider == "vertex")
+                    .cloned()
+                    .collect();
+                VertexPassthroughChain {
+                    route: Some(route),
+                    legs: chain,
+                }
+            }
+            None => VertexPassthroughChain {
+                route: None,
+                legs: vec![ChainLeg {
+                    provider: "vertex".into(),
+                    model: model.to_string(),
+                    region: None,
+                }],
+            },
+        }
+    }
+}
+
+/// Vertex-only fallback chain used by Gemini passthrough.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VertexPassthroughChain {
+    /// Matched route alias, if any.
+    pub route: Option<String>,
+    pub legs: Vec<ChainLeg>,
 }
 
 #[cfg(test)]
@@ -154,5 +216,65 @@ mod tests {
         assert_eq!(t.policy_of("guarded"), Some("strict"));
         assert_eq!(t.policy_of("plain"), None);
         assert_eq!(t.policy_of("missing"), None);
+    }
+
+    #[test]
+    fn vertex_fallback_chain_deep_like_and_stops_before_qwen() {
+        let t = RouteTable::from_toml_str(
+            r#"
+            [routes."conversation"]
+            legs = [
+              { provider = "vertex", model = "gemini-3.1-pro-preview", region = "global" },
+              { provider = "vertex", model = "gemini-2.5-pro", region = "us-central1" },
+            ]
+            [routes."visual"]
+            legs = [
+              { provider = "vertex", model = "gemini-flash-image", region = "global" },
+              { provider = "qwen", model = "qwen3-vl-plus" },
+            ]
+        "#,
+        )
+        .unwrap();
+        let c = t.vertex_fallback_chain("gemini-3.1-pro-preview");
+        assert_eq!(c.route.as_deref(), Some("conversation"));
+        assert_eq!(c.legs.len(), 2);
+        assert_eq!(c.legs[1].model, "gemini-2.5-pro");
+
+        let image = t.vertex_fallback_chain("gemini-flash-image");
+        assert_eq!(image.legs.len(), 1);
+    }
+
+    #[test]
+    fn vertex_fallback_chain_picks_lex_first_alias() {
+        let t = RouteTable::from_toml_str(
+            r#"
+            [routes."planning"]
+            legs = [
+              { provider = "vertex", model = "gemini-3.1-pro-preview" },
+              { provider = "vertex", model = "gemini-2.5-pro" },
+            ]
+            [routes."conversation"]
+            legs = [
+              { provider = "vertex", model = "gemini-3.1-pro-preview" },
+              { provider = "vertex", model = "gemini-2.5-pro" },
+            ]
+        "#,
+        )
+        .unwrap();
+        assert_eq!(
+            t.vertex_fallback_chain("gemini-3.1-pro-preview")
+                .route
+                .as_deref(),
+            Some("conversation")
+        );
+    }
+
+    #[test]
+    fn vertex_fallback_chain_unknown_is_synthetic_single() {
+        let t = RouteTable::from_toml_str(SAMPLE).unwrap();
+        let c = t.vertex_fallback_chain("totally-unknown");
+        assert_eq!(c.route, None);
+        assert_eq!(c.legs.len(), 1);
+        assert_eq!(c.legs[0].model, "totally-unknown");
     }
 }

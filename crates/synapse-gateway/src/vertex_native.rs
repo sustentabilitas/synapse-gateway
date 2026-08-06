@@ -151,8 +151,9 @@ impl VertexNativeProvider {
         action: &str,
         alt_sse: bool,
         body: Value,
+        region: Option<&str>,
     ) -> Result<reqwest::Response, crate::error::GatewayError> {
-        let region = &self.region;
+        let region = region.unwrap_or(&self.region);
         let alt = if alt_sse { "?alt=sse" } else { "" };
         let url = format!(
             "{}/v1/projects/{}/locations/{}/publishers/google/models/{}:{}{}",

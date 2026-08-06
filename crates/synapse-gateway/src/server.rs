@@ -102,6 +102,10 @@ async fn embeddings(
 /// request to Vertex via the native provider and meter usage from the
 /// response's `usageMetadata`. Lets Gemini SDK clients (`GOOGLE_VERTEX_BASE_URL`)
 /// route through the gateway without translating to the OpenAI surface.
+///
+/// Generation actions walk consecutive Vertex legs from `routes.toml` on
+/// 429/5xx (see `RouteTable::vertex_fallback_chain`). Non-generation actions
+/// remain a single forward.
 async fn gemini_passthrough(
     State(st): State<AppState>,
     axum::extract::Path(model_action): axum::extract::Path<String>,
@@ -128,22 +132,21 @@ async fn gemini_passthrough(
     })?;
     let alt_sse = query.as_deref().is_some_and(|q| q.contains("alt=sse"));
     let streaming = action == "streamGenerateContent";
-
-    let resp = provider
-        .passthrough_request(model, action, alt_sse && streaming, body)
-        .await?;
-    let status = resp.status();
-    metrics::counter!(
-        "synapse_passthrough_total",
-        "model" => model.to_string(),
-        "action" => action.to_string(),
-        "status" => if status.is_success() { "ok" } else { "error" },
-    )
-    .increment(1);
-
-    // Only generation calls are metered; countTokens etc. are pure forwards.
     let metered = action == "generateContent" || streaming;
+
+    // countTokens etc.: pure single forward, no chain / metering.
     if !metered {
+        let resp = provider
+            .passthrough_request(model, action, false, body, None)
+            .await?;
+        let status = resp.status();
+        metrics::counter!(
+            "synapse_passthrough_total",
+            "model" => model.to_string(),
+            "action" => action.to_string(),
+            "status" => if status.is_success() { "ok" } else { "error" },
+        )
+        .increment(1);
         let bytes = resp.bytes().await.map_err(|e| GatewayError::Upstream {
             status: 502,
             body: e.to_string(),
@@ -151,48 +154,126 @@ async fn gemini_passthrough(
         return passthrough_response(status.as_u16(), "application/json", bytes);
     }
 
+    let chain = st.gateway.routes.vertex_fallback_chain(model);
     let ctx = request_ctx(&headers);
-    let mut guard = PassthroughUsageGuard::new(&st.gateway, &ctx, model);
+    let route_alias = chain.route.as_deref();
+    let mut prev_model: Option<String> = None;
+    let mut last_failure: Option<(u16, axum::body::Bytes)> = None;
 
-    if !status.is_success() {
-        let bytes = resp.bytes().await.unwrap_or_default();
-        guard.status = "error";
-        drop(guard); // meter the failed call
-        return passthrough_response(status.as_u16(), "application/json", bytes);
-    }
+    for (i, leg) in chain.legs.iter().enumerate() {
+        if let Some(from) = prev_model.take() {
+            metrics::counter!(
+                "synapse_passthrough_fallback_total",
+                "from_model" => from,
+                "to_model" => leg.model.clone(),
+            )
+            .increment(1);
+        }
 
-    if streaming && alt_sse {
-        let content_type = resp
-            .headers()
-            .get(header::CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("text/event-stream")
-            .to_string();
-        let metered_stream = MeteredSseStream {
-            inner: resp.bytes_stream(),
-            guard,
-            line_buf: String::new(),
+        let attempt = provider
+            .passthrough_request(
+                &leg.model,
+                action,
+                alt_sse && streaming,
+                body.clone(),
+                leg.region.as_deref(),
+            )
+            .await;
+
+        let resp = match attempt {
+            Ok(r) => r,
+            Err(e) => {
+                meter_passthrough_error(&st.gateway, &ctx, &leg.model, route_alias);
+                metrics::counter!(
+                    "synapse_passthrough_total",
+                    "model" => leg.model.clone(),
+                    "action" => action.to_string(),
+                    "status" => "error",
+                )
+                .increment(1);
+                if i + 1 < chain.legs.len() {
+                    prev_model = Some(leg.model.clone());
+                    continue;
+                }
+                return Err(e);
+            }
         };
-        let response = Response::builder()
-            .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, content_type)
-            .body(Body::from_stream(metered_stream))
-            .map_err(|e| GatewayError::Upstream {
+
+        let status = resp.status();
+        metrics::counter!(
+            "synapse_passthrough_total",
+            "model" => leg.model.clone(),
+            "action" => action.to_string(),
+            "status" => if status.is_success() { "ok" } else { "error" },
+        )
+        .increment(1);
+
+        if status.is_success() {
+            let mut guard = PassthroughUsageGuard::new(&st.gateway, &ctx, &leg.model, route_alias);
+            if streaming && alt_sse {
+                let content_type = resp
+                    .headers()
+                    .get(header::CONTENT_TYPE)
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("text/event-stream")
+                    .to_string();
+                let metered_stream = MeteredSseStream {
+                    inner: resp.bytes_stream(),
+                    guard,
+                    line_buf: String::new(),
+                };
+                let response = Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, content_type)
+                    .body(Body::from_stream(metered_stream))
+                    .map_err(|e| GatewayError::Upstream {
+                        status: 502,
+                        body: e.to_string(),
+                    })?;
+                return Ok(response);
+            }
+
+            let bytes = resp.bytes().await.map_err(|e| GatewayError::Upstream {
                 status: 502,
                 body: e.to_string(),
             })?;
-        return Ok(response);
+            if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+                guard.observe_usage_metadata(&value);
+            }
+            drop(guard);
+            return passthrough_response(status.as_u16(), "application/json", bytes);
+        }
+
+        let bytes = resp.bytes().await.unwrap_or_default();
+        meter_passthrough_error(&st.gateway, &ctx, &leg.model, route_alias);
+
+        if passthrough_status_retryable(status) && i + 1 < chain.legs.len() {
+            prev_model = Some(leg.model.clone());
+            last_failure = Some((status.as_u16(), bytes));
+            continue;
+        }
+        return passthrough_response(status.as_u16(), "application/json", bytes);
     }
 
-    let bytes = resp.bytes().await.map_err(|e| GatewayError::Upstream {
-        status: 502,
-        body: e.to_string(),
-    })?;
-    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) {
-        guard.observe_usage_metadata(&value);
+    if let Some((code, bytes)) = last_failure {
+        return passthrough_response(code, "application/json", bytes);
     }
+    Err(GatewayError::Upstream {
+        status: 502,
+        body: "gemini passthrough: empty vertex fallback chain".into(),
+    })
+}
+
+fn passthrough_status_retryable(status: reqwest::StatusCode) -> bool {
+    status.is_server_error()
+        || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+        || status == reqwest::StatusCode::REQUEST_TIMEOUT
+}
+
+fn meter_passthrough_error(gateway: &Gateway, ctx: &RequestCtx, model: &str, route: Option<&str>) {
+    let mut guard = PassthroughUsageGuard::new(gateway, ctx, model, route);
+    guard.status = "error";
     drop(guard);
-    passthrough_response(status.as_u16(), "application/json", bytes)
 }
 
 fn passthrough_response(
@@ -220,6 +301,7 @@ struct PassthroughUsageGuard {
     user: Option<String>,
     thread: Option<String>,
     message: Option<String>,
+    route: String,
     model: String,
     request_id: String,
     input_tokens: u64,
@@ -228,7 +310,7 @@ struct PassthroughUsageGuard {
 }
 
 impl PassthroughUsageGuard {
-    fn new(gateway: &Gateway, ctx: &RequestCtx, model: &str) -> Self {
+    fn new(gateway: &Gateway, ctx: &RequestCtx, model: &str, route: Option<&str>) -> Self {
         Self {
             ledger: gateway.ledger.clone(),
             pricing: gateway.pricing.clone(),
@@ -240,6 +322,7 @@ impl PassthroughUsageGuard {
             user: ctx.user.clone(),
             thread: ctx.thread.clone(),
             message: ctx.message.clone(),
+            route: route.unwrap_or(model).to_string(),
             model: model.to_string(),
             request_id: ctx
                 .resolved_request_id()
@@ -283,7 +366,7 @@ impl Drop for PassthroughUsageGuard {
             user: self.user.clone(),
             thread: self.thread.clone(),
             message: self.message.clone(),
-            route: self.model.clone(),
+            route: self.route.clone(),
             provider: "vertex".into(),
             model: self.model.clone(),
             lane: "passthrough".into(),

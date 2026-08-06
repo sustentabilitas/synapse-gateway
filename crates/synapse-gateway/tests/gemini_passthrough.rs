@@ -84,6 +84,19 @@ async fn ledger_rows(store: &InMemoryLedger) -> Vec<UsageEntry> {
     store.entries.lock().clone()
 }
 
+async fn ledger_rows_at_least(store: &InMemoryLedger, n: usize) -> Vec<UsageEntry> {
+    for _ in 0..100 {
+        {
+            let rows = store.entries.lock();
+            if rows.len() >= n {
+                return rows.clone();
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    store.entries.lock().clone()
+}
+
 fn gemini_request(path_and_query: &str) -> Request<Body> {
     Request::builder()
         .method("POST")
@@ -136,7 +149,7 @@ async fn buffered_generate_content_forwards_and_meters() {
     assert_eq!(rows[0].workspace.as_deref(), Some("ws-9"));
     assert_eq!(rows[0].user.as_deref(), Some("user-42"));
     assert_eq!(rows[0].model, MODEL);
-    assert_eq!(rows[0].route, MODEL);
+    assert_eq!(rows[0].route, "fast");
     assert_eq!(rows[0].lane, "passthrough");
     assert_eq!(rows[0].input_tokens, 7);
     assert_eq!(rows[0].output_tokens, 11);
@@ -269,6 +282,167 @@ async fn upstream_error_is_forwarded_and_metered_as_error() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].status, "error");
     assert_eq!(rows[0].input_tokens, 0);
+}
+
+#[tokio::test]
+async fn primary_429_falls_over_to_secondary_vertex_leg() {
+    let mock = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(
+            "/v1/projects/p/locations/global/publishers/google/models/gemini-3.1-pro-preview:generateContent",
+        ))
+        .respond_with(ResponseTemplate::new(429).set_body_json(serde_json::json!({
+            "error": {"code": 429, "message": "quota"}
+        })))
+        .mount(&mock)
+        .await;
+    Mock::given(method("POST"))
+        .and(path(
+            "/v1/projects/p/locations/us-central1/publishers/google/models/gemini-2.5-pro:generateContent",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "candidates": [{"content": {"role": "model", "parts": [{"text": "fallback"}]}, "finishReason": "STOP"}],
+            "usageMetadata": {"promptTokenCount": 2, "candidatesTokenCount": 3}
+        })))
+        .mount(&mock)
+        .await;
+
+    let routes = RouteTable::from_toml_str(
+        r#"[routes."conversation"]
+           legs = [
+             { provider = "vertex", model = "gemini-3.1-pro-preview", region = "global" },
+             { provider = "vertex", model = "gemini-2.5-pro", region = "us-central1" },
+           ]"#,
+    )
+    .unwrap();
+    let catalog = Catalog::build(
+        &HashMap::from([("VERTEX_PROJECT_ID".to_string(), PROJECT.to_string())]),
+        &routes.referenced_providers(),
+        Duration::from_secs(5),
+    )
+    .unwrap();
+    let vertex_native = VertexNativeProvider::new(
+        vertex_auth(),
+        PROJECT.into(),
+        "global".into(),
+        Duration::from_secs(5),
+        Some(mock.uri()),
+    );
+    let store = Arc::new(InMemoryLedger::default());
+    let gw = Gateway::builder()
+        .routes(routes)
+        .catalog(catalog)
+        .pricing(PricingTable::default())
+        .ledger(LedgerHandle::spawn(
+            store.clone() as Arc<dyn LedgerStore>,
+            64,
+        ))
+        .vertex_native(Some(vertex_native))
+        .default_tenant("unattributed")
+        .build()
+        .unwrap();
+    let app = router(Arc::new(gw));
+
+    let resp = app
+        .oneshot(gemini_request(
+            "/v1beta/models/gemini-3.1-pro-preview:generateContent",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        json["candidates"][0]["content"]["parts"][0]["text"],
+        "fallback"
+    );
+
+    let rows = ledger_rows_at_least(&store, 2).await;
+    assert!(rows
+        .iter()
+        .any(|r| r.status == "error" && r.model == "gemini-3.1-pro-preview"));
+    let ok = rows
+        .iter()
+        .find(|r| r.status == "ok")
+        .expect("success meter");
+    assert_eq!(ok.model, "gemini-2.5-pro");
+    assert_eq!(ok.route.as_str(), "conversation");
+    assert_eq!(ok.output_tokens, 3);
+}
+
+#[tokio::test]
+async fn client_400_does_not_fall_over_to_secondary_leg() {
+    let mock = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(
+            "/v1/projects/p/locations/global/publishers/google/models/gemini-3.1-pro-preview:generateContent",
+        ))
+        .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+            "error": {"code": 400, "message": "bad request"}
+        })))
+        .expect(1)
+        .mount(&mock)
+        .await;
+    Mock::given(method("POST"))
+        .and(path(
+            "/v1/projects/p/locations/us-central1/publishers/google/models/gemini-2.5-pro:generateContent",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "candidates": [{"content": {"role": "model", "parts": [{"text": "should-not"}]}, "finishReason": "STOP"}],
+            "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 1}
+        })))
+        .expect(0)
+        .mount(&mock)
+        .await;
+
+    let routes = RouteTable::from_toml_str(
+        r#"[routes."conversation"]
+           legs = [
+             { provider = "vertex", model = "gemini-3.1-pro-preview", region = "global" },
+             { provider = "vertex", model = "gemini-2.5-pro", region = "us-central1" },
+           ]"#,
+    )
+    .unwrap();
+    let catalog = Catalog::build(
+        &HashMap::from([("VERTEX_PROJECT_ID".to_string(), PROJECT.to_string())]),
+        &routes.referenced_providers(),
+        Duration::from_secs(5),
+    )
+    .unwrap();
+    let vertex_native = VertexNativeProvider::new(
+        vertex_auth(),
+        PROJECT.into(),
+        "global".into(),
+        Duration::from_secs(5),
+        Some(mock.uri()),
+    );
+    let store = Arc::new(InMemoryLedger::default());
+    let gw = Gateway::builder()
+        .routes(routes)
+        .catalog(catalog)
+        .pricing(PricingTable::default())
+        .ledger(LedgerHandle::spawn(
+            store.clone() as Arc<dyn LedgerStore>,
+            64,
+        ))
+        .vertex_native(Some(vertex_native))
+        .default_tenant("unattributed")
+        .build()
+        .unwrap();
+    let app = router(Arc::new(gw));
+
+    let resp = app
+        .oneshot(gemini_request(
+            "/v1beta/models/gemini-3.1-pro-preview:generateContent",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    let rows = ledger_rows(&store).await;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].status, "error");
+    assert_eq!(rows[0].model, "gemini-3.1-pro-preview");
 }
 
 #[tokio::test]
