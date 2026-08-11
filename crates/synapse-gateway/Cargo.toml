@@ -52,7 +52,7 @@ metrics = "0.24"
 metrics-exporter-prometheus = { version = "0.16", default-features = false, features = ["http-listener"], optional = true }
 anyhow = { workspace = true }
 thiserror = "1"
-synapse-a2a = { path = "../synapse-a2a", optional = true }
+synapse-a2a = { workspace = true, optional = true }
 
 [dev-dependencies]
 wiremock = "0.6"

@@ -1,20 +1,21 @@
 name: Release library crate
 
-# Publishes the library crates (synapse-context, synapse-mcp) to crates.io.
+# Publishes the library crates (synapse-context, synapse-mcp, synapse-a2a) to crates.io.
 # These ship no binary/Docker image, so they have a separate workflow from the
 # binary-crate `release.yml`. Publish order matters: synapse-context must be on
-# crates.io before synapse-mcp (which depends on it).
+# crates.io before synapse-mcp (which depends on it). synapse-a2a must be on
+# crates.io before synapse-gateway (which depends on it via the `server` feature).
 
 on:
   push:
-    tags: ["synapse-context-v*", "synapse-mcp-v*"]
+    tags: ["synapse-context-v*", "synapse-mcp-v*", "synapse-a2a-v*"]
   workflow_dispatch:
     inputs:
       crate:
         description: Library crate to release
         required: true
         type: choice
-        options: [synapse-context, synapse-mcp]
+        options: [synapse-context, synapse-mcp, synapse-a2a]
 
 permissions:
   contents: read
