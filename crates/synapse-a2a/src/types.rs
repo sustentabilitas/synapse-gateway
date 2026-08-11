@@ -18,7 +18,7 @@ pub struct RegisterA2aAgentRequest {
     pub ttl_seconds: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct A2aCatalogEntry {
     pub id: String,
     pub name: String,
@@ -28,13 +28,13 @@ pub struct A2aCatalogEntry {
     pub tags: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct A2aCatalog {
     pub version: String,
     pub agents: Vec<A2aCatalogEntry>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct A2aResolveResponse {
     pub id: String,
     pub endpoint_url: String,
