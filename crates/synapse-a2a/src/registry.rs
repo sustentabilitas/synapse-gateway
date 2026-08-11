@@ -25,9 +25,8 @@ pub struct RegisteredA2aAgent {
     expires_at: Option<Instant>,
 }
 
-/// Registry of A2A agents, keyed by id. Registering an id that already
-/// exists replaces the prior entry (hot-swap) rather than erroring or
-/// duplicating.
+/// Registry of A2A agents, keyed by id. Registration is insert-only:
+/// the first writer wins; duplicate ids are ignored.
 pub struct A2aRegistry {
     inner: RwLock<HashMap<String, RegisteredA2aAgent>>,
 }
@@ -39,9 +38,9 @@ impl A2aRegistry {
         }
     }
 
-    /// Register (or hot-swap replace) an agent. `ttl` of `None` means no
-    /// expiry.
-    pub fn register(
+    /// Insert-only registration. Returns `true` if inserted, `false` if `id`
+    /// already present (existing entry is left unchanged).
+    pub fn try_register(
         &self,
         id: String,
         name: String,
@@ -51,18 +50,25 @@ impl A2aRegistry {
         tags: Vec<String>,
         card: Value,
         ttl: Option<Duration>,
-    ) {
-        let entry = RegisteredA2aAgent {
-            id: id.clone(),
-            name,
-            description,
-            endpoint_url,
-            card_url,
-            tags,
-            card,
-            expires_at: expiry_from_ttl(ttl),
-        };
-        self.inner.write().unwrap().insert(id, entry);
+    ) -> bool {
+        let mut guard = self.inner.write().unwrap();
+        if guard.contains_key(&id) {
+            return false;
+        }
+        guard.insert(
+            id.clone(),
+            RegisteredA2aAgent {
+                id,
+                name,
+                description,
+                endpoint_url,
+                card_url,
+                tags,
+                card,
+                expires_at: expiry_from_ttl(ttl),
+            },
+        );
+        true
     }
 
     /// Remove an agent by id. No-op if absent.
@@ -122,7 +128,7 @@ mod tests {
     use super::*;
 
     fn register_sample(r: &A2aRegistry, id: &str, endpoint_url: &str, ttl: Option<Duration>) {
-        r.register(
+        assert!(r.try_register(
             id.into(),
             id.into(),
             "d".into(),
@@ -131,14 +137,14 @@ mod tests {
             vec![],
             serde_json::json!({}),
             ttl,
-        );
+        ));
     }
 
     #[test]
     fn register_resolve_and_list() {
         let r = A2aRegistry::new();
         let card = serde_json::json!({"name":"GHG","description":"d","url":"http://p/a2a/agents/ghg","version":"1.0","skills":[]});
-        r.register(
+        assert!(r.try_register(
             "ghg-emissions".into(),
             "GHG Emissions".into(),
             "d".into(),
@@ -147,7 +153,7 @@ mod tests {
             vec!["ghg".into()],
             card,
             None,
-        );
+        ));
         assert_eq!(
             r.resolve("ghg-emissions").map(|a| a.endpoint_url.clone()),
             Some("http://ploutonion/a2a/agents/ghg-emissions".into())
@@ -162,15 +168,32 @@ mod tests {
     }
 
     #[test]
-    fn re_register_same_id_hot_swaps() {
+    fn try_register_same_id_is_ignored() {
         let r = A2aRegistry::new();
-        register_sample(&r, "ghg", "http://old/a2a", None);
-        register_sample(&r, "ghg", "http://new/a2a", None);
-        assert_eq!(
-            r.resolve("ghg").map(|a| a.endpoint_url.clone()),
-            Some("http://new/a2a".into())
-        );
-        assert_eq!(r.inner.read().unwrap().len(), 1);
+        assert!(r.try_register(
+            "ghg".into(),
+            "ghg".into(),
+            "d".into(),
+            "http://old/a2a".into(),
+            "http://gateway/ghg".into(),
+            vec![],
+            serde_json::json!({"v": 1}),
+            None,
+        ));
+        assert!(!r.try_register(
+            "ghg".into(),
+            "ghg".into(),
+            "d".into(),
+            "http://new/a2a".into(),
+            "http://gateway/ghg".into(),
+            vec![],
+            serde_json::json!({"v": 2}),
+            None,
+        ));
+        let agent = r.resolve("ghg").unwrap();
+        assert_eq!(agent.endpoint_url, "http://old/a2a");
+        assert_eq!(agent.card["v"], 1);
+        assert_eq!(r.list().len(), 1);
     }
 
     #[test]

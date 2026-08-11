@@ -87,7 +87,7 @@ mod tests {
     }
 
     fn register_sample(registry: &A2aRegistry) {
-        registry.register(
+        let _ = registry.try_register(
             "ghg-emissions".into(),
             "GHG Emissions".into(),
             "d".into(),

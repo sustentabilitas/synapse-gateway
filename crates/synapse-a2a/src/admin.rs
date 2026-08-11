@@ -26,7 +26,7 @@ async fn register_agent(
     State(registry): State<Arc<A2aRegistry>>,
     Json(req): Json<RegisterA2aAgentRequest>,
 ) -> StatusCode {
-    registry.register(
+    let _ = registry.try_register(
         req.id,
         req.name,
         req.description,
