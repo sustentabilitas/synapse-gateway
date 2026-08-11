@@ -5,6 +5,7 @@ members = [
     "crates/synapse-proxy",
     "crates/synapse-mcp",
     "crates/synapse-context",
+    "crates/synapse-a2a",
 ]
 
 [workspace.package]

@@ -4187,6 +4187,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "synapse-a2a"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "synapse-context"
 version = "0.1.1"
 
