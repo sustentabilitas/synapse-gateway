@@ -150,7 +150,18 @@ async fn main() -> Result<()> {
     // A2A registry is a process-lifetime in-memory catalog. Admin + public
     // routers carry their own state; merge onto the LLM app so marketplace /
     // ploutonion hit the same stable :8080 service (not the sandbox broker).
+    // Static seed is optional, like guardrails: absent file ⇒ empty registry.
     let a2a_registry = Arc::new(synapse_a2a::A2aRegistry::new());
+    if std::path::Path::new(&config.a2a_path).exists() {
+        synapse_a2a::seed_from_path(&a2a_registry, &config.a2a_path)
+            .await
+            .with_context(|| format!("seeding A2A registry from {}", config.a2a_path))?;
+    } else {
+        tracing::info!(
+            path = %config.a2a_path,
+            "a2a seed file absent; starting with empty A2A registry"
+        );
+    }
     let app = router(Arc::new(gateway))
         .merge(synapse_a2a::a2a_admin_router(a2a_registry.clone()))
         .merge(synapse_a2a::a2a_public_router(a2a_registry));
