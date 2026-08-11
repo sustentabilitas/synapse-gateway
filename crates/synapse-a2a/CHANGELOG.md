@@ -1,9 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 - Static seed from `[[a2a_agents]]` TOML (`seed_from_path`); cards fetched from `card_url` at boot with retry.
 - **Breaking:** registration is insert-only (first-writer-wins). Duplicate `POST` / seed id no longer hot-swaps; returns success and keeps the first entry.
+- **Breaking:** `try_register` takes `A2aRegistration` instead of many positional arguments.
 
 ## 0.1.0
 
