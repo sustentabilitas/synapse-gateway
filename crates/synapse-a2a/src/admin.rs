@@ -9,7 +9,7 @@ use axum::http::StatusCode;
 use axum::routing::post;
 use axum::{Json, Router};
 
-use crate::registry::A2aRegistry;
+use crate::registry::{A2aRegistration, A2aRegistry};
 use crate::types::RegisterA2aAgentRequest;
 
 pub fn a2a_admin_router(registry: Arc<A2aRegistry>) -> Router {
@@ -26,16 +26,16 @@ async fn register_agent(
     State(registry): State<Arc<A2aRegistry>>,
     Json(req): Json<RegisterA2aAgentRequest>,
 ) -> StatusCode {
-    let _ = registry.try_register(
-        req.id,
-        req.name,
-        req.description,
-        req.endpoint_url,
-        req.card_url,
-        req.tags,
-        req.card,
-        req.ttl_seconds.map(Duration::from_secs),
-    );
+    let _ = registry.try_register(A2aRegistration {
+        id: req.id,
+        name: req.name,
+        description: req.description,
+        endpoint_url: req.endpoint_url,
+        card_url: req.card_url,
+        tags: req.tags,
+        card: req.card,
+        ttl: req.ttl_seconds.map(Duration::from_secs),
+    });
     StatusCode::NO_CONTENT
 }
 

@@ -10,7 +10,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use tracing::{info, warn};
 
-use crate::registry::A2aRegistry;
+use crate::registry::{A2aRegistration, A2aRegistry};
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct A2aSeedFile {
@@ -111,16 +111,16 @@ pub async fn seed_agents(
                 agent.id, agent.card_url
             )
         })?;
-        let inserted = registry.try_register(
-            agent.id.clone(),
-            agent.name.clone(),
-            agent.description.clone(),
-            agent.endpoint_url.clone(),
-            agent.card_url.clone(),
-            agent.tags.clone(),
+        let inserted = registry.try_register(A2aRegistration {
+            id: agent.id.clone(),
+            name: agent.name.clone(),
+            description: agent.description.clone(),
+            endpoint_url: agent.endpoint_url.clone(),
+            card_url: agent.card_url.clone(),
+            tags: agent.tags.clone(),
             card,
-            agent.ttl_seconds.map(Duration::from_secs),
-        );
+            ttl: agent.ttl_seconds.map(Duration::from_secs),
+        });
         if inserted {
             info!(id = %agent.id, "seeded a2a agent");
         } else {

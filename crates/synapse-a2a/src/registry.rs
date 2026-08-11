@@ -25,6 +25,19 @@ pub struct RegisteredA2aAgent {
     expires_at: Option<Instant>,
 }
 
+/// Fields required to insert an agent into [`A2aRegistry`].
+#[derive(Debug, Clone)]
+pub struct A2aRegistration {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub endpoint_url: String,
+    pub card_url: String,
+    pub tags: Vec<String>,
+    pub card: Value,
+    pub ttl: Option<Duration>,
+}
+
 /// Registry of A2A agents, keyed by id. Registration is insert-only:
 /// the first writer wins; duplicate ids are ignored.
 pub struct A2aRegistry {
@@ -40,32 +53,23 @@ impl A2aRegistry {
 
     /// Insert-only registration. Returns `true` if inserted, `false` if `id`
     /// already present (existing entry is left unchanged).
-    pub fn try_register(
-        &self,
-        id: String,
-        name: String,
-        description: String,
-        endpoint_url: String,
-        card_url: String,
-        tags: Vec<String>,
-        card: Value,
-        ttl: Option<Duration>,
-    ) -> bool {
+    pub fn try_register(&self, reg: A2aRegistration) -> bool {
         let mut guard = self.inner.write().unwrap();
-        if guard.contains_key(&id) {
+        if guard.contains_key(&reg.id) {
             return false;
         }
+        let id = reg.id.clone();
         guard.insert(
-            id.clone(),
+            id,
             RegisteredA2aAgent {
-                id,
-                name,
-                description,
-                endpoint_url,
-                card_url,
-                tags,
-                card,
-                expires_at: expiry_from_ttl(ttl),
+                id: reg.id,
+                name: reg.name,
+                description: reg.description,
+                endpoint_url: reg.endpoint_url,
+                card_url: reg.card_url,
+                tags: reg.tags,
+                card: reg.card,
+                expires_at: expiry_from_ttl(reg.ttl),
             },
         );
         true
@@ -128,32 +132,32 @@ mod tests {
     use super::*;
 
     fn register_sample(r: &A2aRegistry, id: &str, endpoint_url: &str, ttl: Option<Duration>) {
-        assert!(r.try_register(
-            id.into(),
-            id.into(),
-            "d".into(),
-            endpoint_url.into(),
-            format!("http://gateway/{id}"),
-            vec![],
-            serde_json::json!({}),
+        assert!(r.try_register(A2aRegistration {
+            id: id.into(),
+            name: id.into(),
+            description: "d".into(),
+            endpoint_url: endpoint_url.into(),
+            card_url: format!("http://gateway/{id}"),
+            tags: vec![],
+            card: serde_json::json!({}),
             ttl,
-        ));
+        }));
     }
 
     #[test]
     fn register_resolve_and_list() {
         let r = A2aRegistry::new();
         let card = serde_json::json!({"name":"GHG","description":"d","url":"http://p/a2a/agents/ghg","version":"1.0","skills":[]});
-        assert!(r.try_register(
-            "ghg-emissions".into(),
-            "GHG Emissions".into(),
-            "d".into(),
-            "http://ploutonion/a2a/agents/ghg-emissions".into(),
-            "http://gateway/a2a/agents/ghg-emissions/.well-known/agent-card.json".into(),
-            vec!["ghg".into()],
+        assert!(r.try_register(A2aRegistration {
+            id: "ghg-emissions".into(),
+            name: "GHG Emissions".into(),
+            description: "d".into(),
+            endpoint_url: "http://ploutonion/a2a/agents/ghg-emissions".into(),
+            card_url: "http://gateway/a2a/agents/ghg-emissions/.well-known/agent-card.json".into(),
+            tags: vec!["ghg".into()],
             card,
-            None,
-        ));
+            ttl: None,
+        }));
         assert_eq!(
             r.resolve("ghg-emissions").map(|a| a.endpoint_url.clone()),
             Some("http://ploutonion/a2a/agents/ghg-emissions".into())
@@ -170,26 +174,26 @@ mod tests {
     #[test]
     fn try_register_same_id_is_ignored() {
         let r = A2aRegistry::new();
-        assert!(r.try_register(
-            "ghg".into(),
-            "ghg".into(),
-            "d".into(),
-            "http://old/a2a".into(),
-            "http://gateway/ghg".into(),
-            vec![],
-            serde_json::json!({"v": 1}),
-            None,
-        ));
-        assert!(!r.try_register(
-            "ghg".into(),
-            "ghg".into(),
-            "d".into(),
-            "http://new/a2a".into(),
-            "http://gateway/ghg".into(),
-            vec![],
-            serde_json::json!({"v": 2}),
-            None,
-        ));
+        assert!(r.try_register(A2aRegistration {
+            id: "ghg".into(),
+            name: "ghg".into(),
+            description: "d".into(),
+            endpoint_url: "http://old/a2a".into(),
+            card_url: "http://gateway/ghg".into(),
+            tags: vec![],
+            card: serde_json::json!({"v": 1}),
+            ttl: None,
+        }));
+        assert!(!r.try_register(A2aRegistration {
+            id: "ghg".into(),
+            name: "ghg".into(),
+            description: "d".into(),
+            endpoint_url: "http://new/a2a".into(),
+            card_url: "http://gateway/ghg".into(),
+            tags: vec![],
+            card: serde_json::json!({"v": 2}),
+            ttl: None,
+        }));
         let agent = r.resolve("ghg").unwrap();
         assert_eq!(agent.endpoint_url, "http://old/a2a");
         assert_eq!(agent.card["v"], 1);
