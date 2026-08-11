@@ -13,10 +13,7 @@ use crate::types::{A2aCatalog, A2aCatalogEntry, A2aResolveResponse};
 
 pub fn a2a_public_router(registry: Arc<A2aRegistry>) -> Router {
     Router::new()
-        .route(
-            "/.well-known/a2a-agent-catalog.json",
-            get(list_catalog),
-        )
+        .route("/.well-known/a2a-agent-catalog.json", get(list_catalog))
         .route(
             "/a2a/agents/{id}/.well-known/agent-card.json",
             get(get_agent_card),
