@@ -87,16 +87,18 @@ mod tests {
     }
 
     fn register_sample(registry: &A2aRegistry) {
-        registry.register(
-            "ghg-emissions".into(),
-            "GHG Emissions".into(),
-            "d".into(),
-            "http://ploutonion/a2a/agents/ghg-emissions".into(),
-            "http://ploutonion/a2a/agents/ghg-emissions/.well-known/agent-card.json".into(),
-            vec!["ghg".into()],
-            sample_card(),
-            None,
-        );
+        use crate::registry::A2aRegistration;
+        let _ = registry.try_register(A2aRegistration {
+            id: "ghg-emissions".into(),
+            name: "GHG Emissions".into(),
+            description: "d".into(),
+            endpoint_url: "http://ploutonion/a2a/agents/ghg-emissions".into(),
+            card_url: "http://ploutonion/a2a/agents/ghg-emissions/.well-known/agent-card.json"
+                .into(),
+            tags: vec!["ghg".into()],
+            card: sample_card(),
+            ttl: None,
+        });
     }
 
     #[tokio::test]

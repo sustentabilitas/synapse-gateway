@@ -1,0 +1,12 @@
+# Static A2A agent seed (optional). Absent file ⇒ empty registry.
+# Each entry's agent card is fetched from card_url at boot (retry then fail-fast).
+# Runtime agents can still POST /internal/a2a/agents (insert-only; duplicates ignored).
+#
+# [[a2a_agents]]
+# id = "ghg-emissions"
+# name = "GHG Emissions"
+# description = "Estimates GHG emissions"
+# endpoint_url = "http://ploutonion/a2a/agents/ghg-emissions"
+# card_url = "http://ploutonion/a2a/agents/ghg-emissions/.well-known/agent-card.json"
+# tags = ["ghg", "emissions"]
+# # ttl_seconds = 3600
