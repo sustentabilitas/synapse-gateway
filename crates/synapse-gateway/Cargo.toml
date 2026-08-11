@@ -52,6 +52,7 @@ metrics = "0.24"
 metrics-exporter-prometheus = { version = "0.16", default-features = false, features = ["http-listener"], optional = true }
 anyhow = { workspace = true }
 thiserror = "1"
+synapse-a2a = { path = "../synapse-a2a", optional = true }
 
 [dev-dependencies]
 wiremock = "0.6"
@@ -61,7 +62,7 @@ reqwest = { workspace = true }
 
 [features]
 default = ["server", "ledger-sqlite"]
-server = ["dep:axum", "dep:tower", "dep:tower-http", "dep:metrics-exporter-prometheus"]
+server = ["dep:axum", "dep:tower", "dep:tower-http", "dep:metrics-exporter-prometheus", "dep:synapse-a2a"]
 ledger-sqlite = ["dep:sqlx", "sqlx/sqlite"]
 ledger-postgres = ["dep:sqlx", "sqlx/postgres"]
 ledger-pubsub = ["dep:google-cloud-pubsub", "dep:google-cloud-googleapis"]

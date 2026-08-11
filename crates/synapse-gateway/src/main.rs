@@ -146,7 +146,15 @@ async fn main() -> Result<()> {
         .into_iter()
         .fold(builder, |b, (id, e)| b.embedder(id, e))
         .build()?;
-    let app = router(Arc::new(gateway));
+
+    // A2A registry is a process-lifetime in-memory catalog. Admin + public
+    // routers carry their own state; merge onto the LLM app so marketplace /
+    // ploutonion hit the same stable :8080 service (not the sandbox broker).
+    let a2a_registry = Arc::new(synapse_a2a::A2aRegistry::new());
+    let app = router(Arc::new(gateway))
+        .merge(synapse_a2a::a2a_admin_router(a2a_registry.clone()))
+        .merge(synapse_a2a::a2a_public_router(a2a_registry));
+
     tracing::info!(addr = %config.addr, "synapse-gateway listening");
     let listener = tokio::net::TcpListener::bind(&config.addr).await?;
     axum::serve(listener, app).await?;
