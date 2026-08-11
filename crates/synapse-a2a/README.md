@@ -14,13 +14,33 @@ clients     ──GET  /a2a/agents/{id}/…──▶ same
 
 One `Arc<A2aRegistry>` is created at process boot in `synapse-gateway` and shared by the admin and public routers via `.merge(...)`.
 
-## Admin (register / deregister)
+## Static seed
+
+Agents may be seeded at process boot via `config/a2a.toml` (`SYNAPSE_A2A_PATH`):
+
+```toml
+[[a2a_agents]]
+id = "ghg-emissions"
+name = "GHG Emissions"
+description = "Estimates GHG emissions"
+endpoint_url = "http://ploutonion/a2a/agents/ghg-emissions"
+card_url = "http://ploutonion/a2a/agents/ghg-emissions/.well-known/agent-card.json"
+tags = ["ghg", "emissions"]
+```
+
+At boot the gateway GETs each `card_url` (3 attempts, exponential backoff) and insert-only registers the agent. Missing seed file ⇒ empty registry. Unreachable / invalid card after retries ⇒ process fails to start.
+
+## Registration semantics
+
+`POST /internal/a2a/agents` and seed inserts are **first-writer-wins**: re-adding an existing `id` is ignored and still returns `204`. Use `DELETE` then `POST` to replace.
+
+## Admin (register if absent / deregister)
 
 No auth (same pattern as gateway-internal surfaces).
 
 ### `POST /internal/a2a/agents`
 
-Register or replace an agent. Body matches `RegisterA2aAgentRequest`.
+Register if absent (ignore duplicate). Body matches `RegisterA2aAgentRequest`.
 
 **Request**
 
