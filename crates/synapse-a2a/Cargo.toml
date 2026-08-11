@@ -23,5 +23,6 @@ backon = "1.5"
 
 [dev-dependencies]
 http-body-util = "0.1"
+reqwest = { workspace = true }
 tower = { workspace = true, features = ["util"] }
 wiremock = "0.6"
