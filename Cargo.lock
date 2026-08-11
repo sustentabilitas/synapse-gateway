@@ -4190,12 +4190,18 @@ dependencies = [
 name = "synapse-a2a"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "axum",
+ "backon",
  "http-body-util",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "tokio",
+ "toml",
  "tower 0.5.3",
+ "tracing",
+ "wiremock",
 ]
 
 [[package]]
