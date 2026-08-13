@@ -80,6 +80,33 @@ fn reject_status(e: &TransformError) -> u16 {
     }
 }
 
+fn env_u64(key: &str, default: u64) -> u64 {
+    std::env::var(key)
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(default)
+}
+
+fn method_is_idempotent(m: &axum::http::Method) -> bool {
+    matches!(
+        *m,
+        axum::http::Method::GET
+            | axum::http::Method::HEAD
+            | axum::http::Method::OPTIONS
+            | axum::http::Method::TRACE
+            | axum::http::Method::PUT
+            | axum::http::Method::DELETE
+    )
+}
+
+/// A connect error never put the request on the wire, so it is safe to retry
+/// for any method (this is the common failure when an MCS/clusterset endpoint
+/// churns under the upstream). Any other send error may have reached the
+/// upstream, so only idempotent methods are retried.
+fn send_error_is_retryable(e: &reqwest::Error, method: &axum::http::Method) -> bool {
+    e.is_connect() || method_is_idempotent(method)
+}
+
 pub async fn handler(State(state): State<AppState>, req: Request) -> Response {
     let started = std::time::Instant::now();
     let (parts, body) = req.into_parts();
@@ -173,22 +200,42 @@ pub async fn handler(State(state): State<AppState>, req: Request) -> Response {
     let method_val = preq.method.clone();
     let (out_headers, out_body) = preq.into_forward_parts();
 
-    let upstream = state
-        .client
-        .request(method_val, &url)
-        .headers(out_headers)
-        .body(out_body)
-        .send()
-        .await;
-    let resp = match upstream {
-        Ok(r) => r,
-        Err(e) => {
-            let secs = started.elapsed().as_secs_f64();
-            state
-                .metrics
-                .record(&route_label, &method, 502, "upstream_error", secs);
-            state.metrics.upstream_error(&route_label, "send");
-            return err(StatusCode::BAD_GATEWAY, "request_failed", e.to_string());
+    // Transient send failures are retried with exponential backoff before
+    // answering 502 request_failed; see send_error_is_retryable for what
+    // qualifies. Tune via SYNAPSE_PROXY_UPSTREAM_SEND_RETRIES (default 2,
+    // 0 disables) and SYNAPSE_PROXY_UPSTREAM_RETRY_BACKOFF_MS (default 200).
+    let max_retries = env_u64("SYNAPSE_PROXY_UPSTREAM_SEND_RETRIES", 2);
+    let backoff_ms = env_u64("SYNAPSE_PROXY_UPSTREAM_RETRY_BACKOFF_MS", 200);
+    let mut retries: u64 = 0;
+    let resp = loop {
+        let upstream = state
+            .client
+            .request(method_val.clone(), &url)
+            .headers(out_headers.clone())
+            .body(out_body.clone())
+            .send()
+            .await;
+        match upstream {
+            Ok(r) => break r,
+            Err(e) if retries < max_retries && send_error_is_retryable(&e, &method_val) => {
+                retries += 1;
+                let reason = if e.is_connect() { "connect" } else { "send" };
+                state.metrics.upstream_retry(&route_label, reason);
+                tracing::warn!(route = %route_label, %url, retry = retries, error = %e, "retrying upstream send");
+                tokio::time::sleep(std::time::Duration::from_millis(
+                    backoff_ms.saturating_mul(1 << (retries - 1).min(8)),
+                ))
+                .await;
+            }
+            Err(e) => {
+                let secs = started.elapsed().as_secs_f64();
+                state
+                    .metrics
+                    .record(&route_label, &method, 502, "upstream_error", secs);
+                state.metrics.upstream_error(&route_label, "send");
+                tracing::warn!(route = %route_label, %url, attempts = retries + 1, error = %e, "upstream send failed");
+                return err(StatusCode::BAD_GATEWAY, "request_failed", e.to_string());
+            }
         }
     };
 
@@ -251,6 +298,24 @@ mod tests {
             require_context: vec![],
             request: vec![],
             response: vec![],
+        }
+    }
+
+    #[test]
+    fn idempotent_methods_qualify_for_non_connect_retry() {
+        use axum::http::Method;
+        for m in [
+            Method::GET,
+            Method::HEAD,
+            Method::OPTIONS,
+            Method::TRACE,
+            Method::PUT,
+            Method::DELETE,
+        ] {
+            assert!(method_is_idempotent(&m), "{m} should be idempotent");
+        }
+        for m in [Method::POST, Method::PATCH] {
+            assert!(!method_is_idempotent(&m), "{m} should not be idempotent");
         }
     }
 

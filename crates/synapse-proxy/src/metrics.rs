@@ -16,6 +16,7 @@ pub struct Metrics {
     requests: Counter<u64>,
     duration: Histogram<f64>,
     upstream_errors: Counter<u64>,
+    upstream_retries: Counter<u64>,
     transform_errors: Counter<u64>,
     provider: SdkMeterProvider,
 }
@@ -66,6 +67,9 @@ impl Metrics {
             upstream_errors: meter
                 .u64_counter("synapse_proxy_upstream_errors_total")
                 .build(),
+            upstream_retries: meter
+                .u64_counter("synapse_proxy_upstream_retries_total")
+                .build(),
             transform_errors: meter
                 .u64_counter("synapse_proxy_transform_errors_total")
                 .build(),
@@ -94,6 +98,16 @@ impl Metrics {
             &[
                 KeyValue::new("route", route.to_string()),
                 KeyValue::new("method", method.to_string()),
+            ],
+        );
+    }
+
+    pub fn upstream_retry(&self, route: &str, reason: &str) {
+        self.upstream_retries.add(
+            1,
+            &[
+                KeyValue::new("route", route.to_string()),
+                KeyValue::new("reason", reason.to_string()),
             ],
         );
     }
