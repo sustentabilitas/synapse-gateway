@@ -11,6 +11,7 @@ pub struct Config {
     pub pricing_path: String,
     pub guardrails_path: String,
     pub a2a_path: String,
+    pub ai_task_types_path: String,
     pub ledger_backends: Vec<LedgerBackend>,
     pub default_tenant: String,
     pub request_timeout: Duration,
@@ -92,6 +93,7 @@ impl Config {
             pricing_path: get_or("SYNAPSE_PRICING_PATH", "config/pricing.toml"),
             guardrails_path: get_or("SYNAPSE_GUARDRAILS_PATH", "config/guardrails.toml"),
             a2a_path: get_or("SYNAPSE_A2A_PATH", "config/a2a.toml"),
+            ai_task_types_path: get_or("SYNAPSE_AI_TASK_TYPES_PATH", "config/ai_task_types.toml"),
             ledger_backends,
             default_tenant: get_or("SYNAPSE_DEFAULT_TENANT", "unattributed"),
             request_timeout: Duration::from_secs(
@@ -221,6 +223,25 @@ mod tests {
         assert_eq!(c.a2a_path, "config/a2a.toml");
         let c = Config::from_env_map(&env(&[("SYNAPSE_A2A_PATH", "/etc/a2a.toml")])).unwrap();
         assert_eq!(c.a2a_path, "/etc/a2a.toml");
+    }
+
+    #[test]
+    fn ai_task_types_path_defaults_and_overrides() {
+        let c = Config::from_env_map(&env(&[])).unwrap();
+        assert_eq!(c.ai_task_types_path, "config/ai_task_types.toml");
+        let c =
+            Config::from_env_map(&env(&[("SYNAPSE_AI_TASK_TYPES_PATH", "/etc/ai.toml")])).unwrap();
+        assert_eq!(c.ai_task_types_path, "/etc/ai.toml");
+    }
+
+    #[test]
+    fn shipped_ai_task_types_sample_parses_and_covers_known_aliases() {
+        let content = std::fs::read_to_string("config/ai_task_types.toml")
+            .expect("config/ai_task_types.toml should exist");
+        let table = crate::ai_task_type::AiTaskTypeTable::from_toml_str(&content).unwrap();
+        assert_eq!(table.resolve("conversation"), "conversation");
+        // An alias absent from the shipped taxonomy still resolves, to the default.
+        assert_eq!(table.resolve("no-such-alias"), "simple");
     }
 
     #[test]

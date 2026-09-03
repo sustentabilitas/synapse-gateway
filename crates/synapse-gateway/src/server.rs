@@ -50,6 +50,7 @@ fn request_ctx(headers: &HeaderMap) -> RequestCtx {
         thread: header("x-synapse-thread"),
         message: header("x-synapse-message"),
         user_task_type: header("x-synapse-user-task-type"),
+        ai_task_type: header("x-synapse-ai-task-type"),
         request_id: None,
     }
 }
@@ -298,11 +299,7 @@ struct PassthroughUsageGuard {
     ledger: crate::ledger::LedgerHandle,
     pricing: std::sync::Arc<crate::pricing::PricingTable>,
     tenant: String,
-    workspace: Option<String>,
-    user: Option<String>,
-    thread: Option<String>,
-    message: Option<String>,
-    user_task_type: Option<String>,
+    attribution: crate::gateway::Attribution,
     route: String,
     model: String,
     request_id: String,
@@ -320,11 +317,7 @@ impl PassthroughUsageGuard {
                 .tenant
                 .clone()
                 .unwrap_or_else(|| gateway.default_tenant.clone()),
-            workspace: ctx.workspace.clone(),
-            user: ctx.user.clone(),
-            thread: ctx.thread.clone(),
-            message: ctx.message.clone(),
-            user_task_type: ctx.user_task_type.clone(),
+            attribution: gateway.attribution_of(ctx, route.unwrap_or(model)),
             route: route.unwrap_or(model).to_string(),
             model: model.to_string(),
             request_id: ctx
@@ -365,10 +358,10 @@ impl Drop for PassthroughUsageGuard {
         self.ledger.enqueue(crate::ledger::UsageEntry {
             ts: chrono::Utc::now(),
             tenant: self.tenant.clone(),
-            workspace: self.workspace.clone(),
-            user: self.user.clone(),
-            thread: self.thread.clone(),
-            message: self.message.clone(),
+            workspace: self.attribution.workspace.clone(),
+            user: self.attribution.user.clone(),
+            thread: self.attribution.thread.clone(),
+            message: self.attribution.message.clone(),
             route: self.route.clone(),
             provider: "vertex".into(),
             model: self.model.clone(),
@@ -379,7 +372,8 @@ impl Drop for PassthroughUsageGuard {
             request_id: self.request_id.clone(),
             status: self.status.to_string(),
             op: "chat".into(),
-            user_task_type: self.user_task_type.clone(),
+            user_task_type: self.attribution.user_task_type.clone(),
+            ai_task_type: self.attribution.ai_task_type.clone(),
         });
     }
 }

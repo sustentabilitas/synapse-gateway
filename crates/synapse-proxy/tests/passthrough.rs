@@ -47,6 +47,51 @@ async fn forwards_with_injected_header_and_streams_response() {
     assert_eq!(&body[..], b"hello-from-upstream");
 }
 
+/// The gateway attributes ledger rows from `x-synapse-*` request headers, so a
+/// proxied call must reach it with those headers intact. Nothing strips them
+/// today — this pins that down, since an added allow-list or a widened
+/// hop-by-hop list would otherwise silently drop attribution rather than error.
+#[tokio::test]
+async fn forwards_caller_supplied_synapse_attribution_headers_unchanged() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat"))
+        .and(header("x-synapse-tenant", "acme"))
+        .and(header("x-synapse-user-task-type", "summarisation"))
+        .and(header("x-synapse-ai-task-type", "conversation"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
+        .mount(&upstream)
+        .await;
+
+    let cfg = Config::from_toml_str(&format!(
+        r#"
+        [[routes]]
+        path_prefix = "/v1/llm"
+        upstream = "{}"
+        strip_prefix = true
+    "#,
+        upstream.uri()
+    ))
+    .unwrap();
+    let app = build_router_from_config(ProxyBuilder::from_config(cfg)).unwrap();
+    let resp = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/v1/llm/chat")
+                .header("x-synapse-tenant", "acme")
+                .header("x-synapse-user-task-type", "summarisation")
+                .header("x-synapse-ai-task-type", "conversation")
+                .body(axum::body::Body::from("ping"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    // wiremock only matches when every header arrived as sent; a 404 here means
+    // one was dropped or rewritten in flight.
+    assert_eq!(resp.status(), 200);
+}
+
 #[tokio::test]
 async fn unmatched_path_returns_404_no_route() {
     let cfg = Config::from_toml_str(

@@ -24,6 +24,7 @@ async fn records_and_persists_a_usage_row() {
         status: "ok".into(),
         op: "chat".into(),
         user_task_type: Some("summarisation".into()),
+        ai_task_type: "conversation".into(),
     };
     store.record(&entry).await.unwrap();
     store.record(&entry).await.unwrap();

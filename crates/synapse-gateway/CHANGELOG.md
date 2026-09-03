@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ai_task_type` on every ledger row: the kind of work the gateway performed,
+  resolved from the `x-synapse-ai-task-type` header when supplied, else inferred
+  from the request's route alias via the new `config/ai_task_types.toml` table
+  (keyed by task type, so several aliases can share one), else `"simple"`.
+  The file is optional and its path is set by `SYNAPSE_AI_TASK_TYPES_PATH`; an
+  alias mapped to two task types fails at startup. Recorded as the
+  `ai_task_type` column (SQLite and Postgres, backfilled on existing tables) and
+  as `aiTaskType` on published Pub/Sub and SNS usage events. Library callers set
+  `RequestCtx::ai_task_type`.
+
+### Changed
+
+- The streaming and Gemini-passthrough usage meters now take a single
+  `Attribution` argument instead of six positional `Option<String>` parameters,
+  where a swapped pair would compile cleanly and mis-attribute usage.
+
 ## [0.5.31] - 2026-09-03
 
 ### Added

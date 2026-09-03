@@ -43,6 +43,10 @@ pub struct UsageEntry {
     /// Caller-supplied classification of the work this request serves
     /// (`x-synapse-user-task-type`). Free-form; the gateway never interprets it.
     pub user_task_type: Option<String>,
+    /// Classification of the work the *gateway* performed: the caller's
+    /// `x-synapse-ai-task-type` when supplied, else inferred from the route
+    /// alias, else `"simple"`. Always resolved, so never optional.
+    pub ai_task_type: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -176,6 +180,7 @@ mod tests {
             status: "ok".into(),
             op: "chat".into(),
             user_task_type: None,
+            ai_task_type: "simple".into(),
         }
     }
 
