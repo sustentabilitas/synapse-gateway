@@ -1,5 +1,8 @@
 # Changelog
 
+
+## 0.2.1
+
 ## 0.2.0
 
 - Static seed from `[[a2a_agents]]` TOML (`seed_from_path`); cards fetched from `card_url` at boot with retry.
