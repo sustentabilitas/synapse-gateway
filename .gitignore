@@ -6,3 +6,4 @@ docs
 .claire
 service-account.json
 .superpowers
+.DS_Store
