@@ -324,6 +324,7 @@ async fn http_happy_path_returns_completion_and_records_ledger() {
                 .uri("/v1/chat/completions")
                 .header("content-type", "application/json")
                 .header("x-synapse-tenant", "acme")
+                .header("x-synapse-user-task-type", "summarisation")
                 .body(Body::from(
                     r#"{"model":"fast","messages":[{"role":"user","content":"hi"}]}"#,
                 ))
@@ -349,6 +350,7 @@ async fn http_happy_path_returns_completion_and_records_ledger() {
     let entries = store.entries.lock();
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].tenant, "acme");
+    assert_eq!(entries[0].user_task_type.as_deref(), Some("summarisation"));
 }
 
 #[tokio::test]

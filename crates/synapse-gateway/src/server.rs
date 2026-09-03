@@ -49,6 +49,7 @@ fn request_ctx(headers: &HeaderMap) -> RequestCtx {
         user: header("x-synapse-user"),
         thread: header("x-synapse-thread"),
         message: header("x-synapse-message"),
+        user_task_type: header("x-synapse-user-task-type"),
         request_id: None,
     }
 }
@@ -301,6 +302,7 @@ struct PassthroughUsageGuard {
     user: Option<String>,
     thread: Option<String>,
     message: Option<String>,
+    user_task_type: Option<String>,
     route: String,
     model: String,
     request_id: String,
@@ -322,6 +324,7 @@ impl PassthroughUsageGuard {
             user: ctx.user.clone(),
             thread: ctx.thread.clone(),
             message: ctx.message.clone(),
+            user_task_type: ctx.user_task_type.clone(),
             route: route.unwrap_or(model).to_string(),
             model: model.to_string(),
             request_id: ctx
@@ -376,6 +379,7 @@ impl Drop for PassthroughUsageGuard {
             request_id: self.request_id.clone(),
             status: self.status.to_string(),
             op: "chat".into(),
+            user_task_type: self.user_task_type.clone(),
         });
     }
 }
