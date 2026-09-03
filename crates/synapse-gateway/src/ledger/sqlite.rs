@@ -52,6 +52,9 @@ impl SqliteLedger {
         let _ = sqlx::query("ALTER TABLE usage_events ADD COLUMN user_task_type TEXT")
             .execute(&pool)
             .await;
+        let _ = sqlx::query("ALTER TABLE usage_events ADD COLUMN ai_task_type TEXT")
+            .execute(&pool)
+            .await;
 
         Ok(Self { pool })
     }
@@ -63,8 +66,8 @@ impl LedgerStore for SqliteLedger {
         sqlx::query(
             "INSERT INTO usage_events \
              (ts, tenant, workspace, user_id, thread_id, message_id, route, provider, model, lane, \
-              input_tokens, output_tokens, cost_usd, request_id, status, user_task_type) \
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+              input_tokens, output_tokens, cost_usd, request_id, status, user_task_type, ai_task_type) \
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .bind(e.ts.to_rfc3339())
         .bind(&e.tenant)
@@ -82,6 +85,7 @@ impl LedgerStore for SqliteLedger {
         .bind(&e.request_id)
         .bind(&e.status)
         .bind(&e.user_task_type)
+        .bind(&e.ai_task_type)
         .execute(&self.pool)
         .await
         .map_err(|e| LedgerError::Backend(e.to_string()))?;
@@ -114,17 +118,34 @@ mod tests {
             status: "ok".into(),
             op: "chat".into(),
             user_task_type: None,
+            ai_task_type: "simple".into(),
         }
     }
 
     async fn stored_user_task_type(e: &UsageEntry) -> Option<String> {
+        stored_column(e, "user_task_type").await
+    }
+
+    async fn stored_column(e: &UsageEntry, column: &str) -> Option<String> {
         let store = SqliteLedger::connect("sqlite::memory:").await.unwrap();
         store.record(e).await.unwrap();
-        sqlx::query("SELECT user_task_type FROM usage_events")
+        sqlx::query(&format!("SELECT {column} FROM usage_events"))
             .fetch_one(&store.pool)
             .await
             .unwrap()
-            .get("user_task_type")
+            .get(column)
+    }
+
+    #[tokio::test]
+    async fn persists_ai_task_type_column() {
+        let e = UsageEntry {
+            ai_task_type: "conversation".into(),
+            ..entry()
+        };
+        assert_eq!(
+            stored_column(&e, "ai_task_type").await,
+            Some("conversation".to_string())
+        );
     }
 
     #[tokio::test]
@@ -175,15 +196,22 @@ mod tests {
         let store = SqliteLedger::connect(&dsn).await.unwrap();
         let e = UsageEntry {
             user_task_type: Some("summarisation".into()),
+            ai_task_type: "conversation".into(),
             ..entry()
         };
         store.record(&e).await.unwrap();
-        let got: Option<String> = sqlx::query("SELECT user_task_type FROM usage_events")
+        let row = sqlx::query("SELECT user_task_type, ai_task_type FROM usage_events")
             .fetch_one(&store.pool)
             .await
-            .unwrap()
-            .get("user_task_type");
-        assert_eq!(got, Some("summarisation".to_string()));
+            .unwrap();
+        assert_eq!(
+            row.get::<Option<String>, _>("user_task_type"),
+            Some("summarisation".to_string())
+        );
+        assert_eq!(
+            row.get::<Option<String>, _>("ai_task_type"),
+            Some("conversation".to_string())
+        );
 
         let _ = std::fs::remove_file(&path);
     }

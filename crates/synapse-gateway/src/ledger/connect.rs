@@ -173,6 +173,7 @@ mod tests {
             pricing_path: "config/pricing.toml".into(),
             guardrails_path: "config/guardrails.toml".into(),
             a2a_path: "config/a2a.toml".into(),
+            ai_task_types_path: "config/ai_task_types.toml".into(),
             ledger_backends: vec![LedgerBackend::Postgres],
             default_tenant: "unattributed".into(),
             request_timeout: std::time::Duration::from_secs(120),
@@ -204,6 +205,7 @@ mod tests {
                 status: "ok".into(),
                 op: "chat".into(),
                 user_task_type: None,
+                ai_task_type: "simple".into(),
             })
             .await
             .unwrap();
@@ -219,6 +221,7 @@ mod tests {
             pricing_path: "config/pricing.toml".into(),
             guardrails_path: "config/guardrails.toml".into(),
             a2a_path: "config/a2a.toml".into(),
+            ai_task_types_path: "config/ai_task_types.toml".into(),
             ledger_backends: vec![LedgerBackend::Sqlite],
             default_tenant: "unattributed".into(),
             request_timeout: std::time::Duration::from_secs(120),
@@ -245,6 +248,7 @@ mod tests {
             status: "ok".into(),
             op: "chat".into(),
             user_task_type: None,
+            ai_task_type: "simple".into(),
         };
         store.record(&entry).await.unwrap();
         store.record(&entry).await.unwrap();

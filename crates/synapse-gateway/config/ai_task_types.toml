@@ -1,0 +1,24 @@
+# Route alias → AI task type.
+#
+# Keyed by task type; each entry lists the route aliases (from routes.toml)
+# that perform that kind of work. An alias may appear under only one task type
+# — a duplicate is a startup error rather than a silent last-writer-wins.
+#
+# Resolution order for the `ai_task_type` recorded on every ledger row:
+#   1. the `x-synapse-ai-task-type` request header, when non-empty
+#   2. the task type mapped to the request's route alias below
+#   3. "simple"
+#
+# Aliases absent from this file resolve to "simple", so the file only needs to
+# name the routes whose work is not simple. The file itself is optional.
+
+conversation = ["conversation", "planning", "nl-plan", "graph-llm"]
+extraction = [
+  "extract",
+  "doc-extract",
+  "structured",
+  "structuring",
+  "graph-extract",
+]
+vision = ["visual", "pdf-ocr"]
+agent = ["browser-agent"]

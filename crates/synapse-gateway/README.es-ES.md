@@ -256,8 +256,27 @@ Los encabezados de petición controlan la atribución de costes y observabilidad
 | `x-synapse-thread` | Identificador opcional de conversación / hilo de agente. |
 | `x-synapse-message` | Identificador opcional de mensaje dentro del hilo. Si se envía y no hay un id de petición explícito, se usa como `request_id` del registro para correlación. |
 | `x-synapse-user-task-type` | Clasificación opcional y libre del trabajo que atiende la petición (p. ej. `summarisation`, `code-review`). El gateway nunca la interpreta. |
+| `x-synapse-ai-task-type` | Anulación opcional del tipo de tarea de IA. Si falta o está vacío, se infiere del alias de ruta de la petición mediante `config/ai_task_types.toml`, con `simple` como valor por defecto. |
 
-Tenant y workspace se registran en las filas `usage_events` del registro de costes y se incluyen como atributos en los spans `gen_ai.*`; usuario / hilo / mensaje / tipo de tarea se registran en las filas del registro (y en los eventos publicados) pero se mantienen fuera de métricas y spans para acotar la cardinalidad de etiquetas.
+Tenant y workspace se registran en las filas `usage_events` del registro de costes y se incluyen como atributos en los spans `gen_ai.*`; usuario / hilo / mensaje / tipo de tarea de usuario / tipo de tarea de IA se registran en las filas del registro (y en los eventos publicados) pero se mantienen fuera de métricas y spans para acotar la cardinalidad de etiquetas.
+
+### Tipo de tarea de IA
+
+Cada fila del registro incluye un `ai_task_type` que describe el tipo de trabajo realizado por el gateway. Se resuelve por petición así:
+
+1. el encabezado `x-synapse-ai-task-type`, si se envía y no está vacío;
+2. el tipo de tarea asignado al alias de ruta de la petición en `config/ai_task_types.toml`;
+3. `simple`.
+
+La tabla se indexa por tipo de tarea, de modo que varios alias de ruta pueden compartir uno:
+
+```toml
+# config/ai_task_types.toml
+conversation = ["conversation", "planning", "nl-plan"]
+extraction   = ["extract", "doc-extract", "structured"]
+```
+
+La ruta se define con `SYNAPSE_AI_TASK_TYPES_PATH` (por defecto `config/ai_task_types.toml`). El archivo es opcional: si falta, todas las filas se resuelven a `simple`. Un alias de ruta listado bajo dos tipos de tarea es ambiguo y provoca un error al arrancar.
 
 ---
 

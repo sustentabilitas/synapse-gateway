@@ -4,6 +4,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use tracing_subscriber::{fmt, EnvFilter};
 
+use synapse::ai_task_type::AiTaskTypeTable;
 use synapse::config::{vertex_project_from_env, Config};
 use synapse::embeddings::openai::OpenAiEmbedder;
 use synapse::embeddings::vertex::VertexEmbedder;
@@ -48,6 +49,16 @@ async fn main() -> Result<()> {
         &std::fs::read_to_string(&config.pricing_path)
             .with_context(|| format!("reading {}", config.pricing_path))?,
     )?;
+
+    // Optional AI task types: absent file ⇒ empty table ⇒ everything "simple".
+    let ai_task_types = if std::path::Path::new(&config.ai_task_types_path).exists() {
+        let content = std::fs::read_to_string(&config.ai_task_types_path)
+            .with_context(|| format!("reading {}", config.ai_task_types_path))?;
+        AiTaskTypeTable::from_toml_str(&content)
+            .with_context(|| format!("parsing {}", config.ai_task_types_path))?
+    } else {
+        AiTaskTypeTable::default()
+    };
 
     // Optional guardrails: absent file ⇒ empty engine (guardrails off).
     let guard = if std::path::Path::new(&config.guardrails_path).exists() {
@@ -132,6 +143,7 @@ async fn main() -> Result<()> {
         .routes(routes)
         .catalog(catalog)
         .pricing(pricing)
+        .ai_task_types(ai_task_types)
         .ledger(ledger)
         .vertex_native(vertex_native.map(|a| (*a).clone()))
         .timeouts(synapse::routing::executor::StreamTimeouts {

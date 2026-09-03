@@ -1,4 +1,5 @@
 //! synapse — LLM router and gateway.
+pub mod ai_task_type;
 pub mod config;
 pub mod embeddings;
 pub mod error;

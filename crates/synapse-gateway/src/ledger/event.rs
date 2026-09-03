@@ -45,6 +45,9 @@ pub struct UsageEvent {
     /// Caller-supplied classification of the work (`x-synapse-user-task-type`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_task_type: Option<String>,
+    /// Resolved classification of the work the gateway performed. Always set
+    /// (defaults to `"simple"`), so unlike `user_task_type` it is never skipped.
+    pub ai_task_type: String,
 }
 
 impl From<&UsageEntry> for UsageEvent {
@@ -68,6 +71,7 @@ impl From<&UsageEntry> for UsageEvent {
             status: e.status.clone(),
             op: e.op.clone(),
             user_task_type: e.user_task_type.clone(),
+            ai_task_type: e.ai_task_type.clone(),
         }
     }
 }
@@ -112,6 +116,7 @@ mod tests {
             status: "ok".into(),
             op: "chat".into(),
             user_task_type: None,
+            ai_task_type: "simple".into(),
         }
     }
 
@@ -131,6 +136,17 @@ mod tests {
         assert!(v.get("request_id").is_none());
         assert!(v.get("input_tokens").is_none());
         assert!(v.get("userTaskType").is_none());
+        // Always resolved, so unlike userTaskType it is always serialized.
+        assert_eq!(v["aiTaskType"], "simple");
+        assert!(v.get("ai_task_type").is_none());
+    }
+
+    #[test]
+    fn serializes_the_resolved_ai_task_type() {
+        let mut e = entry();
+        e.ai_task_type = "conversation".into();
+        let v = serde_json::to_value(UsageEvent::from(&e)).unwrap();
+        assert_eq!(v["aiTaskType"], "conversation");
     }
 
     #[test]

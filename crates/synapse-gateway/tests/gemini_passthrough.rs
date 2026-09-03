@@ -150,6 +150,8 @@ async fn buffered_generate_content_forwards_and_meters() {
     assert_eq!(rows[0].workspace.as_deref(), Some("ws-9"));
     assert_eq!(rows[0].user.as_deref(), Some("user-42"));
     assert_eq!(rows[0].user_task_type.as_deref(), Some("summarisation"));
+    // No x-synapse-ai-task-type header and no mapping for this route: default.
+    assert_eq!(rows[0].ai_task_type, "simple");
     assert_eq!(rows[0].model, MODEL);
     assert_eq!(rows[0].route, "fast");
     assert_eq!(rows[0].lane, "passthrough");

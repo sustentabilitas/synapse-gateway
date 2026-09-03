@@ -369,8 +369,27 @@ Request headers control cost and observability attribution:
 | `x-synapse-thread` | Optional conversation / agent thread id. |
 | `x-synapse-message` | Optional chat / work message id within the thread. When set and no explicit request id is supplied, used as the ledger `request_id` for correlation. |
 | `x-synapse-user-task-type` | Optional free-form classification of the work the request serves (e.g. `summarisation`, `code-review`). Never interpreted by the gateway. |
+| `x-synapse-ai-task-type` | Optional override for the AI task type. When absent or empty it is inferred from the request's route alias via `config/ai_task_types.toml`, falling back to `simple`. |
 
-Tenant and workspace are recorded on ledger `usage_events` rows and carried as attributes on `gen_ai.*` spans; user / thread / message / user task type are recorded on ledger rows (and published events) but kept off metrics/spans to bound label cardinality.
+Tenant and workspace are recorded on ledger `usage_events` rows and carried as attributes on `gen_ai.*` spans; user / thread / message / user task type / AI task type are recorded on ledger rows (and published events) but kept off metrics/spans to bound label cardinality.
+
+### AI task type
+
+Every ledger row carries an `ai_task_type` describing the kind of work the gateway performed. It is resolved per request as:
+
+1. the `x-synapse-ai-task-type` header, when supplied and non-empty;
+2. the task type mapped to the request's route alias in `config/ai_task_types.toml`;
+3. `simple`.
+
+The table is keyed by task type, so multiple route aliases can share one:
+
+```toml
+# config/ai_task_types.toml
+conversation = ["conversation", "planning", "nl-plan"]
+extraction   = ["extract", "doc-extract", "structured"]
+```
+
+The path is set by `SYNAPSE_AI_TASK_TYPES_PATH` (default `config/ai_task_types.toml`). The file is optional — when absent every row resolves to `simple`. A route alias listed under two task types is ambiguous and fails at startup.
 
 ---
 

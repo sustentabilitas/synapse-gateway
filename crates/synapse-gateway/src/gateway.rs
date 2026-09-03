@@ -40,6 +40,7 @@ pub struct Gateway {
         std::collections::HashMap<String, Arc<dyn crate::embeddings::EmbeddingProvider>>,
     pub(crate) embed_default_input_per_mtok: f64,
     pub(crate) guard: Arc<GuardEngine>,
+    pub(crate) ai_task_types: Arc<crate::ai_task_type::AiTaskTypeTable>,
 }
 
 /// Per-call identity for an in-process request (replaces HTTP headers).
@@ -57,6 +58,10 @@ pub struct RequestCtx {
     /// (`x-synapse-user-task-type` over HTTP). Free-form and never interpreted
     /// by the gateway; recorded on the ledger row for downstream reporting.
     pub user_task_type: Option<String>,
+    /// Overrides the route-alias inference for the AI task type
+    /// (`x-synapse-ai-task-type` over HTTP). When `None` or empty, the task type
+    /// is inferred from the route alias, falling back to `"simple"`.
+    pub ai_task_type: Option<String>,
     /// Correlation id for the ledger row. When `None`, falls back to `message`
     /// (so a chat turn correlates with usage), then a generated UUID.
     /// Embedders (and the HTTP layer) can pass their own so the ledger row and
@@ -75,6 +80,35 @@ impl RequestCtx {
     }
 }
 
+/// The attribution fields a ledger row carries, resolved once per request.
+///
+/// Grouped so the streaming and passthrough meters take a single named argument
+/// instead of six positional `Option<String>`s, where a swapped pair would
+/// compile cleanly and silently mis-attribute usage.
+#[derive(Debug, Clone)]
+pub struct Attribution {
+    pub workspace: Option<String>,
+    pub user: Option<String>,
+    pub thread: Option<String>,
+    pub message: Option<String>,
+    pub user_task_type: Option<String>,
+    /// Always resolved — see [`Gateway::ai_task_type_of`].
+    pub ai_task_type: String,
+}
+
+impl Default for Attribution {
+    fn default() -> Self {
+        Self {
+            workspace: None,
+            user: None,
+            thread: None,
+            message: None,
+            user_task_type: None,
+            ai_task_type: crate::ai_task_type::DEFAULT_AI_TASK_TYPE.to_string(),
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct GatewayBuilder {
     routes: Option<RouteTable>,
@@ -89,6 +123,7 @@ pub struct GatewayBuilder {
         Option<std::collections::HashMap<String, Arc<dyn crate::embeddings::EmbeddingProvider>>>,
     embed_default_input_per_mtok: Option<f64>,
     guard: Option<GuardEngine>,
+    ai_task_types: Option<crate::ai_task_type::AiTaskTypeTable>,
 }
 
 impl Gateway {
@@ -119,6 +154,29 @@ impl Gateway {
         ctx.tenant.as_deref().unwrap_or(&self.default_tenant)
     }
 
+    /// Resolve the AI task type for a call: the caller's header when non-empty,
+    /// else the task type configured for `alias`, else `"simple"`.
+    pub(crate) fn ai_task_type_of(&self, ctx: &RequestCtx, alias: &str) -> String {
+        ctx.ai_task_type
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| self.ai_task_types.resolve(alias))
+            .to_string()
+    }
+
+    /// Everything a ledger row needs from the request, resolved once so every
+    /// record site (buffered, streaming, embedding, passthrough) agrees.
+    pub(crate) fn attribution_of(&self, ctx: &RequestCtx, alias: &str) -> Attribution {
+        Attribution {
+            workspace: ctx.workspace.clone(),
+            user: ctx.user.clone(),
+            thread: ctx.thread.clone(),
+            message: ctx.message.clone(),
+            user_task_type: ctx.user_task_type.clone(),
+            ai_task_type: self.ai_task_type_of(ctx, alias),
+        }
+    }
+
     /// Fire cost + ledger + metrics for a completed call (buffered side-effects).
     #[allow(clippy::too_many_arguments)]
     fn record(
@@ -134,13 +192,14 @@ impl Gateway {
         let cost = self
             .pricing
             .cost_usd(&c.provider, &c.model, c.input_tokens, c.output_tokens);
+        let attr = self.attribution_of(ctx, route);
         self.ledger.enqueue(UsageEntry {
             ts: Utc::now(),
             tenant: self.tenant_of(ctx).to_string(),
-            workspace: ctx.workspace.clone(),
-            user: ctx.user.clone(),
-            thread: ctx.thread.clone(),
-            message: ctx.message.clone(),
+            workspace: attr.workspace,
+            user: attr.user,
+            thread: attr.thread,
+            message: attr.message,
             route: route.to_string(),
             provider: c.provider.clone(),
             model: c.model.clone(),
@@ -151,7 +210,8 @@ impl Gateway {
             request_id: request_id.to_string(),
             status: "ok".into(),
             op: "chat".into(),
-            user_task_type: ctx.user_task_type.clone(),
+            user_task_type: attr.user_task_type,
+            ai_task_type: attr.ai_task_type,
         });
         let span_lane = if lane == "native" {
             Lane::NativeVertex
@@ -270,11 +330,7 @@ impl Gateway {
             self.pricing.clone(),
             req.model.clone(),
             self.tenant_of(ctx).to_string(),
-            ctx.workspace.clone(),
-            ctx.user.clone(),
-            ctx.thread.clone(),
-            ctx.message.clone(),
-            ctx.user_task_type.clone(),
+            self.attribution_of(ctx, &req.model),
             committed.provider.clone(),
             committed.model.clone(),
             lane_str,
@@ -431,13 +487,14 @@ impl Gateway {
             input_tokens,
             self.embed_default_input_per_mtok,
         );
+        let attr = self.attribution_of(ctx, alias);
         self.ledger.enqueue(UsageEntry {
             ts: Utc::now(),
             tenant: self.tenant_of(ctx).to_string(),
-            workspace: ctx.workspace.clone(),
-            user: ctx.user.clone(),
-            thread: ctx.thread.clone(),
-            message: ctx.message.clone(),
+            workspace: attr.workspace,
+            user: attr.user,
+            thread: attr.thread,
+            message: attr.message,
             route: alias.to_string(),
             provider: leg.provider.clone(),
             model: leg.model.clone(),
@@ -450,7 +507,8 @@ impl Gateway {
                 .unwrap_or_else(|| Uuid::new_v4().to_string()),
             status: "ok".into(),
             op: "embedding".into(),
-            user_task_type: ctx.user_task_type.clone(),
+            user_task_type: attr.user_task_type,
+            ai_task_type: attr.ai_task_type,
         });
     }
 }
@@ -520,6 +578,10 @@ impl GatewayBuilder {
         self.guard = Some(guard);
         self
     }
+    pub fn ai_task_types(mut self, t: crate::ai_task_type::AiTaskTypeTable) -> Self {
+        self.ai_task_types = Some(t);
+        self
+    }
 
     pub fn build(self) -> anyhow::Result<Gateway> {
         Ok(Gateway {
@@ -545,6 +607,7 @@ impl GatewayBuilder {
             embedders: self.embedders.unwrap_or_default(),
             embed_default_input_per_mtok: self.embed_default_input_per_mtok.unwrap_or(0.10),
             guard: Arc::new(self.guard.unwrap_or_else(GuardEngine::empty)),
+            ai_task_types: Arc::new(self.ai_task_types.unwrap_or_default()),
         })
     }
 }
@@ -558,11 +621,7 @@ pub(crate) struct StreamSideEffects {
     pricing: Arc<PricingTable>,
     route: String,
     tenant: String,
-    workspace: Option<String>,
-    user: Option<String>,
-    thread: Option<String>,
-    message: Option<String>,
-    user_task_type: Option<String>,
+    attribution: Attribution,
     provider: String,
     model: String,
     lane: &'static str, // "standard" | "native"
@@ -582,11 +641,7 @@ impl StreamSideEffects {
         pricing: Arc<PricingTable>,
         route: String,
         tenant: String,
-        workspace: Option<String>,
-        user: Option<String>,
-        thread: Option<String>,
-        message: Option<String>,
-        user_task_type: Option<String>,
+        attribution: Attribution,
         provider: String,
         model: String,
         lane: &'static str,
@@ -599,11 +654,7 @@ impl StreamSideEffects {
             pricing,
             route,
             tenant,
-            workspace,
-            user,
-            thread,
-            message,
-            user_task_type,
+            attribution,
             provider,
             model,
             lane,
@@ -653,10 +704,10 @@ impl Drop for StreamSideEffects {
         self.ledger.enqueue(UsageEntry {
             ts: Utc::now(),
             tenant: self.tenant.clone(),
-            workspace: self.workspace.clone(),
-            user: self.user.clone(),
-            thread: self.thread.clone(),
-            message: self.message.clone(),
+            workspace: self.attribution.workspace.clone(),
+            user: self.attribution.user.clone(),
+            thread: self.attribution.thread.clone(),
+            message: self.attribution.message.clone(),
             route: self.route.clone(),
             provider: self.provider.clone(),
             model: self.model.clone(),
@@ -667,7 +718,8 @@ impl Drop for StreamSideEffects {
             request_id: self.request_id.clone(),
             status: self.status.to_string(),
             op: "chat".into(),
-            user_task_type: self.user_task_type.clone(),
+            user_task_type: self.attribution.user_task_type.clone(),
+            ai_task_type: self.attribution.ai_task_type.clone(),
         });
 
         // Metrics via GenAiSpan for parity with the buffered path: build a minimal
@@ -691,7 +743,7 @@ impl Drop for StreamSideEffects {
             lane,
             &self.route,
             &self.tenant,
-            self.workspace.as_deref(),
+            self.attribution.workspace.as_deref(),
             self.legs_attempted,
             true,
         )
@@ -827,11 +879,7 @@ mod tests {
                 pricing,
                 "route".into(),
                 "tenant".into(),
-                None,
-                None,
-                None,
-                None,
-                None,
+                Attribution::default(),
                 "p".into(),
                 "m".into(),
                 "standard",
@@ -873,11 +921,7 @@ mod tests {
             Arc::new(PricingTable::default()),
             "route".into(),
             "acme".into(),
-            None,
-            None,
-            None,
-            None,
-            None,
+            Attribution::default(),
             "p".into(),
             "m".into(),
             "standard",
@@ -900,6 +944,67 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].input_tokens, 4);
         assert_eq!(rows[0].tenant, "acme");
+    }
+
+    /// Minimal gateway for exercising resolution logic (no upstream needed).
+    fn resolver_gateway(ai_task_types: &str) -> Gateway {
+        let routes = RouteTable::from_toml_str(
+            "[routes.\"fast\"]\nlegs = [{ provider = \"qwen\", model = \"qwen-max\" }]",
+        )
+        .unwrap();
+        Gateway::builder()
+            .routes(routes)
+            .catalog(Catalog::for_test(vec![(
+                "qwen",
+                "http://127.0.0.1:1/v1".into(),
+            )]))
+            .pricing(PricingTable::default())
+            .ledger(LedgerHandle::spawn(
+                Arc::new(InMemoryLedger::default()) as Arc<dyn LedgerStore>,
+                4,
+            ))
+            .ai_task_types(
+                crate::ai_task_type::AiTaskTypeTable::from_toml_str(ai_task_types).unwrap(),
+            )
+            .build()
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn ai_task_type_prefers_the_caller_header_over_the_alias_mapping() {
+        let gw = resolver_gateway("conversation = [\"fast\"]");
+        let ctx = RequestCtx {
+            ai_task_type: Some("caller-supplied".into()),
+            ..Default::default()
+        };
+        assert_eq!(gw.ai_task_type_of(&ctx, "fast"), "caller-supplied");
+    }
+
+    #[tokio::test]
+    async fn ai_task_type_is_inferred_from_the_route_alias_when_no_header() {
+        let gw = resolver_gateway("conversation = [\"fast\", \"planning\"]");
+        let ctx = RequestCtx::default();
+        assert_eq!(gw.ai_task_type_of(&ctx, "fast"), "conversation");
+        assert_eq!(gw.ai_task_type_of(&ctx, "planning"), "conversation");
+    }
+
+    #[tokio::test]
+    async fn ai_task_type_defaults_to_simple_for_an_unmapped_alias() {
+        let gw = resolver_gateway("conversation = [\"fast\"]");
+        assert_eq!(
+            gw.ai_task_type_of(&RequestCtx::default(), "graph-llm"),
+            "simple"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_empty_ai_task_type_header_falls_back_to_inference() {
+        let gw = resolver_gateway("conversation = [\"fast\"]");
+        let ctx = RequestCtx {
+            ai_task_type: Some(String::new()),
+            ..Default::default()
+        };
+        assert_eq!(gw.ai_task_type_of(&ctx, "fast"), "conversation");
     }
 
     #[tokio::test]
@@ -927,6 +1032,10 @@ mod tests {
             .pricing(PricingTable::default())
             .ledger(ledger)
             .default_tenant("def")
+            .ai_task_types(
+                crate::ai_task_type::AiTaskTypeTable::from_toml_str("conversation = [\"fast\"]")
+                    .unwrap(),
+            )
             .build()
             .unwrap();
         let req = serde_json::from_value(serde_json::json!(
@@ -939,6 +1048,8 @@ mod tests {
             thread: Some("thread-9".into()),
             message: Some("msg-7".into()),
             user_task_type: Some("summarisation".into()),
+            // No override: the ledger row must show the alias-inferred value.
+            ai_task_type: None,
             request_id: Some("corr-123".into()),
         };
         let c = gw.chat(req, &ctx).await.unwrap();
@@ -952,6 +1063,8 @@ mod tests {
         assert_eq!(rows[0].thread.as_deref(), Some("thread-9"));
         assert_eq!(rows[0].message.as_deref(), Some("msg-7"));
         assert_eq!(rows[0].user_task_type.as_deref(), Some("summarisation"));
+        // No x-synapse-ai-task-type header: inferred from the "fast" route alias.
+        assert_eq!(rows[0].ai_task_type, "conversation");
         // A caller-supplied request_id propagates to the ledger row.
         assert_eq!(rows[0].request_id, "corr-123");
     }
@@ -983,6 +1096,10 @@ mod tests {
             .pricing(PricingTable::default())
             .ledger(ledger)
             .default_tenant("def")
+            .ai_task_types(
+                crate::ai_task_type::AiTaskTypeTable::from_toml_str("conversation = [\"fast\"]")
+                    .unwrap(),
+            )
             .build()
             .unwrap();
         let req = serde_json::from_value(serde_json::json!(
@@ -1005,6 +1122,7 @@ mod tests {
         let rows = store.entries();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].user_task_type.as_deref(), Some("code-review"));
+        assert_eq!(rows[0].ai_task_type, "conversation");
     }
 
     // --- Embeddings ---------------------------------------------------------
@@ -1110,6 +1228,7 @@ mod tests {
         assert_eq!(rows[0].provider, "good");
         assert!(rows[0].cost_usd > 0.0);
         assert_eq!(rows[0].user_task_type.as_deref(), Some("retrieval"));
+        assert_eq!(rows[0].ai_task_type, "simple");
     }
 
     #[tokio::test]
