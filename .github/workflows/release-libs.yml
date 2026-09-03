@@ -85,6 +85,10 @@ jobs:
             exit 1
           fi
           echo "Publishing ${CRATE} ${HAVE}"
+      # synapse-mcp depends on synapse-context, so the library crates have the
+      # same ordering requirement the binary crates do.
+      - name: Verify workspace dependencies are published
+        run: ./scripts/check-path-deps-published.sh ${{ needs.resolve.outputs.crate }}
       - name: cargo publish
         run: cargo publish -p ${{ needs.resolve.outputs.crate }} --locked
         env:

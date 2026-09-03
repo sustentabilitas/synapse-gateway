@@ -84,6 +84,11 @@ jobs:
             exit 1
           fi
           echo "Publishing ${CRATE} ${HAVE}"
+      # cargo resolves path+version deps against the registry, so a workspace
+      # dependency that has not been released yet fails packaging with an error
+      # that names no remedy. Catch it here instead.
+      - name: Verify workspace dependencies are published
+        run: ./scripts/check-path-deps-published.sh ${{ needs.resolve.outputs.crate }}
       - name: cargo publish
         run: cargo publish -p ${{ needs.resolve.outputs.crate }} --locked
         env:
