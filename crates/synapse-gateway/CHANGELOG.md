@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.31] - 2026-09-03
+
 ### Added
 
 - Optional `x-synapse-user-task-type` request header: a free-form caller-supplied
