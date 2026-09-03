@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+
+- Retry transient upstream send failures before answering 502 `request_failed`: connect errors (which never reached the upstream, e.g. MCS/clusterset endpoint churn) are retried for any method, other send errors only for idempotent methods. Default 2 retries with 200ms exponential backoff; tune via `SYNAPSE_PROXY_UPSTREAM_SEND_RETRIES` (0 disables) and `SYNAPSE_PROXY_UPSTREAM_RETRY_BACKOFF_MS`. Retries are counted in the new `synapse_proxy_upstream_retries_total` metric, and both retries and final send failures now log a `tracing` warning (previously a failed send was invisible in logs).
 
 ## 0.2.17
 
