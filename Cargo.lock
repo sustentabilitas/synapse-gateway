@@ -4210,7 +4210,7 @@ version = "0.1.1"
 
 [[package]]
 name = "synapse-gateway"
-version = "0.5.32"
+version = "0.5.33"
 dependencies = [
  "anyhow",
  "async-trait",
