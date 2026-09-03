@@ -23,6 +23,7 @@ async fn records_and_persists_a_usage_row() {
         request_id: "req-1".into(),
         status: "ok".into(),
         op: "chat".into(),
+        user_task_type: Some("summarisation".into()),
     };
     store.record(&entry).await.unwrap();
     store.record(&entry).await.unwrap();

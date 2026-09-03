@@ -40,6 +40,9 @@ pub struct UsageEntry {
     pub status: String,
     /// Lane discriminator for the ledger: "chat" or "embedding".
     pub op: String,
+    /// Caller-supplied classification of the work this request serves
+    /// (`x-synapse-user-task-type`). Free-form; the gateway never interprets it.
+    pub user_task_type: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -172,6 +175,7 @@ mod tests {
             request_id: "r1".into(),
             status: "ok".into(),
             op: "chat".into(),
+            user_task_type: None,
         }
     }
 

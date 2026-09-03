@@ -105,6 +105,7 @@ fn gemini_request(path_and_query: &str) -> Request<Body> {
         .header("x-synapse-tenant", "acme")
         .header("x-synapse-workspace", "ws-9")
         .header("x-synapse-user", "user-42")
+        .header("x-synapse-user-task-type", "summarisation")
         .body(Body::from(
             serde_json::json!({"contents":[{"role":"user","parts":[{"text":"hi"}]}]}).to_string(),
         ))
@@ -148,6 +149,7 @@ async fn buffered_generate_content_forwards_and_meters() {
     assert_eq!(rows[0].tenant, "acme");
     assert_eq!(rows[0].workspace.as_deref(), Some("ws-9"));
     assert_eq!(rows[0].user.as_deref(), Some("user-42"));
+    assert_eq!(rows[0].user_task_type.as_deref(), Some("summarisation"));
     assert_eq!(rows[0].model, MODEL);
     assert_eq!(rows[0].route, "fast");
     assert_eq!(rows[0].lane, "passthrough");

@@ -23,12 +23,12 @@ impl PostgresLedger {
              user_id TEXT, thread_id TEXT, message_id TEXT, \
              route TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, lane TEXT NOT NULL, \
              input_tokens BIGINT NOT NULL, output_tokens BIGINT NOT NULL, cost_usd DOUBLE PRECISION NOT NULL, \
-             request_id TEXT NOT NULL, status TEXT NOT NULL)",
+             request_id TEXT NOT NULL, status TEXT NOT NULL, user_task_type TEXT)",
         )
         .execute(&pool)
         .await
         .map_err(|e| LedgerError::Backend(e.to_string()))?;
-        // Tables created before the user_id / thread_id / message_id columns existed.
+        // Tables created before the user_id / thread_id / message_id / user_task_type columns existed.
         sqlx::query("ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS user_id TEXT")
             .execute(&pool)
             .await
@@ -38,6 +38,10 @@ impl PostgresLedger {
             .await
             .map_err(|e| LedgerError::Backend(e.to_string()))?;
         sqlx::query("ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS message_id TEXT")
+            .execute(&pool)
+            .await
+            .map_err(|e| LedgerError::Backend(e.to_string()))?;
+        sqlx::query("ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS user_task_type TEXT")
             .execute(&pool)
             .await
             .map_err(|e| LedgerError::Backend(e.to_string()))?;
@@ -51,8 +55,8 @@ impl LedgerStore for PostgresLedger {
         sqlx::query(
             "INSERT INTO usage_events \
              (ts, tenant, workspace, user_id, thread_id, message_id, route, provider, model, lane, \
-              input_tokens, output_tokens, cost_usd, request_id, status) \
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
+              input_tokens, output_tokens, cost_usd, request_id, status, user_task_type) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)",
         )
         .bind(e.ts)
         .bind(&e.tenant)
@@ -69,6 +73,7 @@ impl LedgerStore for PostgresLedger {
         .bind(e.cost_usd)
         .bind(&e.request_id)
         .bind(&e.status)
+        .bind(&e.user_task_type)
         .execute(&self.pool)
         .await
         .map_err(|e| LedgerError::Backend(e.to_string()))?;

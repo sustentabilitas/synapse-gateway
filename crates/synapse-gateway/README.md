@@ -368,8 +368,9 @@ Request headers control cost and observability attribution:
 | `x-synapse-user` | Optional end-user identifier within a tenant, for per-user usage attribution. |
 | `x-synapse-thread` | Optional conversation / agent thread id. |
 | `x-synapse-message` | Optional chat / work message id within the thread. When set and no explicit request id is supplied, used as the ledger `request_id` for correlation. |
+| `x-synapse-user-task-type` | Optional free-form classification of the work the request serves (e.g. `summarisation`, `code-review`). Never interpreted by the gateway. |
 
-Tenant and workspace are recorded on ledger `usage_events` rows and carried as attributes on `gen_ai.*` spans; user / thread / message are recorded on ledger rows (and published events) but kept off metrics/spans to bound label cardinality.
+Tenant and workspace are recorded on ledger `usage_events` rows and carried as attributes on `gen_ai.*` spans; user / thread / message / user task type are recorded on ledger rows (and published events) but kept off metrics/spans to bound label cardinality.
 
 ---
 

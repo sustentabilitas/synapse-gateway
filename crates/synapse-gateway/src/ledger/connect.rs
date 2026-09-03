@@ -203,6 +203,7 @@ mod tests {
                 request_id: "req".into(),
                 status: "ok".into(),
                 op: "chat".into(),
+                user_task_type: None,
             })
             .await
             .unwrap();
@@ -243,6 +244,7 @@ mod tests {
             request_id: "req".into(),
             status: "ok".into(),
             op: "chat".into(),
+            user_task_type: None,
         };
         store.record(&entry).await.unwrap();
         store.record(&entry).await.unwrap();

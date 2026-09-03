@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Optional `x-synapse-user-task-type` request header: a free-form caller-supplied
+  classification of the work a request serves. Accepted on `/v1/chat/completions`
+  (buffered and streaming), `/v1/embeddings`, and the Gemini-native passthrough,
+  and propagated to the cost ledger as the `user_task_type` column (SQLite and
+  Postgres, backfilled on existing tables) and as `userTaskType` on published
+  Pub/Sub and SNS usage events. Kept off metrics and `gen_ai.*` spans to bound
+  label cardinality. Library callers set `RequestCtx::user_task_type`.
+
 ## [0.5.30] - 2026-08-11
 
 ## [0.5.29] - 2026-08-11

@@ -246,14 +246,18 @@ output = 6.4
 
 ## Atribución por tenant
 
-Dos encabezados de petición controlan la atribución de costes y observabilidad:
+Los encabezados de petición controlan la atribución de costes y observabilidad:
 
 | Encabezado | Descripción |
 |------------|-------------|
 | `x-synapse-tenant` | Identificador de tenant. Recurre a `SYNAPSE_DEFAULT_TENANT` (`unattributed`). |
 | `x-synapse-workspace` | Subagrupación opcional dentro de un tenant (p. ej. un proyecto o equipo). |
+| `x-synapse-user` | Identificador opcional de usuario final dentro del tenant, para atribuir el uso por usuario. |
+| `x-synapse-thread` | Identificador opcional de conversación / hilo de agente. |
+| `x-synapse-message` | Identificador opcional de mensaje dentro del hilo. Si se envía y no hay un id de petición explícito, se usa como `request_id` del registro para correlación. |
+| `x-synapse-user-task-type` | Clasificación opcional y libre del trabajo que atiende la petición (p. ej. `summarisation`, `code-review`). El gateway nunca la interpreta. |
 
-Ambos valores se registran en las filas `usage_events` del registro de costes y se incluyen como atributos en los spans `gen_ai.*`.
+Tenant y workspace se registran en las filas `usage_events` del registro de costes y se incluyen como atributos en los spans `gen_ai.*`; usuario / hilo / mensaje / tipo de tarea se registran en las filas del registro (y en los eventos publicados) pero se mantienen fuera de métricas y spans para acotar la cardinalidad de etiquetas.
 
 ---
 

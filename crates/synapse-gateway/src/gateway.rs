@@ -53,6 +53,10 @@ pub struct RequestCtx {
     pub thread: Option<String>,
     /// Chat / work message within the thread (`x-synapse-message` over HTTP).
     pub message: Option<String>,
+    /// Caller-supplied classification of the work this request serves
+    /// (`x-synapse-user-task-type` over HTTP). Free-form and never interpreted
+    /// by the gateway; recorded on the ledger row for downstream reporting.
+    pub user_task_type: Option<String>,
     /// Correlation id for the ledger row. When `None`, falls back to `message`
     /// (so a chat turn correlates with usage), then a generated UUID.
     /// Embedders (and the HTTP layer) can pass their own so the ledger row and
@@ -147,6 +151,7 @@ impl Gateway {
             request_id: request_id.to_string(),
             status: "ok".into(),
             op: "chat".into(),
+            user_task_type: ctx.user_task_type.clone(),
         });
         let span_lane = if lane == "native" {
             Lane::NativeVertex
@@ -269,6 +274,7 @@ impl Gateway {
             ctx.user.clone(),
             ctx.thread.clone(),
             ctx.message.clone(),
+            ctx.user_task_type.clone(),
             committed.provider.clone(),
             committed.model.clone(),
             lane_str,
@@ -444,6 +450,7 @@ impl Gateway {
                 .unwrap_or_else(|| Uuid::new_v4().to_string()),
             status: "ok".into(),
             op: "embedding".into(),
+            user_task_type: ctx.user_task_type.clone(),
         });
     }
 }
@@ -555,6 +562,7 @@ pub(crate) struct StreamSideEffects {
     user: Option<String>,
     thread: Option<String>,
     message: Option<String>,
+    user_task_type: Option<String>,
     provider: String,
     model: String,
     lane: &'static str, // "standard" | "native"
@@ -578,6 +586,7 @@ impl StreamSideEffects {
         user: Option<String>,
         thread: Option<String>,
         message: Option<String>,
+        user_task_type: Option<String>,
         provider: String,
         model: String,
         lane: &'static str,
@@ -594,6 +603,7 @@ impl StreamSideEffects {
             user,
             thread,
             message,
+            user_task_type,
             provider,
             model,
             lane,
@@ -657,6 +667,7 @@ impl Drop for StreamSideEffects {
             request_id: self.request_id.clone(),
             status: self.status.to_string(),
             op: "chat".into(),
+            user_task_type: self.user_task_type.clone(),
         });
 
         // Metrics via GenAiSpan for parity with the buffered path: build a minimal
@@ -820,6 +831,7 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
                 "p".into(),
                 "m".into(),
                 "standard",
@@ -861,6 +873,7 @@ mod tests {
             Arc::new(PricingTable::default()),
             "route".into(),
             "acme".into(),
+            None,
             None,
             None,
             None,
@@ -921,11 +934,12 @@ mod tests {
         .unwrap();
         let ctx = RequestCtx {
             tenant: Some("acme".into()),
+            workspace: Some("ws-9".into()),
             user: Some("user-42".into()),
             thread: Some("thread-9".into()),
             message: Some("msg-7".into()),
+            user_task_type: Some("summarisation".into()),
             request_id: Some("corr-123".into()),
-            ..Default::default()
         };
         let c = gw.chat(req, &ctx).await.unwrap();
         assert_eq!(c.content, "hi");
@@ -937,6 +951,7 @@ mod tests {
         assert_eq!(rows[0].user.as_deref(), Some("user-42"));
         assert_eq!(rows[0].thread.as_deref(), Some("thread-9"));
         assert_eq!(rows[0].message.as_deref(), Some("msg-7"));
+        assert_eq!(rows[0].user_task_type.as_deref(), Some("summarisation"));
         // A caller-supplied request_id propagates to the ledger row.
         assert_eq!(rows[0].request_id, "corr-123");
     }
@@ -973,7 +988,11 @@ mod tests {
         let req = serde_json::from_value(serde_json::json!(
             {"model":"fast","stream":true,"messages":[{"role":"user","content":"hi"}]}))
         .unwrap();
-        let mut stream = gw.chat_stream(req, &RequestCtx::default()).await.unwrap();
+        let ctx = RequestCtx {
+            user_task_type: Some("code-review".into()),
+            ..Default::default()
+        };
+        let mut stream = gw.chat_stream(req, &ctx).await.unwrap();
         let mut got = false;
         while let Some(i) = stream.next().await {
             if matches!(i.unwrap(), StreamItem::Delta(ref t) if t == "go") {
@@ -983,7 +1002,9 @@ mod tests {
         drop(stream);
         assert!(got);
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        assert_eq!(store.entries().len(), 1);
+        let rows = store.entries();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].user_task_type.as_deref(), Some("code-review"));
     }
 
     // --- Embeddings ---------------------------------------------------------
@@ -1069,7 +1090,11 @@ mod tests {
             model: "default-embed".into(),
             dimensions: None,
         };
-        let resp = gw.embed(req, RequestCtx::default()).await.unwrap();
+        let ctx = RequestCtx {
+            user_task_type: Some("retrieval".into()),
+            ..Default::default()
+        };
+        let resp = gw.embed(req, ctx).await.unwrap();
         assert_eq!(resp.data.len(), 2);
         assert!(resp.data.iter().all(|d| d.embedding.len() == 4));
         assert_eq!(resp.data[0].index, 0);
@@ -1084,6 +1109,7 @@ mod tests {
         assert_eq!(rows[0].output_tokens, 0);
         assert_eq!(rows[0].provider, "good");
         assert!(rows[0].cost_usd > 0.0);
+        assert_eq!(rows[0].user_task_type.as_deref(), Some("retrieval"));
     }
 
     #[tokio::test]

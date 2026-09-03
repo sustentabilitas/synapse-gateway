@@ -42,6 +42,9 @@ pub struct UsageEvent {
     pub status: String,
     /// Lane discriminator: "chat" or "embedding".
     pub op: String,
+    /// Caller-supplied classification of the work (`x-synapse-user-task-type`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_task_type: Option<String>,
 }
 
 impl From<&UsageEntry> for UsageEvent {
@@ -64,6 +67,7 @@ impl From<&UsageEntry> for UsageEvent {
             cost_usd: e.cost_usd,
             status: e.status.clone(),
             op: e.op.clone(),
+            user_task_type: e.user_task_type.clone(),
         }
     }
 }
@@ -107,6 +111,7 @@ mod tests {
             request_id: "req-1".into(),
             status: "ok".into(),
             op: "chat".into(),
+            user_task_type: None,
         }
     }
 
@@ -125,6 +130,16 @@ mod tests {
         assert!(v.get("user").is_none());
         assert!(v.get("request_id").is_none());
         assert!(v.get("input_tokens").is_none());
+        assert!(v.get("userTaskType").is_none());
+    }
+
+    #[test]
+    fn serializes_user_task_type_when_present() {
+        let mut e = entry();
+        e.user_task_type = Some("summarisation".into());
+        let v = serde_json::to_value(UsageEvent::from(&e)).unwrap();
+        assert_eq!(v["userTaskType"], "summarisation");
+        assert!(v.get("user_task_type").is_none());
     }
 
     #[test]

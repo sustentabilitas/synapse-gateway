@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS usage_events (
     output_tokens INTEGER NOT NULL,
     cost_usd      REAL    NOT NULL,
     request_id    TEXT    NOT NULL,
-    status        TEXT    NOT NULL
+    status        TEXT    NOT NULL,
+    user_task_type TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_usage_tenant ON usage_events (tenant, workspace);
