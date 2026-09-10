@@ -1,6 +1,10 @@
 # Changelog
 
 
+## 0.2.2
+
+- Soft-skip A2A seed agents whose `card_url` is unreachable or invalid after retries (warn + continue). Prevents CrashLoop deadlock when a peer agent is still booting.
+
 ## 0.2.1
 
 ## 0.2.0
