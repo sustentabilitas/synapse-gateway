@@ -99,18 +99,28 @@ async fn fetch_card(client: &reqwest::Client, card_url: &str) -> Result<Value> {
 }
 
 /// Fetch cards and insert-only register each agent.
+///
+/// Unreachable or invalid cards are **skipped** after retries (warn + continue)
+/// so boot does not deadlock when a peer agent (e.g. ploutonion) is still
+/// starting. Bad TOML / I/O still fail in [`seed_from_path`].
 pub async fn seed_agents(
     registry: &A2aRegistry,
     agents: &[A2aSeedAgent],
     client: &reqwest::Client,
 ) -> Result<()> {
     for agent in agents {
-        let card = fetch_card(client, &agent.card_url).await.with_context(|| {
-            format!(
-                "fetching agent card for id='{}' url='{}'",
-                agent.id, agent.card_url
-            )
-        })?;
+        let card = match fetch_card(client, &agent.card_url).await {
+            Ok(card) => card,
+            Err(error) => {
+                warn!(
+                    id = %agent.id,
+                    card_url = %agent.card_url,
+                    error = %error,
+                    "skipping a2a seed agent: card fetch failed after retries"
+                );
+                continue;
+            }
+        };
         let inserted = registry.try_register(A2aRegistration {
             id: agent.id.clone(),
             name: agent.name.clone(),
@@ -257,7 +267,7 @@ ttl_seconds = 3600
     }
 
     #[tokio::test]
-    async fn seed_fails_after_retry_exhaustion() {
+    async fn seed_skips_agent_after_retry_exhaustion() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/card.json"))
@@ -279,13 +289,8 @@ ttl_seconds = 3600
             .timeout(Duration::from_secs(15))
             .build()
             .unwrap();
-        let err = seed_agents(&registry, &[agent], &client).await.unwrap_err();
-        let msg = format!("{err:#}");
-        assert!(msg.contains("ghg-emissions"), "{msg}");
-        assert!(
-            msg.contains("card.json") || msg.contains("/card.json"),
-            "{msg}"
-        );
+        seed_agents(&registry, &[agent], &client).await.unwrap();
+        assert!(registry.resolve("ghg-emissions").is_none());
     }
 
     #[tokio::test]
@@ -324,22 +329,37 @@ ttl_seconds = 3600
     }
 
     #[tokio::test]
-    async fn seed_non_retryable_4xx_fails_without_success() {
+    async fn seed_skips_non_retryable_4xx_and_continues() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/card.json"))
+            .and(path("/missing.json"))
             .respond_with(ResponseTemplate::new(404))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/ok.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(sample_card()))
             .expect(1)
             .mount(&server)
             .await;
 
         let registry = A2aRegistry::new();
-        let agent = A2aSeedAgent {
+        let missing = A2aSeedAgent {
             id: "missing".into(),
             name: "x".into(),
             description: "d".into(),
             endpoint_url: "http://p/a2a".into(),
-            card_url: format!("{}/card.json", server.uri()),
+            card_url: format!("{}/missing.json", server.uri()),
+            tags: vec![],
+            ttl_seconds: None,
+        };
+        let ok = A2aSeedAgent {
+            id: "ghg-emissions".into(),
+            name: "GHG".into(),
+            description: "d".into(),
+            endpoint_url: "http://p/a2a".into(),
+            card_url: format!("{}/ok.json", server.uri()),
             tags: vec![],
             ttl_seconds: None,
         };
@@ -347,7 +367,10 @@ ttl_seconds = 3600
             .timeout(Duration::from_secs(15))
             .build()
             .unwrap();
-        assert!(seed_agents(&registry, &[agent], &client).await.is_err());
+        seed_agents(&registry, &[missing, ok], &client)
+            .await
+            .unwrap();
         assert!(registry.resolve("missing").is_none());
+        assert!(registry.resolve("ghg-emissions").is_some());
     }
 }

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.34] - 2026-09-10
+
+### Changed
+
+- A2A static seed soft-skips agents whose `card_url` is unreachable or invalid
+  after retries (warn + continue). Prevents CrashLoop deadlock when a peer
+  agent (e.g. ploutonion) is still starting.
+
 ## [0.5.33] - 2026-09-03
 
 ## [0.5.32] - 2026-09-03

@@ -1,5 +1,5 @@
 # Static A2A agent seed (optional). Absent file ⇒ empty registry.
-# Each entry's agent card is fetched from card_url at boot (retry then fail-fast).
+# Each entry's agent card is fetched from card_url at boot (retry then skip on failure).
 # Runtime agents can still POST /internal/a2a/agents (insert-only; duplicates ignored).
 #
 # [[a2a_agents]]

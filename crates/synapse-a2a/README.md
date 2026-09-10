@@ -28,7 +28,7 @@ card_url = "http://ploutonion/a2a/agents/ghg-emissions/.well-known/agent-card.js
 tags = ["ghg", "emissions"]
 ```
 
-At boot the gateway GETs each `card_url` (3 attempts, exponential backoff) and insert-only registers the agent. Missing seed file ⇒ empty registry. Unreachable / invalid card after retries ⇒ process fails to start.
+At boot the gateway GETs each `card_url` (3 attempts, exponential backoff) and insert-only registers the agent. Missing seed file ⇒ empty registry. Unreachable / invalid card after retries ⇒ that agent is **skipped** (warn + continue) so peer CrashLoops cannot take down LLM routing.
 
 ## Registration semantics
 
