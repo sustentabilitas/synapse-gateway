@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use crate::error::{GatewayError, LegFailure};
 use crate::guard::GuardEngine;
+use crate::jev_native::JevNativeProvider;
 use crate::ledger::{LedgerHandle, UsageEntry};
 use crate::observability::GenAiSpan;
 use crate::pricing::PricingTable;
@@ -33,6 +34,7 @@ pub struct Gateway {
     pub(crate) pricing: Arc<PricingTable>,
     pub(crate) ledger: LedgerHandle,
     pub(crate) vertex_native: Option<Arc<VertexNativeProvider>>,
+    pub(crate) jev_native: Option<Arc<JevNativeProvider>>,
     pub(crate) timeouts: StreamTimeouts,
     pub(crate) default_tenant: String,
     pub(crate) embed_routes: Arc<crate::routing::embeddings::EmbeddingRouteTable>,
@@ -116,6 +118,7 @@ pub struct GatewayBuilder {
     pricing: Option<PricingTable>,
     ledger: Option<LedgerHandle>,
     vertex_native: Option<VertexNativeProvider>,
+    jev_native: Option<JevNativeProvider>,
     timeouts: Option<StreamTimeouts>,
     default_tenant: Option<String>,
     embed_routes: Option<crate::routing::embeddings::EmbeddingRouteTable>,
@@ -548,6 +551,10 @@ impl GatewayBuilder {
         self.vertex_native = v;
         self
     }
+    pub fn jev_native(mut self, v: Option<JevNativeProvider>) -> Self {
+        self.jev_native = v;
+        self
+    }
     pub fn timeouts(mut self, t: StreamTimeouts) -> Self {
         self.timeouts = Some(t);
         self
@@ -601,6 +608,7 @@ impl GatewayBuilder {
                 .ledger
                 .ok_or_else(|| anyhow::anyhow!("Gateway: ledger required"))?,
             vertex_native: self.vertex_native.map(Arc::new),
+            jev_native: self.jev_native.map(Arc::new),
             timeouts: self.timeouts.unwrap_or_default(),
             default_tenant: self.default_tenant.unwrap_or_else(|| "unattributed".into()),
             embed_routes: Arc::new(self.embed_routes.unwrap_or_default()),

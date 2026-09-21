@@ -33,6 +33,9 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
         .route("/v1beta/models/{model_action}", post(gemini_passthrough))
         .route("/v1/models/{model_action}", post(gemini_passthrough))
         .route("/google/models/{model_action}", post(gemini_passthrough))
+        // TypeSafe System One (Jev) passthrough: forwards `{state, questions}`
+        // bodies verbatim — Jev has no OpenAI-shaped equivalent.
+        .route("/typesafe/v1/systemone", post(jev_passthrough))
         .with_state(AppState { gateway })
 }
 
@@ -211,7 +214,14 @@ async fn gemini_passthrough(
         .increment(1);
 
         if status.is_success() {
-            let mut guard = PassthroughUsageGuard::new(&st.gateway, &ctx, &leg.model, route_alias);
+            let mut guard = PassthroughUsageGuard::new(
+                &st.gateway,
+                &ctx,
+                &leg.model,
+                route_alias,
+                "vertex",
+                "chat",
+            );
             if streaming && alt_sse {
                 let content_type = resp
                     .headers()
@@ -266,6 +276,83 @@ async fn gemini_passthrough(
     })
 }
 
+/// TypeSafe System One (Jev) passthrough (`POST /typesafe/v1/systemone`):
+/// forwards the `{state, questions}` body verbatim to TypeSafe's API,
+/// re-authenticated with the gateway's own key, and meters from the response's
+/// `usage`. Jev answers typed questions with structured decisions and has no
+/// chat surface, so — unlike the Gemini passthrough — there is no fallback
+/// chain and no SSE variant; upstream statuses and error bodies pass through
+/// untranslated.
+async fn jev_passthrough(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    Json(mut body): Json<serde_json::Value>,
+) -> Result<Response, GatewayError> {
+    let provider = st
+        .gateway
+        .jev_native
+        .as_ref()
+        .ok_or_else(|| {
+            GatewayError::BadRequest(
+                "jev passthrough requires TYPESAFE_API_KEY to be configured".into(),
+            )
+        })?
+        .clone();
+
+    if !body.is_object() {
+        return Err(GatewayError::BadRequest(
+            "expected a JSON object body".into(),
+        ));
+    }
+    if body.get("model").is_none() {
+        body["model"] = serde_json::Value::from(crate::jev_native::DEFAULT_MODEL);
+    }
+    let model = body["model"]
+        .as_str()
+        .unwrap_or(crate::jev_native::DEFAULT_MODEL)
+        .to_string();
+
+    let ctx = request_ctx(&headers);
+    let mut guard =
+        PassthroughUsageGuard::new(&st.gateway, &ctx, &model, None, "typesafe", "systemone");
+
+    let resp = match provider.evaluate(body).await {
+        Ok(r) => r,
+        Err(e) => {
+            guard.status = "error";
+            return Err(e);
+        }
+    };
+
+    let status = resp.status();
+    metrics::counter!(
+        "synapse_passthrough_total",
+        "provider" => "typesafe",
+        "model" => model.clone(),
+        "action" => "systemone",
+        "status" => if status.is_success() { "ok" } else { "error" },
+    )
+    .increment(1);
+
+    if status.is_success() {
+        let bytes = resp.bytes().await.map_err(|e| {
+            guard.status = "error";
+            GatewayError::Upstream {
+                status: 502,
+                body: e.to_string(),
+            }
+        })?;
+        if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+            guard.observe_usage_metadata(&value);
+        }
+        return passthrough_response(status.as_u16(), "application/json", bytes);
+    }
+
+    let bytes = resp.bytes().await.unwrap_or_default();
+    guard.status = "error";
+    passthrough_response(status.as_u16(), "application/json", bytes)
+}
+
 fn passthrough_status_retryable(status: reqwest::StatusCode) -> bool {
     status.is_server_error()
         || status == reqwest::StatusCode::TOO_MANY_REQUESTS
@@ -273,7 +360,7 @@ fn passthrough_status_retryable(status: reqwest::StatusCode) -> bool {
 }
 
 fn meter_passthrough_error(gateway: &Gateway, ctx: &RequestCtx, model: &str, route: Option<&str>) {
-    let mut guard = PassthroughUsageGuard::new(gateway, ctx, model, route);
+    let mut guard = PassthroughUsageGuard::new(gateway, ctx, model, route, "vertex", "chat");
     guard.status = "error";
     drop(guard);
 }
@@ -293,11 +380,12 @@ fn passthrough_response(
         })
 }
 
-/// Accumulates `usageMetadata` token counts and fires exactly one ledger row on
+/// Accumulates response usage counts and fires exactly one ledger row on
 /// drop — every termination path (completion, error, client disconnect) meters.
 struct PassthroughUsageGuard {
     ledger: crate::ledger::LedgerHandle,
     pricing: std::sync::Arc<crate::pricing::PricingTable>,
+    provider: &'static str,
     tenant: String,
     attribution: crate::gateway::Attribution,
     route: String,
@@ -306,13 +394,22 @@ struct PassthroughUsageGuard {
     input_tokens: u64,
     output_tokens: u64,
     status: &'static str,
+    op: &'static str,
 }
 
 impl PassthroughUsageGuard {
-    fn new(gateway: &Gateway, ctx: &RequestCtx, model: &str, route: Option<&str>) -> Self {
+    fn new(
+        gateway: &Gateway,
+        ctx: &RequestCtx,
+        model: &str,
+        route: Option<&str>,
+        provider: &'static str,
+        op: &'static str,
+    ) -> Self {
         Self {
             ledger: gateway.ledger.clone(),
             pricing: gateway.pricing.clone(),
+            provider,
             tenant: ctx
                 .tenant
                 .clone()
@@ -326,17 +423,24 @@ impl PassthroughUsageGuard {
             input_tokens: 0,
             output_tokens: 0,
             status: "ok",
+            op,
         }
     }
 
-    /// Fold a Gemini response chunk's `usageMetadata` into the running totals.
-    /// Counts are cumulative per Vertex semantics, so later chunks overwrite.
+    /// Fold a response's usage into the running totals, overwriting earlier
+    /// counts. Both metered shapes are understood: Vertex `usageMetadata`
+    /// (counts are cumulative per chunk) and TypeSafe `usage` (single shot).
     fn observe_usage_metadata(&mut self, value: &serde_json::Value) {
-        let usage = &value["usageMetadata"];
-        if let Some(n) = usage["promptTokenCount"].as_u64() {
+        if let Some(n) = value["usage"]["input_tokens"].as_u64() {
             self.input_tokens = n;
         }
-        if let Some(n) = usage["candidatesTokenCount"].as_u64() {
+        if let Some(n) = value["usage"]["output_tokens"].as_u64() {
+            self.output_tokens = n;
+        }
+        if let Some(n) = value["usageMetadata"]["promptTokenCount"].as_u64() {
+            self.input_tokens = n;
+        }
+        if let Some(n) = value["usageMetadata"]["candidatesTokenCount"].as_u64() {
             self.output_tokens = n;
         }
     }
@@ -352,9 +456,12 @@ impl PassthroughUsageGuard {
 
 impl Drop for PassthroughUsageGuard {
     fn drop(&mut self) {
-        let cost =
-            self.pricing
-                .cost_usd("vertex", &self.model, self.input_tokens, self.output_tokens);
+        let cost = self.pricing.cost_usd(
+            self.provider,
+            &self.model,
+            self.input_tokens,
+            self.output_tokens,
+        );
         self.ledger.enqueue(crate::ledger::UsageEntry {
             ts: chrono::Utc::now(),
             tenant: self.tenant.clone(),
@@ -363,7 +470,7 @@ impl Drop for PassthroughUsageGuard {
             thread: self.attribution.thread.clone(),
             message: self.attribution.message.clone(),
             route: self.route.clone(),
-            provider: "vertex".into(),
+            provider: self.provider.into(),
             model: self.model.clone(),
             lane: "passthrough".into(),
             input_tokens: self.input_tokens,
@@ -371,7 +478,7 @@ impl Drop for PassthroughUsageGuard {
             cost_usd: cost,
             request_id: self.request_id.clone(),
             status: self.status.to_string(),
-            op: "chat".into(),
+            op: self.op.into(),
             user_task_type: self.attribution.user_task_type.clone(),
             ai_task_type: self.attribution.ai_task_type.clone(),
         });

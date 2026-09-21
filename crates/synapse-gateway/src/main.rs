@@ -9,6 +9,7 @@ use synapse::config::{vertex_project_from_env, Config};
 use synapse::embeddings::openai::OpenAiEmbedder;
 use synapse::embeddings::vertex::VertexEmbedder;
 use synapse::embeddings::EmbeddingProvider;
+use synapse::jev_native::JevNativeProvider;
 use synapse::ledger::LedgerHandle;
 use synapse::pricing::PricingTable;
 use synapse::providers::vertex_auth::VertexAuth;
@@ -72,6 +73,10 @@ async fn main() -> Result<()> {
 
     // Fail-fast: build every referenced provider's client + validate creds.
     let catalog = Catalog::build(&env, &routes.referenced_providers(), config.request_timeout)?;
+
+    // Native TypeSafe (Jev) lane is available when TYPESAFE_API_KEY is configured;
+    // TYPESAFE_BASE_URL overrides the hosted endpoint (self-hosted, tests).
+    let jev_native = JevNativeProvider::from_env(&env, config.request_timeout);
 
     // Native Vertex lane is available when VERTEX_PROJECT_ID or VERTEX_PROJECT is configured.
     // Region defaults to the global endpoint; override with VERTEX_LOCATION.
@@ -146,6 +151,7 @@ async fn main() -> Result<()> {
         .ai_task_types(ai_task_types)
         .ledger(ledger)
         .vertex_native(vertex_native.map(|a| (*a).clone()))
+        .jev_native(jev_native)
         .timeouts(synapse::routing::executor::StreamTimeouts {
             first_chunk: config.request_timeout,
             idle: config.stream_idle_timeout,

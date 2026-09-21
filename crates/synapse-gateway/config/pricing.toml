@@ -26,3 +26,13 @@ output = 0.0
 [ "qwen:qwen3-vl-plus" ]
 input = 0.80
 output = 2.40
+
+# USD per 1,000,000 tokens (TypeSafe list rates, Sep 2026): $42 per 1B input,
+# output free. Client-pinned ids (e.g. jev-1.13.0) need their own row.
+[ "typesafe:jev-latest" ]
+input = 0.042
+output = 0.0
+
+[ "typesafe:jev-preview" ]
+input = 0.042
+output = 0.0

@@ -171,6 +171,7 @@ Both timeouts apply to the standard lane. The native Vertex lane is currently bo
 | `GET` | `/health` | Returns `200 OK` with `{"status":"ok"}`. |
 | `GET` | `/v1/models` | Lists all model aliases defined in `routes.toml`. |
 | `POST` | `/v1/chat/completions` | OpenAI-compatible chat completions. Supports `stream: true` (SSE). Accepts optional `vertex` extension block. |
+| `POST` | `/typesafe/v1/systemone` | TypeSafe System One (Jev) passthrough. Forwards `{state, questions}` bodies verbatim — Jev has no OpenAI-shaped equivalent. Meters usage from the response's `usage` block. Requires `TYPESAFE_API_KEY`; no fallback chain or streaming. |
 
 ---
 
@@ -197,6 +198,8 @@ Both timeouts apply to the standard lane. The native Vertex lane is currently bo
 | `SYNAPSE_DEFAULT_TENANT` | `unattributed` | Tenant name used when `x-synapse-tenant` header is absent. |
 | `SYNAPSE_REQUEST_TIMEOUT_SECS` | `120` | Time-to-first-chunk timeout in seconds. A leg that does not produce its first chunk within this window falls back to the next leg. |
 | `SYNAPSE_STREAM_IDLE_TIMEOUT_SECS` | `60` | Maximum inter-chunk idle gap in seconds. A leg that stalls mid-stream for this long is terminated. |
+| `TYPESAFE_API_KEY` | — | Enables the TypeSafe System One (Jev) passthrough at `POST /typesafe/v1/systemone`. Unset = lane off (the route returns 400). |
+| `TYPESAFE_BASE_URL` | `https://api.typesafe.ai` | TypeSafe API endpoint override (self-hosted deployments, tests). |
 
 ### Provider credential variables
 

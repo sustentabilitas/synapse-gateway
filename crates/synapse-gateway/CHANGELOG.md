@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- TypeSafe System One (Jev) passthrough: `POST /typesafe/v1/systemone` forwards
+  `{state, questions}` bodies verbatim to TypeSafe's API and meters usage from
+  the response's `usage` block. Jev answers typed questions (choice / score /
+  noul) with structured decisions and has no OpenAI-shaped equivalent, so no
+  translation to `/v1/chat/completions` is attempted. Enabled when
+  `TYPESAFE_API_KEY` is set; `TYPESAFE_BASE_URL` overrides the hosted endpoint.
+
+### Changed
+
+- The passthrough usage meter now records the lane's provider and op
+  (`vertex`/`chat` for Gemini, `typesafe`/`systemone` for Jev) and understands
+  both usage shapes: Vertex `usageMetadata` and TypeSafe
+  `usage.{input,output}_tokens`.
+
 ## [0.5.34] - 2026-09-10
 
 ### Changed
