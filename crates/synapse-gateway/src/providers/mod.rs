@@ -25,7 +25,8 @@ impl Catalog {
     }
 
     /// Build every provider referenced by `referenced`, validating credentials
-    /// fail-fast. Recognised ids: `vertex`, `qwen`, `openai`, `oai_compat`.
+    /// fail-fast. Recognised ids: `vertex`, `qwen`, `openai`, `oai_compat`;
+    /// `typesafe` is validated but not built (it runs on the native Jev lane).
     pub fn build(
         env: &HashMap<String, String>,
         referenced: &std::collections::HashSet<String>,
@@ -77,6 +78,19 @@ impl Catalog {
                         endpoint_override: None,
                     },
                 )?,
+                // TypeSafe System One (Jev) has no genai client: the leg runs
+                // through `JevNativeProvider` on the Gateway, like the native
+                // Vertex lane. Validate the credential here for fail-fast
+                // parity; the leg itself is consumed by the Jev lane before
+                // the standard executor ever sees it.
+                "typesafe" => {
+                    if get("TYPESAFE_API_KEY").is_none() {
+                        anyhow::bail!(
+                            "route references provider 'typesafe' but TYPESAFE_API_KEY is unset"
+                        );
+                    }
+                    continue;
+                }
                 "oai_compat" => build_openai_compat_provider(
                     "oai_compat",
                     OpenAiCompatConfig {
@@ -175,6 +189,27 @@ mod catalog_tests {
         .unwrap();
         assert!(cat.get("qwen").is_some());
         assert!(cat.get("vertex").is_none());
+    }
+
+    #[test]
+    fn typesafe_without_key_fails_fast_with_named_error() {
+        let err =
+            Catalog::build(&env(&[]), &refs(&["typesafe"]), Duration::from_secs(5)).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("typesafe"), "{msg}");
+        assert!(msg.contains("TYPESAFE_API_KEY"), "{msg}");
+    }
+
+    #[test]
+    fn typesafe_with_key_is_validated_but_not_built() {
+        let cat = Catalog::build(
+            &env(&[("TYPESAFE_API_KEY", "sk-test")]),
+            &refs(&["typesafe"]),
+            Duration::from_secs(5),
+        )
+        .unwrap();
+        // No genai client: the leg is served by JevNativeProvider on the Gateway.
+        assert!(cat.get("typesafe").is_none());
     }
 
     #[test]

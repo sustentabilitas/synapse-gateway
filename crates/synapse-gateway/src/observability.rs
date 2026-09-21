@@ -64,6 +64,7 @@ impl GenAiSpan {
         let lane = match self.lane {
             Lane::Standard => "standard",
             Lane::NativeVertex => "native",
+            Lane::Jev => "jev",
         };
         let labels: Vec<Label> = vec![
             Label::new("route", self.route.clone()),
