@@ -19,6 +19,12 @@ pub struct ChatRequest {
     pub routing_strategy: Option<String>,
     #[serde(default)]
     pub vertex: Option<VertexExt>,
+    /// TypeSafe System One (Jev) extension block. Present (with non-empty
+    /// `questions`) routes the request to the route's `typesafe` legs; on
+    /// retryable Jev failure the remaining legs answer as a normal chat
+    /// completion.
+    #[serde(default)]
+    pub jev: Option<JevExt>,
     #[serde(default)]
     pub tools: Option<Vec<Value>>,
     #[serde(default)]
@@ -46,6 +52,19 @@ pub struct ResponseFormat {
     pub kind: String, // "text" | "json_object" | "json_schema"
     #[serde(default)]
     pub json_schema: Option<Value>,
+}
+
+/// TypeSafe System One (Jev) extension block on a chat request: typed
+/// questions evaluated against a state. The questions map is forwarded to Jev
+/// verbatim (name → `{type, instructions, criteria?}`).
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct JevExt {
+    /// name → question definition. Non-empty routes the request to the Jev lane.
+    pub questions: Map<String, Value>,
+    /// Optional state override. Default: the request's `messages` serialized
+    /// to JSON. State and questions share Jev's ~32k-token budget.
+    #[serde(default)]
+    pub state: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -95,6 +114,24 @@ mod tests {
             Some("cachedContents/abc")
         );
         assert_eq!(req.passthrough.get("top_k"), Some(&serde_json::json!(40)));
+    }
+
+    #[test]
+    fn captures_jev_extension() {
+        let body = serde_json::json!({
+            "model": "ticket-triage",
+            "messages": [{"role": "user", "content": "hi"}],
+            "jev": {
+                "questions": {
+                    "urgency": {"type": "noul", "instructions": "Is this urgent?"}
+                },
+                "state": "override"
+            }
+        });
+        let req: ChatRequest = serde_json::from_value(body).unwrap();
+        let jev = req.jev.unwrap();
+        assert!(jev.questions.contains_key("urgency"));
+        assert_eq!(jev.state.as_deref(), Some("override"));
     }
 
     #[test]

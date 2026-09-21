@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   noul) with structured decisions and has no OpenAI-shaped equivalent, so no
   translation to `/v1/chat/completions` is attempted. Enabled when
   `TYPESAFE_API_KEY` is set; `TYPESAFE_BASE_URL` overrides the hosted endpoint.
+- Jev chat lane: a route alias can list `typesafe` legs alongside chat legs,
+  and a chat request carrying a `jev` extension block (typed `questions`,
+  optional `state` override) is answered by TypeSafe System One — the
+  decision arrives as JSON-encoded `answers` in the message content. When
+  every `typesafe` leg fails retryably (429/408/5xx/transport) the remaining
+  legs fall back to a normal chat completion (native-Vertex fallback when a
+  `vertex` extension block is present); non-retryable TypeSafe errors abort.
+  With `stream: true` the decision is a single SSE chunk. `typesafe` legs
+  without a `jev` block are a clear 400, and referencing `typesafe` without
+  `TYPESAFE_API_KEY` fails fast at startup.
 
 ### Changed
 

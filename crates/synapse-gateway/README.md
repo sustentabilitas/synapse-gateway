@@ -31,6 +31,27 @@ In short: synapse is the *simple* OpenAI-compatible gateway that doesn't make yo
 
 Requests without a `vertex` extension block are handled by the standard lane, which uses the [`genai`](https://crates.io/crates/genai) crate as its HTTP adapter. Any provider reachable via an OpenAI-compatible API (OpenAI, Qwen/DashScope, self-hosted vLLM/Ollama/TGI via `oai_compat`) can appear in a fallback chain.
 
+### Jev lane (TypeSafe System One)
+
+If the request body contains a `jev` extension object with a non-empty `questions` map, the request is routed to the route's `typesafe` legs: TypeSafe System One (Jev) evaluates the typed questions against a state and returns structured decisions. The state defaults to the request's `messages` serialized as JSON (override with `jev.state`); questions are forwarded verbatim:
+
+```json
+{
+  "model": "ticket-triage",
+  "messages": [{"role": "user", "content": "<ticket text>"}],
+  "jev": {
+    "questions": {
+      "department": { "type": "choice", "instructions": "Which team?", "criteria": { "billing": "...", "technical": "..." } },
+      "is_urgent": { "type": "noul", "instructions": "Is this urgent?" }
+    }
+  }
+}
+```
+
+On success the decision is the message content, JSON-encoded (`choices[0].message.content` parses to the `answers` map), and `usage` comes from Jev. If every `typesafe` leg fails retryably (429/408/5xx/transport), the remaining legs answer as a **normal chat completion** — the response shape changes with the lane, so clients must branch on it. Non-retryable TypeSafe errors (e.g. malformed questions) abort without fallback. A `vertex` extension block may be combined with `jev`: it stays in force for a native-Vertex fallback leg. With `stream: true` the decision arrives as a single SSE chunk.
+
+A route that has `typesafe` legs but receives no `jev` block returns `400 Bad Request`.
+
 ### Native Vertex lane
 
 If the request body contains a `vertex` extension object with any of `cached_content`, `media_uris`, `response_schema`, or `thinking_config`, the request is routed to the native Vertex lane. This lane speaks directly to the Vertex AI `generateContent` REST endpoint, translating the OpenAI message format while preserving Vertex-specific features:
@@ -55,7 +76,7 @@ A route leg that is reachable only by the standard lane (i.e. has no `vertex` le
 }
 ```
 
-The presence of the `vertex` key (any of its fields) is the sole signal. Requests without it always go to the standard lane.
+The presence of the `vertex` key (any of its fields) is the sole signal for the native Vertex lane; the presence of non-empty `jev.questions` routes to the Jev lane instead. Requests with neither always go to the standard lane.
 
 ---
 
@@ -170,7 +191,7 @@ Both timeouts apply to the standard lane. The native Vertex lane is currently bo
 |--------|------|-------------|
 | `GET` | `/health` | Returns `200 OK` with `{"status":"ok"}`. |
 | `GET` | `/v1/models` | Lists all model aliases defined in `routes.toml`. |
-| `POST` | `/v1/chat/completions` | OpenAI-compatible chat completions. Supports `stream: true` (SSE). Accepts optional `vertex` extension block. |
+| `POST` | `/v1/chat/completions` | OpenAI-compatible chat completions. Supports `stream: true` (SSE). Accepts optional `vertex` and `jev` extension blocks. |
 | `POST` | `/typesafe/v1/systemone` | TypeSafe System One (Jev) passthrough. Forwards `{state, questions}` bodies verbatim — Jev has no OpenAI-shaped equivalent. Meters usage from the response's `usage` block. Requires `TYPESAFE_API_KEY`; no fallback chain or streaming. |
 
 ---
@@ -211,6 +232,7 @@ The gateway performs a fail-fast credential check at startup. If a provider is r
 | `qwen` | `DASHSCOPE_API_KEY` | `DASHSCOPE_BASE_URL` |
 | `openai` | `OPENAI_API_KEY` | `OPENAI_BASE_URL` |
 | `oai_compat` | `OAI_COMPAT_BASE_URL` | `OAI_COMPAT_API_KEY` |
+| `typesafe` | `TYPESAFE_API_KEY` (validated fail-fast; the leg runs on the Jev lane, no genai client) | `TYPESAFE_BASE_URL` |
 
 ### `config/routes.toml`
 
