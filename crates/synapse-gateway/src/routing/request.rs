@@ -65,6 +65,37 @@ pub struct JevExt {
     /// to JSON. State and questions share Jev's ~32k-token budget.
     #[serde(default)]
     pub state: Option<String>,
+    /// Optional hybrid extraction spec: judge `candidates` with `noul`
+    /// questions, then extract per survivor on the route's chat legs.
+    #[serde(default)]
+    pub extract: Option<ExtractSpec>,
+}
+
+/// One extraction candidate: the `text` gated by a `noul` question. When the
+/// question's answer meets the extract floor, `text` is substituted into the
+/// extraction prompt under `key`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExtractCandidate {
+    pub key: String,
+    /// Name of a `noul` question in `jev.questions` that gates this candidate.
+    pub question: String,
+    /// Candidate content fed to the extraction prompt as `{{text}}`.
+    pub text: String,
+}
+
+/// Hybrid extraction spec (optional part of the `jev` extension block):
+/// judge candidates with Jev, then run a schema-pinned chat extraction per
+/// survivor. See `docs/superpowers/specs/2026-09-22-jev-hybrid-extraction-design.md`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExtractSpec {
+    /// Minimum `noul` value (0..1] for a candidate to be extracted.
+    pub floor: f64,
+    pub candidates: Vec<ExtractCandidate>,
+    /// Extraction system-message template; must contain `{{text}}`.
+    pub prompt: String,
+    /// Output schema for the extraction call (response_format on standard
+    /// legs, vertex.response_schema on the native Vertex lane).
+    pub response_schema: Value,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -170,5 +201,49 @@ mod tests {
         assert!(asst.tool_calls.is_some());
         let tool = &req.messages[2];
         assert_eq!(tool.tool_call_id.as_deref(), Some("call_0"));
+    }
+
+    #[test]
+    fn captures_jev_extract_spec() {
+        let body = serde_json::json!({
+            "model": "verify-orgs",
+            "messages": [{"role": "user", "content": "hi"}],
+            "jev": {
+                "questions": {
+                    "c0_match": {"type": "noul", "instructions": "Candidate 0 is the org's own site."}
+                },
+                "extract": {
+                    "floor": 0.7,
+                    "candidates": [
+                        {"key": "c0", "question": "c0_match", "text": "excerpt 0"}
+                    ],
+                    "prompt": "Extract.\n\nCandidate {{key}}:\n{{text}}",
+                    "response_schema": {"type": "object"}
+                }
+            }
+        });
+        let req: ChatRequest = serde_json::from_value(body).unwrap();
+        let extract = req.jev.unwrap().extract.unwrap();
+        assert_eq!(extract.floor, 0.7);
+        assert_eq!(extract.candidates.len(), 1);
+        assert_eq!(extract.candidates[0].key, "c0");
+        assert_eq!(extract.candidates[0].question, "c0_match");
+        assert_eq!(extract.candidates[0].text, "excerpt 0");
+        assert!(extract.prompt.contains("{{text}}"));
+        assert_eq!(
+            extract.response_schema,
+            serde_json::json!({"type": "object"})
+        );
+    }
+
+    #[test]
+    fn jev_block_without_extract_parses() {
+        let body = serde_json::json!({
+            "model": "m",
+            "messages": [{"role": "user", "content": "hi"}],
+            "jev": {"questions": {"q": {"type": "noul", "instructions": "x"}}}
+        });
+        let req: ChatRequest = serde_json::from_value(body).unwrap();
+        assert!(req.jev.unwrap().extract.is_none());
     }
 }
