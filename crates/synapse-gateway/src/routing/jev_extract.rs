@@ -241,9 +241,61 @@ mod tests {
             .unwrap()
             .extract
             .unwrap();
-        let answers = answers(&[("c0_match", 0.7), ("cX", 0.69)]);
-        // candidate c0 gated by c0_match == floor survives; unknown question does not.
+        let answers = answers(&[("c0_match", 0.7)]);
+        // candidate c0 gated by c0_match == floor survives (inclusive).
         assert_eq!(survivors(&answers, &spec, false), vec!["c0"]);
+    }
+
+    #[test]
+    fn below_floor_gating_question_is_not_a_survivor() {
+        let spec = hybrid_req(0.7, "{{text}}", serde_json::json!({"type": "object"}))
+            .jev
+            .unwrap()
+            .extract
+            .unwrap();
+        let answers = answers(&[("c0_match", 0.69)]);
+        assert_eq!(survivors(&answers, &spec, false), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn absent_noul_answer_is_not_a_survivor() {
+        let spec = hybrid_req(0.7, "{{text}}", serde_json::json!({"type": "object"}))
+            .jev
+            .unwrap()
+            .extract
+            .unwrap();
+        let absent = answers(&[]);
+        assert_eq!(survivors(&absent, &spec, false), Vec::<&str>::new());
+        let null_noul = serde_json::json!({"c0_match": {"type": "noul"}});
+        assert_eq!(survivors(&null_noul, &spec, false), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn multi_candidate_order_and_all_modes() {
+        let mut req = hybrid_req(0.7, "{{text}}", serde_json::json!({"type": "object"}));
+        req.jev.as_mut().unwrap().questions.insert(
+            "c1_match".into(),
+            serde_json::json!({"type": "noul", "instructions": "x"}),
+        );
+        req.jev
+            .as_mut()
+            .unwrap()
+            .extract
+            .as_mut()
+            .unwrap()
+            .candidates
+            .push(ExtractCandidate {
+                key: "c1".into(),
+                question: "c1_match".into(),
+                text: "t".into(),
+            });
+        let spec = req.jev.unwrap().extract.unwrap();
+        let both = answers(&[("c0_match", 0.9), ("c1_match", 0.8)]);
+        assert_eq!(survivors(&both, &spec, false), vec!["c0", "c1"]);
+        let c1_only = answers(&[("c1_match", 0.8)]);
+        assert_eq!(survivors(&c1_only, &spec, false), vec!["c1"]);
+        let empty = serde_json::json!({});
+        assert_eq!(survivors(&empty, &spec, true), vec!["c0", "c1"]);
     }
 
     #[test]
