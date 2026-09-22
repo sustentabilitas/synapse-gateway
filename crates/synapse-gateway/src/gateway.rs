@@ -84,8 +84,15 @@ impl RequestCtx {
 
 /// Outcome of running a route's `typesafe` legs on the Jev lane.
 enum JevAttempt {
-    /// Jev answered; the completion's content is the JSON-encoded `answers` map.
-    Decided(Completion),
+    /// Jev answered; the completion's content is the JSON-encoded `answers`
+    /// map, and `answers` is the parsed map (hybrid extraction reads it).
+    Decided {
+        completion: Completion,
+        // Read by the hybrid-extraction orchestration; until it lands the
+        // field is carried but not consumed.
+        #[allow(dead_code)]
+        answers: serde_json::Value,
+    },
     /// Every typesafe leg failed retryably — the caller falls through to
     /// the remaining legs on the standard/native machinery.
     Exhausted(Vec<LegFailure>),
@@ -376,16 +383,19 @@ impl Gateway {
                         status: 502,
                         body: format!("jev response is not JSON: {e}"),
                     })?;
-                return Ok(JevAttempt::Decided(Completion {
-                    provider: "typesafe".into(),
-                    model: value["model"].as_str().unwrap_or(&model).to_string(),
-                    content: serde_json::to_string(&value["answers"])
-                        .unwrap_or_else(|_| "{}".into()),
-                    tool_calls: Vec::new(),
-                    finish_reason: FinishReason::Stop,
-                    input_tokens: value["usage"]["input_tokens"].as_u64().unwrap_or(0),
-                    output_tokens: value["usage"]["output_tokens"].as_u64().unwrap_or(0),
-                }));
+                return Ok(JevAttempt::Decided {
+                    answers: value["answers"].clone(),
+                    completion: Completion {
+                        provider: "typesafe".into(),
+                        model: value["model"].as_str().unwrap_or(&model).to_string(),
+                        content: serde_json::to_string(&value["answers"])
+                            .unwrap_or_else(|_| "{}".into()),
+                        tool_calls: Vec::new(),
+                        finish_reason: FinishReason::Stop,
+                        input_tokens: value["usage"]["input_tokens"].as_u64().unwrap_or(0),
+                        output_tokens: value["usage"]["output_tokens"].as_u64().unwrap_or(0),
+                    },
+                });
             }
 
             let message = String::from_utf8_lossy(&bytes).into_owned();
@@ -457,8 +467,8 @@ impl Gateway {
                 vertex_leg_count.max(1),
             ),
             Lane::Jev => match self.jev_attempt(&req, &legs).await? {
-                JevAttempt::Decided(c) => (
-                    Self::jev_committed(c),
+                JevAttempt::Decided { completion, .. } => (
+                    Self::jev_committed(completion),
                     "jev",
                     legs.iter()
                         .filter(|l| l.provider == "typesafe")
@@ -549,8 +559,8 @@ impl Gateway {
                 )
             }
             Lane::Jev => match self.jev_attempt(&req, &legs).await? {
-                JevAttempt::Decided(c) => (
-                    c,
+                JevAttempt::Decided { completion, .. } => (
+                    completion,
                     "jev",
                     legs.iter()
                         .filter(|l| l.provider == "typesafe")
