@@ -242,3 +242,218 @@ async fn zero_survivors_omit_content() {
     assert_eq!(json["jev"]["degraded"], false);
     assert!(json["choices"][0]["message"].get("content").is_none());
 }
+
+#[tokio::test]
+async fn jev_exhaustion_extracts_all_candidates_flagged_degraded() {
+    let jev = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .respond_with(ResponseTemplate::new(429).set_body_json(serde_json::json!({
+            "error": {"code": 429, "message": "quota"}
+        })))
+        .mount(&jev)
+        .await;
+    let qwen = MockServer::start().await;
+    // Both candidates get extracted (ungated) after the Jev lane exhausts.
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(extract_sse("Recovered Ltd")),
+        )
+        .expect(2)
+        .mount(&qwen)
+        .await;
+
+    let (gw, _store) = gateway(Some(jev.uri()), &qwen.uri()).await;
+    let resp = router(Arc::new(gw))
+        .oneshot(request(hybrid_body()))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(json["jev"]["degraded"], true);
+    assert_eq!(json["jev"]["answers"], serde_json::json!({}));
+    assert_eq!(json["jev"]["survivors"], serde_json::json!(["c0", "c1"]));
+    let content = json["choices"][0]["message"]["content"].as_str().unwrap();
+    let map: serde_json::Value = serde_json::from_str(content).unwrap();
+    assert!(map.get("c0").is_some());
+    assert!(map.get("c1").is_some());
+}
+
+#[tokio::test]
+async fn survivor_extraction_advances_past_a_failing_leg() {
+    // leg 1 (qwen) 500s; leg 2 (oai_compat) answers — the extraction must
+    // advance, succeed, and NOT mark the response degraded.
+    let jev = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(jev_answers()))
+        .mount(&jev)
+        .await;
+    let qwen = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&qwen)
+        .await;
+    let oai = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(extract_sse("Advanced Ltd")),
+        )
+        .mount(&oai)
+        .await;
+
+    let routes = r#"
+[routes."verify-orgs"]
+legs = [
+  { provider = "typesafe", model = "jev-latest" },
+  { provider = "qwen", model = "qwen-max" },
+  { provider = "oai_compat", model = "local-llm" },
+]
+"#;
+    let route_table = RouteTable::from_toml_str(routes).unwrap();
+    let env = HashMap::from([
+        ("DASHSCOPE_API_KEY".to_string(), "sk-test".to_string()),
+        (
+            "DASHSCOPE_BASE_URL".to_string(),
+            format!("{}/v1", qwen.uri()),
+        ),
+        (
+            "OAI_COMPAT_BASE_URL".to_string(),
+            format!("{}/v1", oai.uri()),
+        ),
+        ("TYPESAFE_API_KEY".to_string(), "sk-test".to_string()),
+    ]);
+    let catalog = Catalog::build(
+        &env,
+        &route_table.referenced_providers(),
+        Duration::from_secs(5),
+    )
+    .unwrap();
+    let store = Arc::new(InMemoryLedger::default());
+    let gw = Gateway::builder()
+        .routes(route_table)
+        .catalog(catalog)
+        .pricing(PricingTable::default())
+        .ledger(LedgerHandle::spawn(
+            store.clone() as Arc<dyn LedgerStore>,
+            64,
+        ))
+        .jev_native(Some(JevNativeProvider::new(
+            "sk-test".into(),
+            Some(jev.uri()),
+            Duration::from_secs(5),
+        )))
+        .default_tenant("unattributed")
+        .build()
+        .unwrap();
+
+    let resp = router(Arc::new(gw))
+        .oneshot(request(hybrid_body()))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(json["jev"]["degraded"], false);
+    let content = json["choices"][0]["message"]["content"].as_str().unwrap();
+    let map: serde_json::Value = serde_json::from_str(content).unwrap();
+    assert_eq!(map["c0"]["legalName"], "Advanced Ltd");
+}
+
+#[tokio::test]
+async fn survivor_exhausting_all_chat_legs_is_omitted_and_marks_degraded() {
+    let jev = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(jev_answers()))
+        .mount(&jev)
+        .await;
+    let qwen = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&qwen)
+        .await;
+
+    let (gw, _store) = gateway(Some(jev.uri()), &qwen.uri()).await;
+    let resp = router(Arc::new(gw))
+        .oneshot(request(hybrid_body()))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(json["jev"]["degraded"], true);
+    // Extraction ran (c0 attempted) but failed → "{}" present, c0 absent.
+    let content = json["choices"][0]["message"]["content"].as_str().unwrap();
+    assert_eq!(content, "{}");
+}
+
+#[tokio::test]
+async fn extract_with_stream_is_rejected() {
+    let jev = MockServer::start().await;
+    let qwen = MockServer::start().await;
+    let (gw, _store) = gateway(Some(jev.uri()), &qwen.uri()).await;
+    let mut body = hybrid_body();
+    body["stream"] = serde_json::json!(true);
+    let resp = router(Arc::new(gw)).oneshot(request(body)).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(json["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("stream"));
+}
+
+#[tokio::test]
+async fn extract_on_route_without_chat_legs_is_rejected() {
+    let routes = r#"
+[routes."typesafe-only"]
+legs = [{ provider = "typesafe", model = "jev-latest" }]
+"#;
+    let jev = MockServer::start().await;
+    let env = HashMap::from([("TYPESAFE_API_KEY".to_string(), "sk-test".to_string())]);
+    let route_table = RouteTable::from_toml_str(routes).unwrap();
+    let catalog = Catalog::build(
+        &env,
+        &route_table.referenced_providers(),
+        Duration::from_secs(5),
+    )
+    .unwrap();
+    let store = Arc::new(InMemoryLedger::default());
+    let gw = Gateway::builder()
+        .routes(route_table)
+        .catalog(catalog)
+        .pricing(PricingTable::default())
+        .ledger(LedgerHandle::spawn(
+            store.clone() as Arc<dyn LedgerStore>,
+            64,
+        ))
+        .jev_native(Some(JevNativeProvider::new(
+            "sk-test".into(),
+            Some(jev.uri()),
+            Duration::from_secs(5),
+        )))
+        .default_tenant("unattributed")
+        .build()
+        .unwrap();
+    let mut body = hybrid_body();
+    body["model"] = serde_json::json!("typesafe-only");
+    let resp = router(Arc::new(gw)).oneshot(request(body)).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(json["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("no chat legs"));
+}
