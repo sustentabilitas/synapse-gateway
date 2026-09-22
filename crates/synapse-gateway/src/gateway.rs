@@ -83,14 +83,11 @@ impl RequestCtx {
 }
 
 /// Outcome of running a route's `typesafe` legs on the Jev lane.
-enum JevAttempt {
+pub(crate) enum JevAttempt {
     /// Jev answered; the completion's content is the JSON-encoded `answers`
     /// map, and `answers` is the parsed map (hybrid extraction reads it).
     Decided {
         completion: Completion,
-        // Read by the hybrid-extraction orchestration; until it lands the
-        // field is carried but not consumed.
-        #[allow(dead_code)]
         answers: serde_json::Value,
     },
     /// Every typesafe leg failed retryably — the caller falls through to
@@ -227,7 +224,7 @@ impl Gateway {
 
     /// Fire cost + ledger + metrics for a completed call (buffered side-effects).
     #[allow(clippy::too_many_arguments)]
-    fn record(
+    pub(crate) fn record(
         &self,
         ctx: &RequestCtx,
         route: &str,
@@ -287,7 +284,7 @@ impl Gateway {
     ///
     /// NOTE: bounded only by the reqwest client timeout (`config.request_timeout`);
     /// the first-chunk/idle `StreamTimeouts` are not applied here yet.
-    async fn native_committed(
+    pub(crate) async fn native_committed(
         &self,
         req: &ChatRequest,
         legs: &[ChainLeg],
@@ -344,7 +341,7 @@ impl Gateway {
     /// a chat fallback cannot fix them. Retryable failures (429/408/5xx,
     /// transport) advance to the next typesafe leg, then report `Exhausted`
     /// so the caller can fall back to the route's chat legs.
-    async fn jev_attempt(
+    pub(crate) async fn jev_attempt(
         &self,
         req: &ChatRequest,
         legs: &[ChainLeg],
@@ -477,6 +474,12 @@ impl Gateway {
             .unwrap_or_else(|| Uuid::new_v4().to_string());
         let vertex_leg_count = legs.iter().filter(|l| l.provider == "vertex").count() as u32;
         require_jev_block(&req, &legs)?;
+        if let Err(message) = crate::routing::jev_extract::validate_extract(
+            &req,
+            legs.iter().any(|l| l.provider != "typesafe"),
+        ) {
+            return Err(GatewayError::BadRequest(message));
+        }
         let (committed, lane_str, legs_attempted) = match classify(&req) {
             Lane::Standard => (
                 execute_streaming_with_timeouts(
@@ -555,7 +558,7 @@ impl Gateway {
     }
 
     /// Buffered in-process chat: stream the chain internally, aggregate, fire
-    /// side-effects, return the completion.
+    /// side-effects, return a `ChatOutcome` (plain or hybrid).
     pub async fn chat(
         &self,
         req: ChatRequest,
@@ -568,6 +571,18 @@ impl Gateway {
             .resolved_request_id()
             .unwrap_or_else(|| Uuid::new_v4().to_string());
         require_jev_block(&req, &legs)?;
+        if let Err(message) = crate::routing::jev_extract::validate_extract(
+            &req,
+            legs.iter().any(|l| l.provider != "typesafe"),
+        ) {
+            return Err(GatewayError::BadRequest(message));
+        }
+        if req.jev.as_ref().and_then(|j| j.extract.as_ref()).is_some() {
+            let outcome = self
+                .chat_hybrid(req, ctx, &legs, started, &request_id)
+                .await?;
+            return Ok(ChatOutcome::Hybrid(outcome));
+        }
         let (completion, lane_str, legs_n) = match classify(&req) {
             Lane::Standard => execute_buffered_with_timeouts(
                 &self.catalog,
@@ -1084,7 +1099,9 @@ impl Stream for GuardedStream {
 /// Drain a committed stream into a single `Completion`. ROP: map the per-item
 /// error onto the failure track, `try_fold` items into an `Accumulator`, then map
 /// to a `Completion`.
-async fn collect_committed(committed: CommittedStream) -> Result<Completion, GatewayError> {
+pub(crate) async fn collect_committed(
+    committed: CommittedStream,
+) -> Result<Completion, GatewayError> {
     use futures::TryStreamExt;
     let CommittedStream {
         provider,
