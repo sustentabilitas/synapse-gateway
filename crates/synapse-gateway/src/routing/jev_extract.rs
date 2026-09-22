@@ -1,7 +1,7 @@
 //! Hybrid extraction: validation and pure decision logic for the `jev.extract`
 //! spec. Upstream orchestration lives in `jev_hybrid.rs`; types in `request.rs`.
 
-use crate::routing::request::ChatRequest;
+use crate::routing::request::{ChatRequest, ExtractSpec};
 
 /// Validate a hybrid extraction request. `has_chat_legs` comes from the route
 /// table (non-`typesafe` legs exist). Returns the human-readable 400 message.
@@ -52,6 +52,33 @@ pub fn validate_extract(req: &ChatRequest, has_chat_legs: bool) -> Result<(), St
         }
     }
     Ok(())
+}
+
+/// Candidate keys to extract. `degraded` (Jev lane exhausted) extracts every
+/// candidate. Otherwise a candidate survives iff its gating question's `noul`
+/// value is present and ≥ the floor (inclusive).
+pub fn survivors<'a>(
+    answers: &serde_json::Value,
+    spec: &'a ExtractSpec,
+    degraded: bool,
+) -> Vec<&'a str> {
+    if degraded {
+        return spec.candidates.iter().map(|c| c.key.as_str()).collect();
+    }
+    spec.candidates
+        .iter()
+        .filter(|c| {
+            answers[c.question.as_str()]["noul"]
+                .as_f64()
+                .is_some_and(|v| v >= spec.floor)
+        })
+        .map(|c| c.key.as_str())
+        .collect()
+}
+
+/// Replace `{{key}}` and `{{text}}` in the extraction prompt template.
+pub fn substitute_prompt(template: &str, key: &str, text: &str) -> String {
+    template.replace("{{key}}", key).replace("{{text}}", text)
 }
 
 #[cfg(test)]
@@ -192,5 +219,47 @@ mod tests {
         let mut req = hybrid_req(0.7, "{{text}}", serde_json::json!({"type": "object"}));
         req.jev.as_mut().unwrap().extract = None;
         assert!(validate_extract(&req, false).is_ok());
+    }
+
+    fn answers(noul_by_question: &[(&str, f64)]) -> serde_json::Value {
+        let map: serde_json::Map<String, serde_json::Value> = noul_by_question
+            .iter()
+            .map(|(q, v)| {
+                (
+                    q.to_string(),
+                    serde_json::json!({"type": "noul", "noul": v}),
+                )
+            })
+            .collect();
+        serde_json::Value::Object(map)
+    }
+
+    #[test]
+    fn survivors_meeting_floor_inclusive() {
+        let spec = hybrid_req(0.7, "{{text}}", serde_json::json!({"type": "object"}))
+            .jev
+            .unwrap()
+            .extract
+            .unwrap();
+        let answers = answers(&[("c0_match", 0.7), ("cX", 0.69)]);
+        // candidate c0 gated by c0_match == floor survives; unknown question does not.
+        assert_eq!(survivors(&answers, &spec, false), vec!["c0"]);
+    }
+
+    #[test]
+    fn degraded_survivors_are_all_candidates() {
+        let spec = hybrid_req(0.7, "{{text}}", serde_json::json!({"type": "object"}))
+            .jev
+            .unwrap()
+            .extract
+            .unwrap();
+        let answers = serde_json::json!({});
+        assert_eq!(survivors(&answers, &spec, true), vec!["c0"]);
+    }
+
+    #[test]
+    fn substitutes_key_and_text() {
+        let out = substitute_prompt("Candidate {{key}}:\n{{text}}", "c0", "hello");
+        assert_eq!(out, "Candidate c0:\nhello");
     }
 }
