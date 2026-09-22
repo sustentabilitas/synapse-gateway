@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use synapse::gateway::{Gateway, RequestCtx};
+use synapse::gateway::{ChatOutcome, Gateway, RequestCtx};
 use synapse::ledger::{FanoutLedger, InMemoryLedger, LedgerHandle, LedgerStore};
 use synapse::pricing::PricingTable;
 use synapse::providers::Catalog;
@@ -57,10 +57,11 @@ async fn main() -> anyhow::Result<()> {
         ..Default::default()
     };
     match gateway.chat(req, &ctx).await {
-        Ok(c) => println!(
+        Ok(ChatOutcome::Plain(c)) => println!(
             "completion: {} ({}+{} tokens)",
             c.content, c.input_tokens, c.output_tokens
         ),
+        Ok(ChatOutcome::Hybrid(_)) => println!("hybrid extraction outcome"),
         Err(e) => println!("gateway error (expected without real creds): {e}"),
     }
     Ok(())

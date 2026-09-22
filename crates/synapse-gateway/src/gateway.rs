@@ -98,6 +98,35 @@ enum JevAttempt {
     Exhausted(Vec<LegFailure>),
 }
 
+/// Result of a buffered chat call. `Plain` is a normal chat completion;
+/// `Hybrid` is a Jev hybrid-extraction response (envelope per the spec).
+#[derive(Debug)]
+pub enum ChatOutcome {
+    Plain(Completion),
+    Hybrid(HybridOutcome),
+}
+
+/// A completed Jev hybrid extraction: Jev's answers plus per-survivor
+/// extraction results. Rendered by `server::hybrid_json`.
+#[derive(Debug)]
+pub struct HybridOutcome {
+    /// Jev build that answered, or `jev-latest` when the lane was exhausted.
+    pub model: String,
+    /// All Jev answers verbatim (`{}` when degraded).
+    pub answers: serde_json::Value,
+    /// Candidate keys that met the floor (all candidates when degraded).
+    pub survivors: Vec<String>,
+    /// Jev lane exhausted, or at least one survivor failed its legs.
+    pub degraded: bool,
+    /// True when at least one survivor extraction was attempted.
+    pub extraction_ran: bool,
+    /// Candidate key → extraction result (failed survivors omitted).
+    pub extractions: serde_json::Map<String, serde_json::Value>,
+    /// Jev + extraction token totals.
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+}
+
 /// The attribution fields a ledger row carries, resolved once per request.
 ///
 /// Grouped so the streaming and passthrough meters take a single named argument
@@ -531,7 +560,7 @@ impl Gateway {
         &self,
         req: ChatRequest,
         ctx: &RequestCtx,
-    ) -> Result<Completion, GatewayError> {
+    ) -> Result<ChatOutcome, GatewayError> {
         let started = Instant::now();
         let legs = self.resolve_legs(&req)?;
         self.guard_input(&req)?;
@@ -607,7 +636,7 @@ impl Gateway {
             legs_n,
             started,
         );
-        Ok(completion)
+        Ok(ChatOutcome::Plain(completion))
     }
 
     /// Embed `req.input` against the embedding alias `req.model`, pinning output to
@@ -1305,7 +1334,10 @@ mod tests {
             ai_task_type: None,
             request_id: Some("corr-123".into()),
         };
-        let c = gw.chat(req, &ctx).await.unwrap();
+        let c = match gw.chat(req, &ctx).await.unwrap() {
+            ChatOutcome::Plain(c) => c,
+            ChatOutcome::Hybrid(_) => panic!("expected plain completion"),
+        };
         assert_eq!(c.content, "hi");
         assert_eq!(c.input_tokens, 3);
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;

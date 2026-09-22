@@ -89,8 +89,15 @@ async fn chat_completions(
         return Ok(Sse::new(sse_body(stream, request_id)).into_response());
     }
 
-    let completion = st.gateway.chat(req, &ctx).await?;
-    Ok(Json(openai_json(&completion, &request_id)).into_response())
+    let outcome = st.gateway.chat(req, &ctx).await?;
+    match outcome {
+        crate::gateway::ChatOutcome::Plain(completion) => {
+            Ok(Json(openai_json(&completion, &request_id)).into_response())
+        }
+        crate::gateway::ChatOutcome::Hybrid(h) => {
+            Ok(Json(hybrid_json(&h, &request_id)).into_response())
+        }
+    }
 }
 
 async fn embeddings(
@@ -551,6 +558,41 @@ fn openai_json(c: &crate::routing::executor::Completion, request_id: &str) -> se
         finish_reason: c.finish_reason,
     });
     acc.to_openai_response(request_id, &c.model)
+}
+
+/// Render a Jev hybrid-extraction outcome as the stable envelope from the
+/// spec: a `jev` block beside the OpenAI-shaped choices/usage, `content` a
+/// JSON map of candidate key → extraction result (absent when no survivor
+/// was attempted).
+fn hybrid_json(h: &crate::gateway::HybridOutcome, request_id: &str) -> serde_json::Value {
+    let content = h
+        .extraction_ran
+        .then(|| serde_json::to_string(&h.extractions).unwrap());
+    let mut message = json!({ "role": "assistant" });
+    if let Some(content) = content {
+        message["content"] = json!(content);
+    }
+    json!({
+        "id": format!("chatcmpl-{request_id}"),
+        "object": "chat.completion",
+        "created": chrono::Utc::now().timestamp(),
+        "model": h.model,
+        "jev": {
+            "answers": h.answers,
+            "survivors": h.survivors,
+            "degraded": h.degraded,
+        },
+        "choices": [{
+            "index": 0,
+            "message": message,
+            "finish_reason": "stop",
+        }],
+        "usage": {
+            "prompt_tokens": h.input_tokens,
+            "completion_tokens": h.output_tokens,
+            "total_tokens": h.input_tokens + h.output_tokens,
+        },
+    })
 }
 
 /// Render a `GuardedStream` as OpenAI SSE (`chat.completion.chunk` … `[DONE]`).
