@@ -50,6 +50,14 @@ If the request body contains a `jev` extension object with a non-empty `question
 
 On success the decision is the message content, JSON-encoded (`choices[0].message.content` parses to the `answers` map), and `usage` comes from Jev. If every `typesafe` leg fails retryably (429/408/5xx/transport), the remaining legs answer as a **normal chat completion** — the response shape changes with the lane, so clients must branch on it. Non-retryable TypeSafe errors (e.g. malformed questions) abort without fallback. A `vertex` extension block may be combined with `jev`: it stays in force for a native-Vertex fallback leg. With `stream: true` the decision arrives as a single SSE chunk.
 
+**Hybrid extraction.** A `jev` block may carry an `extract` spec to judge candidates and extract only for survivors in one call:
+
+- `extract.candidates` maps each candidate (`key`, `text`) to the `noul` question that gates it;
+- `extract.floor` (0..1]: candidates whose `noul` answer meets the floor are extracted;
+- `extract.prompt` (must contain `{{text}}`) and `extract.response_schema` shape one chat extraction per survivor on the route's chat legs.
+
+On success the response carries a `jev` block (`answers`, `survivors`, `degraded`) beside the usual `choices`/`usage`; `choices[0].message.content` is a JSON map of candidate key → extraction result. If every Jev leg fails retryably, extraction runs for **all** candidates with `degraded: true` — the envelope never changes shape. If no candidate meets the floor, `content` is absent. `stream: true` with `extract` is rejected (hybrid extraction is unary).
+
 A route that has `typesafe` legs but receives no `jev` block returns `400 Bad Request`.
 
 ### Native Vertex lane

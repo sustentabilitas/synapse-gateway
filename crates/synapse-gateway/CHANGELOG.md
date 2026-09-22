@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Jev hybrid extraction: a `jev` extension block may carry an `extract` spec
+  (`candidates` gated by `noul` questions, `floor`, `prompt` template with
+  `{{text}}`, `response_schema`). The gateway judges candidates with Jev and
+  runs one schema-pinned chat extraction per survivor on the route's chat
+  legs (per candidate, sequential). The response gains a `jev` block
+  (`answers`, `survivors`, `degraded`) beside the OpenAI envelope;
+  `choices[0].message.content` is a JSON map of candidate key → extraction.
+  When every `typesafe` leg fails retryably, extraction runs ungated over all
+  candidates with `degraded: true`. BREAKING (library): `Gateway::chat` now
+  returns `ChatOutcome` (`Plain` | `Hybrid`) instead of `Completion`.
 - TypeSafe System One (Jev) passthrough: `POST /typesafe/v1/systemone` forwards
   `{state, questions}` bodies verbatim to TypeSafe's API and meters usage from
   the response's `usage` block. Jev answers typed questions (choice / score /
