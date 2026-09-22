@@ -11,7 +11,7 @@ use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use synapse::gateway::Gateway;
 use synapse::jev_native::JevNativeProvider;
-use synapse::ledger::{InMemoryLedger, LedgerHandle, LedgerStore};
+use synapse::ledger::{InMemoryLedger, LedgerHandle, LedgerStore, UsageEntry};
 use synapse::pricing::PricingTable;
 use synapse::providers::Catalog;
 use synapse::routing::table::RouteTable;
@@ -110,6 +110,19 @@ fn request(body: serde_json::Value) -> Request<Body> {
         .unwrap()
 }
 
+async fn ledger_rows(store: &InMemoryLedger, min: usize) -> Vec<UsageEntry> {
+    for _ in 0..100 {
+        {
+            let rows = store.entries.lock();
+            if rows.len() >= min {
+                return rows.clone();
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    store.entries.lock().clone()
+}
+
 #[tokio::test]
 async fn one_survivor_is_extracted_once() {
     let jev = MockServer::start().await;
@@ -131,7 +144,7 @@ async fn one_survivor_is_extracted_once() {
         .mount(&qwen)
         .await;
 
-    let (gw, _store) = gateway(Some(jev.uri()), &qwen.uri()).await;
+    let (gw, store) = gateway(Some(jev.uri()), &qwen.uri()).await;
     let resp = router(Arc::new(gw))
         .oneshot(request(hybrid_body()))
         .await
@@ -142,12 +155,29 @@ async fn one_survivor_is_extracted_once() {
 
     assert_eq!(json["jev"]["survivors"], serde_json::json!(["c0"]));
     assert_eq!(json["jev"]["degraded"], false);
+    assert_eq!(json["jev"]["answers"]["c0_match"]["noul"], 0.91);
+    assert_eq!(json["model"], "jev-1.13.0");
     let content = json["choices"][0]["message"]["content"].as_str().unwrap();
     let map: serde_json::Value = serde_json::from_str(content).unwrap();
     assert_eq!(map["c0"]["legalName"], "Example Ltd");
     assert!(map.get("c1").is_none());
     assert_eq!(json["usage"]["prompt_tokens"], 130); // 100 jev + 30 extraction
     assert_eq!(json["usage"]["completion_tokens"], 17);
+    assert_eq!(json["usage"]["total_tokens"], 147);
+
+    let rows = ledger_rows(&store, 2).await;
+    assert_eq!(rows.len(), 2);
+    let jev_row = rows.iter().find(|r| r.provider == "typesafe").unwrap();
+    assert_eq!(jev_row.lane, "jev");
+    assert_eq!(jev_row.op, "chat");
+    assert_eq!(jev_row.input_tokens, 100);
+    assert_eq!(jev_row.tenant, "acme");
+    let ext_row = rows.iter().find(|r| r.provider == "qwen").unwrap();
+    assert_eq!(ext_row.lane, "standard");
+    assert_eq!(ext_row.op, "chat");
+    assert_eq!(ext_row.tenant, "acme");
+    assert!(!jev_row.request_id.is_empty());
+    assert_eq!(jev_row.request_id, ext_row.request_id);
 }
 
 #[tokio::test]
@@ -179,6 +209,7 @@ async fn noul_equal_to_floor_survives() {
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(json["jev"]["survivors"], serde_json::json!(["c0", "c1"]));
+    assert_eq!(json["jev"]["degraded"], false);
 }
 
 #[tokio::test]
@@ -208,5 +239,6 @@ async fn zero_survivors_omit_content() {
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(json["jev"]["survivors"], serde_json::json!([]));
+    assert_eq!(json["jev"]["degraded"], false);
     assert!(json["choices"][0]["message"].get("content").is_none());
 }
