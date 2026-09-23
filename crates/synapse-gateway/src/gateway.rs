@@ -477,6 +477,7 @@ impl Gateway {
         if let Err(message) = crate::routing::jev_extract::validate_extract(
             &req,
             legs.iter().any(|l| l.provider != "typesafe"),
+            legs.iter().any(|l| l.provider == "vertex"),
         ) {
             return Err(GatewayError::BadRequest(message));
         }
@@ -574,6 +575,7 @@ impl Gateway {
         if let Err(message) = crate::routing::jev_extract::validate_extract(
             &req,
             legs.iter().any(|l| l.provider != "typesafe"),
+            legs.iter().any(|l| l.provider == "vertex"),
         ) {
             return Err(GatewayError::BadRequest(message));
         }

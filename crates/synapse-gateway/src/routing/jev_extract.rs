@@ -1,11 +1,17 @@
 //! Hybrid extraction: validation and pure decision logic for the `jev.extract`
 //! spec. Upstream orchestration lives in `jev_hybrid.rs`; types in `request.rs`.
 
+use crate::routing::classify::vertex_triggers;
 use crate::routing::request::{ChatRequest, ExtractSpec};
 
-/// Validate a hybrid extraction request. `has_chat_legs` comes from the route
-/// table (non-`typesafe` legs exist). Returns the human-readable 400 message.
-pub fn validate_extract(req: &ChatRequest, has_chat_legs: bool) -> Result<(), String> {
+/// Validate a hybrid extraction request. `has_chat_legs` and `has_vertex_legs`
+/// come from the route table (a non-`typesafe` leg exists; a `vertex` leg
+/// exists). Returns the human-readable 400 message.
+pub fn validate_extract(
+    req: &ChatRequest,
+    has_chat_legs: bool,
+    has_vertex_legs: bool,
+) -> Result<(), String> {
     let spec = match req.jev.as_ref().and_then(|j| j.extract.as_ref()) {
         Some(spec) => spec,
         None => return Ok(()),
@@ -18,6 +24,12 @@ pub fn validate_extract(req: &ChatRequest, has_chat_legs: bool) -> Result<(), St
     if !has_chat_legs {
         return Err(format!(
             "route '{}' has no chat legs for jev extraction",
+            req.model
+        ));
+    }
+    if vertex_triggers(req) && !has_vertex_legs {
+        return Err(format!(
+            "route '{}' has no vertex legs for jev extract with native vertex features",
             req.model
         ));
     }
@@ -126,15 +138,45 @@ mod tests {
     fn rejects_streaming() {
         let mut req = hybrid_req(0.7, "{{text}}", serde_json::json!({"type": "object"}));
         req.stream = Some(true);
-        assert!(validate_extract(&req, true).unwrap_err().contains("stream"));
+        assert!(validate_extract(&req, true, true)
+            .unwrap_err()
+            .contains("stream"));
     }
 
     #[test]
     fn rejects_route_without_chat_legs() {
         let req = hybrid_req(0.7, "{{text}}", serde_json::json!({"type": "object"}));
-        assert!(validate_extract(&req, false)
+        assert!(validate_extract(&req, false, false)
             .unwrap_err()
             .contains("no chat legs"));
+    }
+
+    #[test]
+    fn rejects_vertex_triggers_without_vertex_legs() {
+        let mut req = hybrid_req(0.7, "{{text}}", serde_json::json!({"type": "object"}));
+        req.vertex = Some(crate::routing::request::VertexExt {
+            response_schema: Some(serde_json::json!({})),
+            ..Default::default()
+        });
+        assert!(validate_extract(&req, true, false)
+            .unwrap_err()
+            .contains("vertex legs"));
+    }
+
+    #[test]
+    fn accepts_vertex_triggers_with_vertex_legs() {
+        let mut req = hybrid_req(0.7, "{{text}}", serde_json::json!({"type": "object"}));
+        req.vertex = Some(crate::routing::request::VertexExt {
+            response_schema: Some(serde_json::json!({})),
+            ..Default::default()
+        });
+        assert!(validate_extract(&req, true, true).is_ok());
+    }
+
+    #[test]
+    fn no_vertex_triggers_passes_without_vertex_legs() {
+        let req = hybrid_req(0.7, "{{text}}", serde_json::json!({"type": "object"}));
+        assert!(validate_extract(&req, true, false).is_ok());
     }
 
     #[test]
@@ -142,7 +184,9 @@ mod tests {
         for floor in [0.0, 1.1, -0.5] {
             let req = hybrid_req(floor, "{{text}}", serde_json::json!({"type": "object"}));
             assert!(
-                validate_extract(&req, true).unwrap_err().contains("floor"),
+                validate_extract(&req, true, true)
+                    .unwrap_err()
+                    .contains("floor"),
                 "floor {floor}"
             );
         }
@@ -151,7 +195,7 @@ mod tests {
     #[test]
     fn rejects_prompt_without_text_placeholder() {
         let req = hybrid_req(0.7, "no placeholder", serde_json::json!({"type": "object"}));
-        assert!(validate_extract(&req, true)
+        assert!(validate_extract(&req, true, true)
             .unwrap_err()
             .contains("{{text}}"));
     }
@@ -159,7 +203,7 @@ mod tests {
     #[test]
     fn rejects_non_object_schema() {
         let req = hybrid_req(0.7, "{{text}}", serde_json::json!("not-an-object"));
-        assert!(validate_extract(&req, true)
+        assert!(validate_extract(&req, true, true)
             .unwrap_err()
             .contains("response_schema"));
     }
@@ -183,7 +227,7 @@ mod tests {
                 question: "c1_choice".into(),
                 text: "t".into(),
             });
-        assert!(validate_extract(&req, true)
+        assert!(validate_extract(&req, true, true)
             .unwrap_err()
             .contains("not a noul question"));
     }
@@ -199,7 +243,7 @@ mod tests {
             .unwrap()
             .candidates[0]
             .question = "nope".into();
-        assert!(validate_extract(&req, true)
+        assert!(validate_extract(&req, true, true)
             .unwrap_err()
             .contains("unknown question"));
     }
@@ -211,14 +255,14 @@ mod tests {
             "Extract {{key}}: {{text}}",
             serde_json::json!({"type": "object"}),
         );
-        assert!(validate_extract(&req, true).is_ok());
+        assert!(validate_extract(&req, true, true).is_ok());
     }
 
     #[test]
     fn no_extract_spec_is_ok() {
         let mut req = hybrid_req(0.7, "{{text}}", serde_json::json!({"type": "object"}));
         req.jev.as_mut().unwrap().extract = None;
-        assert!(validate_extract(&req, false).is_ok());
+        assert!(validate_extract(&req, false, false).is_ok());
     }
 
     fn answers(noul_by_question: &[(&str, f64)]) -> serde_json::Value {

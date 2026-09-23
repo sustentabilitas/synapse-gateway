@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Jev hybrid extraction: a request carrying native-Vertex features (a `vertex`
+  block) together with `extract` on a route that has no `vertex` leg now gets
+  `400 Bad Request` before any upstream call, instead of silently degrading to
+  an empty `answers` map. Mirrors the plain native-Vertex lane, which has
+  always 4xx'd in that situation.
+
 ### Added
 
 - Jev hybrid extraction: a `jev` extension block may carry an `extract` spec
