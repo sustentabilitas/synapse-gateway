@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `400 Bad Request` before any upstream call, instead of silently degrading to
   an empty `answers` map. Mirrors the plain native-Vertex lane, which has
   always 4xx'd in that situation.
+## [0.5.35] - 2026-09-23
 
 ### Added
 
