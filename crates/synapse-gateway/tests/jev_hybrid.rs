@@ -457,3 +457,33 @@ legs = [{ provider = "typesafe", model = "jev-latest" }]
         .unwrap()
         .contains("no chat legs"));
 }
+
+#[tokio::test]
+async fn extract_with_vertex_triggers_and_no_vertex_legs_is_rejected() {
+    let jev = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(jev_answers()))
+        .expect(0)
+        .mount(&jev)
+        .await;
+    let qwen = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(0)
+        .mount(&qwen)
+        .await;
+
+    let (gw, _store) = gateway(Some(jev.uri()), &qwen.uri()).await;
+    let mut body = hybrid_body();
+    body["vertex"] = serde_json::json!({"thinking_config": {"thinkingLevel": "low"}});
+    let resp = router(Arc::new(gw)).oneshot(request(body)).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(json["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("vertex legs"));
+}

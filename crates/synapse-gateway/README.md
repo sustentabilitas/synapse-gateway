@@ -56,7 +56,7 @@ On success the decision is the message content, JSON-encoded (`choices[0].messag
 - `extract.floor` (0..1]: candidates whose `noul` answer meets the floor are extracted;
 - `extract.prompt` (must contain `{{text}}`) and `extract.response_schema` shape one chat extraction per survivor on the route's chat legs.
 
-On success the response carries a `jev` block (`answers`, `survivors`, `degraded`) beside the usual `choices`/`usage`; `choices[0].message.content` is a JSON map of candidate key → extraction result. If every Jev leg fails retryably, extraction runs for **all** candidates with `degraded: true` — the envelope never changes shape. If no candidate meets the floor, `content` is absent. `stream: true` with `extract` is rejected (hybrid extraction is unary).
+On success the response carries a `jev` block (`answers`, `survivors`, `degraded`) beside the usual `choices`/`usage`; `choices[0].message.content` is a JSON map of candidate key → extraction result. If every Jev leg fails retryably, extraction runs for **all** candidates with `degraded: true` — the envelope never changes shape. If no candidate meets the floor, `content` is absent. `stream: true` with `extract` is rejected (hybrid extraction is unary). A request that carries native-Vertex features (a `vertex` block) together with `extract` is rejected unless the route has a `vertex` leg — the same permanent misconfiguration the plain native-Vertex lane 4xx's on.
 
 A route that has `typesafe` legs but receives no `jev` block returns `400 Bad Request`.
 
