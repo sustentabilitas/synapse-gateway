@@ -1,6 +1,6 @@
 [package]
 name = "synapse-proxy"
-version = "0.2.19"
+version = "0.2.21"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
