@@ -146,7 +146,10 @@ async fn gateway_native_buffered_response_schema() {
     }))
     .unwrap();
 
-    let c = gw.chat(req, &RequestCtx::default()).await.unwrap();
+    let c = match gw.chat(req, &RequestCtx::default()).await.unwrap() {
+        synapse::gateway::ChatOutcome::Plain(c) => c,
+        synapse::gateway::ChatOutcome::Hybrid(_) => panic!("expected plain completion"),
+    };
     assert_eq!(c.content, r#"{"answer":"ok"}"#);
     assert_eq!(c.provider, "vertex");
     assert_eq!(c.model, MODEL);
@@ -170,7 +173,10 @@ async fn gateway_native_buffered_cached_content() {
     }))
     .unwrap();
 
-    let c = gw.chat(req, &RequestCtx::default()).await.unwrap();
+    let c = match gw.chat(req, &RequestCtx::default()).await.unwrap() {
+        synapse::gateway::ChatOutcome::Plain(c) => c,
+        synapse::gateway::ChatOutcome::Hybrid(_) => panic!("expected plain completion"),
+    };
     assert_eq!(c.content, "cached-ok");
 }
 
@@ -192,7 +198,10 @@ async fn gateway_native_buffered_gs_media_uri() {
     }))
     .unwrap();
 
-    let c = gw.chat(req, &RequestCtx::default()).await.unwrap();
+    let c = match gw.chat(req, &RequestCtx::default()).await.unwrap() {
+        synapse::gateway::ChatOutcome::Plain(c) => c,
+        synapse::gateway::ChatOutcome::Hybrid(_) => panic!("expected plain completion"),
+    };
     assert_eq!(c.content, "saw-media");
 }
 
@@ -221,7 +230,10 @@ async fn gateway_native_buffered_thinking_config_with_schema() {
     }))
     .unwrap();
 
-    let c = gw.chat(req, &RequestCtx::default()).await.unwrap();
+    let c = match gw.chat(req, &RequestCtx::default()).await.unwrap() {
+        synapse::gateway::ChatOutcome::Plain(c) => c,
+        synapse::gateway::ChatOutcome::Hybrid(_) => panic!("expected plain completion"),
+    };
     assert_eq!(c.content, r#"{"answer":"low"}"#);
 }
 
@@ -253,7 +265,10 @@ async fn gateway_native_buffered_tool_calls() {
     }))
     .unwrap();
 
-    let c = gw.chat(req, &RequestCtx::default()).await.unwrap();
+    let c = match gw.chat(req, &RequestCtx::default()).await.unwrap() {
+        synapse::gateway::ChatOutcome::Plain(c) => c,
+        synapse::gateway::ChatOutcome::Hybrid(_) => panic!("expected plain completion"),
+    };
     assert_eq!(c.finish_reason, FinishReason::ToolCalls);
     assert_eq!(c.tool_calls.len(), 1);
     assert_eq!(c.tool_calls[0].name, "get_weather");

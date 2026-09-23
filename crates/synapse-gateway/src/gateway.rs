@@ -17,7 +17,7 @@ use crate::ledger::{LedgerHandle, UsageEntry};
 use crate::observability::GenAiSpan;
 use crate::pricing::PricingTable;
 use crate::providers::Catalog;
-use crate::routing::classify::{classify, Lane};
+use crate::routing::classify::{classify, vertex_triggers, Lane};
 use crate::routing::executor::{
     execute_buffered_with_timeouts, CommittedStream, Completion, LegError, StreamTimeouts,
 };
@@ -80,6 +80,48 @@ impl RequestCtx {
             .or_else(|| self.message.clone())
             .filter(|s| !s.is_empty())
     }
+}
+
+/// Outcome of running a route's `typesafe` legs on the Jev lane.
+pub(crate) enum JevAttempt {
+    /// Jev answered; the completion's content is the JSON-encoded `answers`
+    /// map, and `answers` is the parsed map (hybrid extraction reads it).
+    Decided {
+        completion: Completion,
+        answers: serde_json::Value,
+    },
+    /// Every typesafe leg failed retryably — the caller falls through to
+    /// the remaining legs on the standard/native machinery.
+    Exhausted(Vec<LegFailure>),
+}
+
+/// Result of a buffered chat call. `Plain` is a normal chat completion;
+/// `Hybrid` is a Jev hybrid-extraction response (envelope per the spec).
+#[derive(Debug)]
+pub enum ChatOutcome {
+    Plain(Completion),
+    Hybrid(HybridOutcome),
+}
+
+/// A completed Jev hybrid extraction: Jev's answers plus per-survivor
+/// extraction results. Rendered by `server::hybrid_json`.
+#[derive(Debug)]
+pub struct HybridOutcome {
+    /// Jev build that answered, or `jev-latest` when the lane was exhausted.
+    pub model: String,
+    /// All Jev answers verbatim (`{}` when degraded).
+    pub answers: serde_json::Value,
+    /// Candidate keys that met the floor (all candidates when degraded).
+    pub survivors: Vec<String>,
+    /// Jev lane exhausted, or at least one survivor failed its legs.
+    pub degraded: bool,
+    /// True when at least one survivor extraction was attempted.
+    pub extraction_ran: bool,
+    /// Candidate key → extraction result (failed survivors omitted).
+    pub extractions: serde_json::Map<String, serde_json::Value>,
+    /// Jev + extraction token totals.
+    pub input_tokens: u64,
+    pub output_tokens: u64,
 }
 
 /// The attribution fields a ledger row carries, resolved once per request.
@@ -182,7 +224,7 @@ impl Gateway {
 
     /// Fire cost + ledger + metrics for a completed call (buffered side-effects).
     #[allow(clippy::too_many_arguments)]
-    fn record(
+    pub(crate) fn record(
         &self,
         ctx: &RequestCtx,
         route: &str,
@@ -216,10 +258,10 @@ impl Gateway {
             user_task_type: attr.user_task_type,
             ai_task_type: attr.ai_task_type,
         });
-        let span_lane = if lane == "native" {
-            Lane::NativeVertex
-        } else {
-            Lane::Standard
+        let span_lane = match lane {
+            "native" => Lane::NativeVertex,
+            "jev" => Lane::Jev,
+            _ => Lane::Standard,
         };
         GenAiSpan::from_completion(
             c,
@@ -242,7 +284,7 @@ impl Gateway {
     ///
     /// NOTE: bounded only by the reqwest client timeout (`config.request_timeout`);
     /// the first-chunk/idle `StreamTimeouts` are not applied here yet.
-    async fn native_committed(
+    pub(crate) async fn native_committed(
         &self,
         req: &ChatRequest,
         legs: &[ChainLeg],
@@ -293,6 +335,129 @@ impl Gateway {
         )
     }
 
+    /// Run the route's `typesafe` legs against TypeSafe System One (Jev):
+    /// state + typed questions in, structured decisions out. Non-retryable
+    /// upstream failures (malformed questions, 4xx other than 429/408) abort —
+    /// a chat fallback cannot fix them. Retryable failures (429/408/5xx,
+    /// transport) advance to the next typesafe leg, then report `Exhausted`
+    /// so the caller can fall back to the route's chat legs.
+    pub(crate) async fn jev_attempt(
+        &self,
+        req: &ChatRequest,
+        legs: &[ChainLeg],
+    ) -> Result<JevAttempt, GatewayError> {
+        let jev_legs: Vec<&ChainLeg> = legs.iter().filter(|l| l.provider == "typesafe").collect();
+        if jev_legs.is_empty() {
+            return Ok(JevAttempt::Exhausted(Vec::new()));
+        }
+        let ext = req
+            .jev
+            .as_ref()
+            .filter(|j| !j.questions.is_empty())
+            .ok_or_else(|| {
+                GatewayError::BadRequest(format!(
+                    "route '{}' uses provider 'typesafe'; send a 'jev' extension block with questions",
+                    req.model
+                ))
+            })?;
+        let provider = self.jev_native.as_ref().ok_or_else(|| {
+            GatewayError::BadRequest(
+                "typesafe legs require TYPESAFE_API_KEY to be configured".into(),
+            )
+        })?;
+
+        let state = ext
+            .state
+            .clone()
+            .or_else(|| serde_json::to_string(&req.messages).ok())
+            .unwrap_or_default();
+        let mut body = serde_json::json!({
+            "state": state,
+            "questions": ext.questions.clone(),
+        });
+
+        let mut failures: Vec<LegFailure> = Vec::new();
+        for leg in jev_legs {
+            let model = if leg.model.is_empty() {
+                crate::jev_native::DEFAULT_MODEL.to_string()
+            } else {
+                leg.model.clone()
+            };
+            body["model"] = serde_json::Value::String(model.clone());
+
+            let resp = match provider.evaluate(body.clone()).await {
+                Ok(r) => r,
+                Err(e) if native_start_retryable(&e) => {
+                    failures.push(LegFailure {
+                        provider: leg.provider.clone(),
+                        model,
+                        message: e.to_string(),
+                    });
+                    continue;
+                }
+                Err(e) => return Err(e),
+            };
+
+            let status = resp.status();
+            let bytes = resp.bytes().await.map_err(|e| GatewayError::Upstream {
+                status: 502,
+                body: e.to_string(),
+            })?;
+            if status.is_success() {
+                let value: serde_json::Value =
+                    serde_json::from_slice(&bytes).map_err(|e| GatewayError::Upstream {
+                        status: 502,
+                        body: format!("jev response is not JSON: {e}"),
+                    })?;
+                return Ok(JevAttempt::Decided {
+                    answers: value["answers"].clone(),
+                    completion: Completion {
+                        provider: "typesafe".into(),
+                        model: value["model"].as_str().unwrap_or(&model).to_string(),
+                        content: serde_json::to_string(&value["answers"])
+                            .unwrap_or_else(|_| "{}".into()),
+                        tool_calls: Vec::new(),
+                        finish_reason: FinishReason::Stop,
+                        input_tokens: value["usage"]["input_tokens"].as_u64().unwrap_or(0),
+                        output_tokens: value["usage"]["output_tokens"].as_u64().unwrap_or(0),
+                    },
+                });
+            }
+
+            let message = String::from_utf8_lossy(&bytes).into_owned();
+            if status.is_server_error()
+                || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+                || status == reqwest::StatusCode::REQUEST_TIMEOUT
+            {
+                failures.push(LegFailure {
+                    provider: leg.provider.clone(),
+                    model,
+                    message: format!("{status}: {message}"),
+                });
+                continue;
+            }
+            return Err(GatewayError::BadRequest(format!(
+                "typesafe {}: {message}",
+                status.as_u16()
+            )));
+        }
+        Ok(JevAttempt::Exhausted(failures))
+    }
+
+    /// Jev answers are unary: present a buffered decision as a single content
+    /// delta + terminal item so the streaming surface renders one SSE chunk.
+    fn jev_committed(c: Completion) -> CommittedStream {
+        let items: Vec<Result<StreamItem, LegError>> = vec![
+            Ok(StreamItem::Delta(c.content.clone())),
+            Ok(StreamItem::Done {
+                input_tokens: c.input_tokens,
+                output_tokens: c.output_tokens,
+                finish_reason: c.finish_reason,
+            }),
+        ];
+        CommittedStream::single("typesafe".into(), c.model, futures::stream::iter(items))
+    }
+
     /// Streaming in-process chat: commit a leg on the first item; returns a
     /// `GuardedStream` that yields items and fires side-effects on completion/drop.
     pub async fn chat_stream(
@@ -308,6 +473,13 @@ impl Gateway {
             .resolved_request_id()
             .unwrap_or_else(|| Uuid::new_v4().to_string());
         let vertex_leg_count = legs.iter().filter(|l| l.provider == "vertex").count() as u32;
+        require_jev_block(&req, &legs)?;
+        if let Err(message) = crate::routing::jev_extract::validate_extract(
+            &req,
+            legs.iter().any(|l| l.provider != "typesafe"),
+        ) {
+            return Err(GatewayError::BadRequest(message));
+        }
         let (committed, lane_str, legs_attempted) = match classify(&req) {
             Lane::Standard => (
                 execute_streaming_with_timeouts(
@@ -326,6 +498,47 @@ impl Gateway {
                 "native",
                 vertex_leg_count.max(1),
             ),
+            Lane::Jev => match self.jev_attempt(&req, &legs).await? {
+                JevAttempt::Decided { completion, .. } => (
+                    Self::jev_committed(completion),
+                    "jev",
+                    legs.iter()
+                        .filter(|l| l.provider == "typesafe")
+                        .count()
+                        .max(1) as u32,
+                ),
+                JevAttempt::Exhausted(failures) => {
+                    let rest: Vec<ChainLeg> = non_typesafe_legs(&legs);
+                    if rest.is_empty() {
+                        return Err(GatewayError::AllLegsFailed {
+                            route: req.model.clone(),
+                            failures,
+                        });
+                    }
+                    if vertex_triggers(&req) {
+                        let vertex_n =
+                            rest.iter().filter(|l| l.provider == "vertex").count() as u32;
+                        (
+                            self.native_committed(&req, &rest).await?,
+                            "native",
+                            vertex_n.max(1),
+                        )
+                    } else {
+                        (
+                            execute_streaming_with_timeouts(
+                                &self.catalog,
+                                &req.model,
+                                &rest,
+                                &req,
+                                self.timeouts,
+                            )
+                            .await?,
+                            "standard",
+                            rest.len() as u32,
+                        )
+                    }
+                }
+            },
         };
         let model = committed.model.clone();
         let guard = StreamSideEffects::new(
@@ -345,18 +558,31 @@ impl Gateway {
     }
 
     /// Buffered in-process chat: stream the chain internally, aggregate, fire
-    /// side-effects, return the completion.
+    /// side-effects, return a `ChatOutcome` (plain or hybrid).
     pub async fn chat(
         &self,
         req: ChatRequest,
         ctx: &RequestCtx,
-    ) -> Result<Completion, GatewayError> {
+    ) -> Result<ChatOutcome, GatewayError> {
         let started = Instant::now();
         let legs = self.resolve_legs(&req)?;
         self.guard_input(&req)?;
         let request_id = ctx
             .resolved_request_id()
             .unwrap_or_else(|| Uuid::new_v4().to_string());
+        require_jev_block(&req, &legs)?;
+        if let Err(message) = crate::routing::jev_extract::validate_extract(
+            &req,
+            legs.iter().any(|l| l.provider != "typesafe"),
+        ) {
+            return Err(GatewayError::BadRequest(message));
+        }
+        if req.jev.as_ref().and_then(|j| j.extract.as_ref()).is_some() {
+            let outcome = self
+                .chat_hybrid(req, ctx, &legs, started, &request_id)
+                .await?;
+            return Ok(ChatOutcome::Hybrid(outcome));
+        }
         let (completion, lane_str, legs_n) = match classify(&req) {
             Lane::Standard => execute_buffered_with_timeouts(
                 &self.catalog,
@@ -376,6 +602,45 @@ impl Gateway {
                     vertex_n.max(1),
                 )
             }
+            Lane::Jev => match self.jev_attempt(&req, &legs).await? {
+                JevAttempt::Decided { completion, .. } => (
+                    completion,
+                    "jev",
+                    legs.iter()
+                        .filter(|l| l.provider == "typesafe")
+                        .count()
+                        .max(1) as u32,
+                ),
+                JevAttempt::Exhausted(failures) => {
+                    let rest: Vec<ChainLeg> = non_typesafe_legs(&legs);
+                    if rest.is_empty() {
+                        return Err(GatewayError::AllLegsFailed {
+                            route: req.model.clone(),
+                            failures,
+                        });
+                    }
+                    if vertex_triggers(&req) {
+                        let committed = self.native_committed(&req, &rest).await?;
+                        let vertex_n =
+                            rest.iter().filter(|l| l.provider == "vertex").count() as u32;
+                        (
+                            collect_committed(committed).await?,
+                            "native",
+                            vertex_n.max(1),
+                        )
+                    } else {
+                        execute_buffered_with_timeouts(
+                            &self.catalog,
+                            &req.model,
+                            &rest,
+                            &req,
+                            self.timeouts,
+                        )
+                        .await
+                        .map(|c| (c, "standard", rest.len() as u32))?
+                    }
+                }
+            },
         };
         self.record(
             ctx,
@@ -386,7 +651,7 @@ impl Gateway {
             legs_n,
             started,
         );
-        Ok(completion)
+        Ok(ChatOutcome::Plain(completion))
     }
 
     /// Embed `req.input` against the embedding alias `req.model`, pinning output to
@@ -528,6 +793,30 @@ fn native_start_retryable(e: &GatewayError) -> bool {
         GatewayError::UpstreamTimeout => true,
         _ => false,
     }
+}
+
+/// Routes with `typesafe` legs answer typed questions, not chat: refuse with a
+/// clear 400 when the request carries no `jev` extension block, instead of
+/// letting the standard executor fail on a provider it has no client for.
+fn require_jev_block(req: &ChatRequest, legs: &[ChainLeg]) -> Result<(), GatewayError> {
+    let needs_block = legs.iter().any(|l| l.provider == "typesafe");
+    let has_block = req.jev.as_ref().is_some_and(|j| !j.questions.is_empty());
+    match (needs_block, has_block) {
+        (true, false) => Err(GatewayError::BadRequest(format!(
+            "route '{}' uses provider 'typesafe'; send a 'jev' extension block with questions",
+            req.model
+        ))),
+        _ => Ok(()),
+    }
+}
+
+/// Legs remaining after the Jev lane has consumed the `typesafe` ones: the
+/// fallback chain when every Jev leg fails retryably.
+fn non_typesafe_legs(legs: &[ChainLeg]) -> Vec<ChainLeg> {
+    legs.iter()
+        .filter(|l| l.provider != "typesafe")
+        .cloned()
+        .collect()
 }
 
 impl GatewayBuilder {
@@ -810,7 +1099,9 @@ impl Stream for GuardedStream {
 /// Drain a committed stream into a single `Completion`. ROP: map the per-item
 /// error onto the failure track, `try_fold` items into an `Accumulator`, then map
 /// to a `Completion`.
-async fn collect_committed(committed: CommittedStream) -> Result<Completion, GatewayError> {
+pub(crate) async fn collect_committed(
+    committed: CommittedStream,
+) -> Result<Completion, GatewayError> {
     use futures::TryStreamExt;
     let CommittedStream {
         provider,
@@ -1060,7 +1351,10 @@ mod tests {
             ai_task_type: None,
             request_id: Some("corr-123".into()),
         };
-        let c = gw.chat(req, &ctx).await.unwrap();
+        let c = match gw.chat(req, &ctx).await.unwrap() {
+            ChatOutcome::Plain(c) => c,
+            ChatOutcome::Hybrid(_) => panic!("expected plain completion"),
+        };
         assert_eq!(c.content, "hi");
         assert_eq!(c.input_tokens, 3);
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;

@@ -5,6 +5,7 @@ pub mod embeddings;
 pub mod error;
 pub mod gateway;
 pub mod guard;
+pub mod jev_hybrid;
 pub mod jev_native;
 pub mod ledger;
 pub mod observability;
