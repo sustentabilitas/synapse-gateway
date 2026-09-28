@@ -168,6 +168,9 @@ pub struct RouteTable {
     routes: HashMap<String, Vec<ChainLeg>>,
     policies: HashMap<String, String>,
     jev: HashMap<String, JevRoute>,
+    /// Aliases declared `strategy = "jev"`, including those since downgraded
+    /// to static.
+    jev_declared: HashSet<String>,
 }
 
 impl RouteTable {
@@ -183,10 +186,11 @@ impl RouteTable {
             .into_iter()
             .map(|(name, entry)| route_kind(&name, entry).map(|kind| (name, kind)))
             .collect::<anyhow::Result<Vec<_>>>()?;
-        let jev = kinds
+        let jev: HashMap<String, JevRoute> = kinds
             .iter()
             .filter_map(|(name, (_, j))| j.clone().map(|j| (name.clone(), j)))
             .collect();
+        let jev_declared = jev.keys().cloned().collect();
         let routes = kinds
             .into_iter()
             .map(|(name, (legs, _))| (name, legs))
@@ -195,6 +199,7 @@ impl RouteTable {
             routes,
             policies,
             jev,
+            jev_declared,
         })
     }
 
@@ -292,6 +297,7 @@ impl RouteTable {
             routes,
             policies,
             jev,
+            jev_declared: self.jev_declared.clone(),
         }
     }
 
@@ -302,8 +308,14 @@ impl RouteTable {
     /// vertex leg in the lex-first route that contains it. Stop before the first
     /// non-vertex leg. If nothing matches, return a single synthetic leg so
     /// callers always have ≥1 attempt (same as today's single forward).
+    /// `jev` routes never take part: their legs span difficulty tiers, not
+    /// fallbacks for one model.
     pub fn vertex_fallback_chain(&self, model: &str) -> VertexPassthroughChain {
-        let mut aliases: Vec<&String> = self.routes.keys().collect();
+        let mut aliases: Vec<&String> = self
+            .routes
+            .keys()
+            .filter(|alias| !self.jev_declared.contains(*alias))
+            .collect();
         aliases.sort();
 
         let from_first = aliases.iter().find_map(|alias| {
@@ -929,6 +941,32 @@ mod tests {
             ]
         );
         assert!(!t.referenced_providers().contains("typesafe"));
+    }
+
+    #[test]
+    fn jev_routes_never_join_the_vertex_fallback_chain() {
+        let toml = format!(
+            "{}\n[routes.\"conversation\"]\nlegs = [{{ provider = \"vertex\", model = \"gemini-2.5-pro\" }}]\n",
+            jev_toml(
+                "",
+                &[
+                    tier("trivial", "none", "qwen", "qwen-flash"),
+                    tier("moderate", "low", "vertex", "gemini-2.5-pro"),
+                    tier("hard", "medium", "vertex", "gemini-3.1-pro-preview"),
+                ],
+            )
+        );
+        let tiered = RouteTable::from_toml_str(&toml).unwrap();
+        let downgraded = tiered.without_providers(&drop_set(&["typesafe"]));
+        assert!(downgraded.jev_route("auto").is_none());
+        [tiered, downgraded].iter().for_each(|t| {
+            let pro = t.vertex_fallback_chain("gemini-2.5-pro");
+            assert_eq!(pro.route.as_deref(), Some("conversation"));
+            assert_eq!(pro.legs.len(), 1);
+            let preview = t.vertex_fallback_chain("gemini-3.1-pro-preview");
+            assert_eq!(preview.route, None);
+            assert_eq!(preview.legs.len(), 1);
+        });
     }
 
     #[test]
