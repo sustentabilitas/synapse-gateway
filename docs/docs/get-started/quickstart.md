@@ -1,11 +1,12 @@
 ---
 sidebar_position: 2
 title: Quickstart
-description: Run the Synapse gateway with a two-route config and send standard, streaming and native Vertex AI requests to it.
+description: Run the Synapse gateway with a two-route config and send standard, streaming, fallback and native Vertex AI requests to it.
 ---
 
 In this quickstart you write a two-route configuration, start the gateway, and send it a
-standard request, a streaming request and a native Vertex AI request.
+standard request, a streaming request, a request that can fall back to OpenAI and a native
+Vertex AI request. Then you look up what each request cost.
 
 ## Prerequisites
 
@@ -15,17 +16,21 @@ standard request, a streaming request and a native Vertex AI request.
   `gcloud auth application-default login` for a local binary.
 - Optionally, an OpenAI API key for the second leg of the `chat` route. Without one, see the
   tip under [Start the gateway](#start-the-gateway).
+- The `sqlite3` command-line tool on your machine, for the last step,
+  [See what it cost](#see-what-it-cost).
 
 The gateway starts without valid credentials: at startup it only checks that
-`VERTEX_PROJECT_ID` and `OPENAI_API_KEY` are set. Credentials are used on the first request,
-which fails with `502` and error code `all_legs_failed` if they are missing or invalid.
+`VERTEX_PROJECT_ID` and `OPENAI_API_KEY` are set. Credentials are used on the first request.
+If they are missing or invalid, a standard request fails with `502` and error code
+`all_legs_failed`; a native Vertex request fails with `502` and error code `upstream_error`.
 
 ## Create the configuration
 
-Create a working directory with a `config/` folder:
+Create a working directory with a `config/` folder for the configuration and a `data/`
+folder for the cost ledger:
 
 ```bash
-mkdir -p synapse-quickstart/config && cd synapse-quickstart
+mkdir -p synapse-quickstart/config synapse-quickstart/data && cd synapse-quickstart
 ```
 
 Save the routes as `config/routes.toml`:
@@ -33,25 +38,25 @@ Save the routes as `config/routes.toml`:
 ```toml title="config/routes.toml"
 [routes."gemini-flash"]
 legs = [
-  { provider = "vertex", model = "gemini-2.5-flash", region = "us-central1" },
+  { provider = "vertex", model = "gemini-3.5-flash-lite", region = "us" },
 ]
 
 [routes."chat"]
 legs = [
-  { provider = "vertex", model = "gemini-2.5-flash", region = "us-central1" },
+  { provider = "vertex", model = "gemini-3.5-flash-lite", region = "us" },
   { provider = "openai", model = "gpt-4o-mini" },
 ]
 ```
 
 Each `[routes."<alias>"]` table defines a model name your clients can send. `gemini-flash`
-always uses Gemini 2.5 Flash on Vertex AI. `chat` tries Gemini first and falls back to
-OpenAI's `gpt-4o-mini` if the Vertex leg fails. `region` pins the Vertex leg to
-`us-central1` on the native Vertex lane.
+always uses Gemini 3.5 Flash-Lite on Vertex AI. `chat` tries Gemini first and falls back to
+OpenAI's `gpt-4o-mini` if the Vertex leg fails. `region` pins the Vertex leg to Vertex's
+`us` multi-region on the native Vertex lane.
 
 Save the prices as `config/pricing.toml`:
 
 ```toml title="config/pricing.toml"
-"vertex:gemini-2.5-flash" = { input = 0.30, output = 2.50 }
+"vertex:gemini-3.5-flash-lite" = { input = 0.30, output = 2.50 }
 "openai:gpt-4o-mini" = { input = 0.15, output = 0.60 }
 ```
 
@@ -59,6 +64,9 @@ Prices are in USD per 1,000,000 tokens, keyed by `provider:model`. Synapse uses 
 price every request in the cost ledger; a model without a price costs 0.
 
 ## Start the gateway
+
+The gateway runs in the foreground. Leave it running and send the requests in the rest of
+this quickstart from a second terminal, in the same `synapse-quickstart` directory.
 
 ### Docker
 
@@ -69,14 +77,29 @@ docker run --rm -p 8080:8080 -p 9090:9090 \
   -e VERTEX_PROJECT_ID=my-gcp-project \
   -e OPENAI_API_KEY=sk-... \
   -e GOOGLE_APPLICATION_CREDENTIALS=/secrets/sa.json \
+  -e SYNAPSE_LEDGER_SQLITE_DSN="sqlite:///app/data/synapse.db?mode=rwc" \
   -v "$(pwd)/sa.json:/secrets/sa.json:ro" \
   -v "$(pwd)/config:/app/config" \
+  -v "$(pwd)/data:/app/data" \
   sustentabilitas/synapse-gateway
 ```
 
 The image runs as the non-root user `synapse` (UID 1001) with no home directory, so it
-cannot see your `gcloud` credentials; the mounted key takes their place. On Linux, make sure
-UID 1001 can read `sa.json`.
+cannot see your `gcloud` credentials; the mounted key takes their place.
+`SYNAPSE_LEDGER_SQLITE_DSN` puts the SQLite ledger in the mounted `data/` folder, so it
+survives the container and you can query it from your machine.
+
+:::note
+On Linux, UID 1001 must be able to read `sa.json` and write to `data/`. On a development
+machine, the simplest fix is:
+
+```bash
+chmod a+r sa.json && chmod a+rwx data
+```
+
+If the gateway cannot open the ledger, it logs the error and keeps serving requests without
+recording them.
+:::
 
 Mounting `config/` replaces the image's whole `/app/config` directory, so only the files you
 provide are used. Guardrails stay off until you add a `guardrails.toml`.
@@ -90,6 +113,7 @@ gcloud auth application-default login
 export VERTEX_PROJECT_ID=my-gcp-project
 export OPENAI_API_KEY=sk-...
 SYNAPSE_ROUTES_PATH=config/routes.toml SYNAPSE_PRICING_PATH=config/pricing.toml \
+  SYNAPSE_LEDGER_SQLITE_DSN="sqlite://data/synapse.db?mode=rwc" \
   synapse-gateway
 ```
 
@@ -97,7 +121,8 @@ To run from a clone of the repository instead, replace `synapse-gateway` with
 `cargo run --release -p synapse-gateway --manifest-path <path-to-clone>/Cargo.toml`. The
 paths stay relative to your working directory.
 
-Either way, the API listens on port `8080` and Prometheus metrics on port `9090`.
+Either way, the API listens on port `8080`, Prometheus metrics on port `9090`, and the cost
+ledger is written to `data/synapse.db`.
 
 :::tip
 No OpenAI key? Set `SYNAPSE_PROVIDER_VALIDATION=lenient` instead of `OPENAI_API_KEY`.
@@ -140,7 +165,8 @@ attributes the request's tokens and cost to `my-team` in the ledger; without it,
 attributed to `unattributed`.
 
 Because the request is plain OpenAI, any OpenAI SDK works too: point its base URL at
-`http://localhost:8080/v1` and use `gemini-flash` as the model.
+`http://localhost:8080/v1` and use `gemini-flash` as the model. Synapse has no inbound
+authentication, but most SDKs require an API key, so pass any non-empty string.
 
 ## Send a streaming request
 
@@ -158,10 +184,31 @@ curl -sN http://localhost:8080/v1/chat/completions \
 The response is a stream of server-sent events in the OpenAI format: `data: {...}` lines
 carrying `chat.completion.chunk` objects, ending with `data: [DONE]`.
 
+## Send a request with fallback
+
+The `chat` route has two legs, so this step needs `OPENAI_API_KEY`. Send it the same kind of
+request:
+
+```bash
+curl -s http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "x-synapse-tenant: my-team" \
+  -d '{
+    "model": "chat",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+```
+
+The response's `model` field names the leg that answered. While Vertex AI is healthy it is
+`gemini-3.5-flash-lite`. To watch the fallback, restart the gateway with
+`VERTEX_PROJECT_ID` set to a project that does not exist and repeat both requests:
+`gemini-flash` now fails with `502` and error code `all_legs_failed`, while `chat` answers
+with `"model": "gpt-4o-mini"`. Your client sees one successful response either way.
+
 ## Send a native Vertex request
 
-Add a `vertex` block to use Vertex-only features. This request attaches a video from Cloud
-Storage and reuses a context cache:
+Add a `vertex` block to use Vertex-only features. This request attaches a public sample
+video from Cloud Storage:
 
 ```bash
 curl -s http://localhost:8080/v1/chat/completions \
@@ -171,32 +218,44 @@ curl -s http://localhost:8080/v1/chat/completions \
     "model": "gemini-flash",
     "messages": [{"role": "user", "content": "Describe this video."}],
     "vertex": {
-      "media_uris": ["gs://my-bucket/video.mp4"],
-      "cached_content": "projects/my-gcp-project/locations/us-central1/cachedContents/abc123"
+      "media_uris": ["gs://cloud-samples-data/video/animals.mp4"]
     }
   }'
 ```
 
-Replace the values with your own: Vertex AI in your project must be able to read the Cloud
-Storage object, and the cache must exist for `gemini-2.5-flash` in `us-central1`, the model
-and region of the route's Vertex leg. Remove `cached_content` if you do not have a cache.
+The response is a normal `chat.completion` describing the video. The `vertex` block sends
+the request to the native Vertex lane, which keeps Vertex-only fields that the standard lane
+would drop. Only `vertex` legs serve it: on the `chat` route, the OpenAI leg is skipped. A
+route with no `vertex` leg returns `400` with error code `native_feature_unsupported`. See
+[Native Vertex lane](../overview/architecture.md#native-vertex-lane) for how it works.
 
-The `vertex` block sends the request to the native Vertex lane, which calls Vertex AI's
-`generateContent` API directly and keeps these fields. Only `vertex` legs serve it: on the
-`chat` route, the OpenAI leg is skipped. A route with no `vertex` leg returns `400` with
-error code `native_feature_unsupported`.
+### Optional: reuse a context cache
+
+If you have created a Vertex AI context cache, add its resource name as `cached_content`:
+
+```json
+"vertex": {
+  "media_uris": ["gs://cloud-samples-data/video/animals.mp4"],
+  "cached_content": "projects/my-gcp-project/locations/us/cachedContents/abc123"
+}
+```
+
+The cache must exist in your project for the same model and region as the route's Vertex
+leg, here `gemini-3.5-flash-lite` in `us`. Without such a cache, Vertex AI rejects the
+request.
 
 ## See what it cost
 
-With the default SQLite ledger, the gateway writes one row per completed request to
-`synapse.db` in its working directory. If you ran the binary locally:
+With the default SQLite ledger, the gateway writes one row per completed request. Query the
+ledger file from your machine:
 
 ```bash
-sqlite3 synapse.db \
+sqlite3 data/synapse.db \
   'SELECT tenant, route, provider, model, lane, input_tokens, output_tokens, cost_usd FROM usage_events;'
 ```
 
-In the Docker container the file is `/app/synapse.db` and is discarded with the container.
+Each request you sent appears as a row attributed to `my-team`, with its lane (`standard` or
+`native`) and its cost from `pricing.toml`.
 
 ## Next steps
 

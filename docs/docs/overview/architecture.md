@@ -26,7 +26,7 @@ route planning             static route: its legs
   ▼
 lane detection
   ├─► standard lane        (genai: OpenAI, Qwen, oai_compat, Vertex)
-  ├─► native Vertex lane   (Vertex REST: :generateContent / :streamGenerateContent)
+  ├─► native Vertex lane   (Vertex REST: :streamGenerateContent)
   └─► Jev lane             (TypeSafe System One)
   │
   ▼
@@ -42,8 +42,8 @@ provider ──► response to the client (JSON or server-sent events)
 Each route alias in `routes.toml` maps to an ordered list of legs (provider plus model).
 Synapse tries the legs in order until one succeeds. On the standard lane, any failure moves
 to the next leg: an error response, a first-chunk timeout or a broken stream. On the native
-Vertex lane, only a `5xx`, `429` or `408` response or a timeout moves on; any other `4xx`
-stops the chain. A streaming response can fall back only until its first chunk reaches the
+Vertex lane, only a `5xx`, `429` or `408` response, a connection error or a timeout moves
+on; any other `4xx` stops the chain. A streaming response can fall back only until its first chunk reaches the
 client.
 
 The ledger write never blocks the response: if the ledger's queue is full, the event is
@@ -62,12 +62,14 @@ features.
 ### Native Vertex lane
 
 Requests that use Vertex-only features go to the native Vertex lane, which calls the Vertex
-AI `:generateContent` and `:streamGenerateContent` REST endpoints directly. The OpenAI
+AI `:streamGenerateContent` REST endpoint directly, for streaming and non-streaming clients
+alike; for a non-streaming client, Synapse buffers the stream into one response. The OpenAI
 message format is translated to Vertex's, and these fields of the request's `vertex` block
 are preserved:
 
 - **`cached_content`**: a `cachedContents` resource name, for context caching.
-- **`media_uris`**: Cloud Storage (`gs://`) URIs, attached as file parts.
+- **`media_uris`**: Cloud Storage (`gs://`) URIs, attached as file parts with MIME type
+  `video/mp4`.
 - **`response_schema`**: a JSON schema sent as `generationConfig.responseSchema` for
   constrained decoding.
 - **`thinking_config`**: passed through verbatim as `generationConfig.thinkingConfig`.
@@ -102,7 +104,7 @@ For example, this request uses the native Vertex lane:
   "model": "gemini-flash",
   "messages": [{ "role": "user", "content": "Summarise the video." }],
   "vertex": {
-    "cached_content": "projects/my-gcp-project/locations/us-central1/cachedContents/abc123",
+    "cached_content": "projects/my-gcp-project/locations/us/cachedContents/abc123",
     "media_uris": ["gs://my-bucket/video.mp4"],
     "response_schema": { "type": "object", "properties": { "summary": { "type": "string" } } }
   }
