@@ -3,15 +3,17 @@
 use std::sync::Arc;
 
 use axum::extract::State;
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, HeaderValue};
 use axum::response::sse::{Event, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::json;
+use tap::Tap;
 
 use crate::error::GatewayError;
 use crate::gateway::{Gateway, GuardedStream, RequestCtx};
+use crate::routing::jev_router::RoutingReport;
 use crate::routing::request::ChatRequest;
 use crate::routing::stream::{stream_item_to_sse_json, Accumulator, StreamItem};
 
@@ -86,18 +88,37 @@ async fn chat_completions(
 
     if req.stream == Some(true) {
         let stream = st.gateway.chat_stream(req, &ctx).await?;
-        return Ok(Sse::new(sse_body(stream, request_id)).into_response());
+        let routing = stream.routing().clone();
+        return Ok(with_routing_headers(
+            Sse::new(sse_body(stream, request_id)).into_response(),
+            &routing,
+        ));
     }
 
-    let outcome = st.gateway.chat(req, &ctx).await?;
-    match outcome {
+    let (outcome, routing) = st.gateway.chat_routed(req, &ctx).await?;
+    let response = match outcome {
         crate::gateway::ChatOutcome::Plain(completion) => {
-            Ok(Json(openai_json(&completion, &request_id)).into_response())
+            Json(openai_json(&completion, &request_id)).into_response()
         }
         crate::gateway::ChatOutcome::Hybrid(h) => {
-            Ok(Json(hybrid_json(&h, &request_id)).into_response())
+            Json(hybrid_json(&h, &request_id)).into_response()
         }
-    }
+    };
+    Ok(with_routing_headers(response, &routing))
+}
+
+/// Values that are not valid header text (e.g. non-ASCII tier names) are
+/// skipped rather than failing the response.
+fn with_routing_headers(response: Response, routing: &RoutingReport) -> Response {
+    routing
+        .headers()
+        .into_iter()
+        .filter_map(|(name, value)| HeaderValue::from_str(&value).ok().map(|v| (name, v)))
+        .fold(response, |r, (name, v)| {
+            r.tap_mut(|r| {
+                r.headers_mut().insert(name, v);
+            })
+        })
 }
 
 async fn embeddings(

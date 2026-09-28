@@ -396,3 +396,104 @@ async fn invalid_routing_requests_are_400_before_any_upstream_call() {
         assert!(text.contains(needle), "expected '{needle}' in {text}");
     }
 }
+
+fn header<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
+    headers.get(name).and_then(|v| v.to_str().ok())
+}
+
+#[tokio::test]
+async fn decided_response_carries_routing_headers() {
+    let jev = jev_mock(
+        ResponseTemplate::new(200).set_body_json(jev_answers(2.0, 0.9, 0.1)),
+        1,
+    )
+    .await;
+    let qwen = MockServer::start().await;
+    qwen_serves(&qwen, "qwen-max", "\"model\"", "ok", 1).await;
+
+    let (gw, _, _) = harness(ROUTES, Some(jev.uri()), &qwen.uri(), None);
+    let (status, headers, body) = send(gw, ask("auto", "design a schema")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(header(&headers, "x-synapse-routing"), Some("jev"));
+    assert_eq!(header(&headers, "x-synapse-tier"), Some("hard"));
+    assert_eq!(
+        header(&headers, "x-synapse-reasoning-effort"),
+        Some("medium")
+    );
+    assert_eq!(header(&headers, "x-synapse-tier-decided"), None);
+    assert_eq!(header(&headers, "x-synapse-routing-degraded"), None);
+}
+
+#[tokio::test]
+async fn static_route_and_static_override_headers() {
+    let jev = jev_mock(
+        ResponseTemplate::new(200).set_body_json(jev_answers(2.0, 1.0, 0.0)),
+        0,
+    )
+    .await;
+    let qwen = MockServer::start().await;
+    qwen_serves(&qwen, "qwen-plus", "\"model\"", "ok", 2).await;
+
+    let (gw, _, _) = harness(ROUTES, Some(jev.uri()), &qwen.uri(), None);
+    let (_, plain, _) = send(gw.clone(), ask("plain", "hi")).await;
+    assert_eq!(header(&plain, "x-synapse-routing"), Some("static"));
+    assert_eq!(header(&plain, "x-synapse-tier"), None);
+    assert_eq!(header(&plain, "x-synapse-reasoning-effort"), None);
+
+    let (_, over, _) = send(
+        gw,
+        with(ask("auto", "hi"), json!({"routing_strategy": "static"})),
+    )
+    .await;
+    assert_eq!(header(&over, "x-synapse-routing"), Some("static-override"));
+    assert_eq!(header(&over, "x-synapse-tier"), Some("moderate"));
+    assert_eq!(header(&over, "x-synapse-reasoning-effort"), Some("low"));
+}
+
+#[tokio::test]
+async fn client_reasoning_effort_is_forwarded_and_reported_as_client() {
+    let jev = jev_mock(
+        ResponseTemplate::new(200).set_body_json(jev_answers(0.0, 1.0, 0.0)),
+        1,
+    )
+    .await;
+    let qwen = MockServer::start().await;
+    qwen_serves(
+        &qwen,
+        "qwen-flash",
+        "\"reasoning_effort\":\"high\"",
+        "ok",
+        1,
+    )
+    .await;
+
+    let (gw, _, _) = harness(ROUTES, Some(jev.uri()), &qwen.uri(), None);
+    let (status, headers, body) = send(
+        gw,
+        with(ask("auto", "hi"), json!({"reasoning_effort": "high"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        header(&headers, "x-synapse-reasoning-effort"),
+        Some("client")
+    );
+}
+
+#[tokio::test]
+async fn streaming_response_carries_routing_headers() {
+    let jev = jev_mock(
+        ResponseTemplate::new(200).set_body_json(jev_answers(2.0, 0.9, 0.1)),
+        1,
+    )
+    .await;
+    let qwen = MockServer::start().await;
+    qwen_serves(&qwen, "qwen-max", "\"model\"", "streamed", 1).await;
+
+    let (gw, _, _) = harness(ROUTES, Some(jev.uri()), &qwen.uri(), None);
+    let (status, headers, body) = send(gw, with(ask("auto", "go"), json!({"stream": true}))).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("streamed"), "{body}");
+    assert_eq!(header(&headers, "x-synapse-routing"), Some("jev"));
+    assert_eq!(header(&headers, "x-synapse-tier"), Some("hard"));
+}
