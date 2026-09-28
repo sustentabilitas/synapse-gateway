@@ -29,8 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `routing_strategy: "static"` override; `x-synapse-tier`,
   `x-synapse-tier-decided`, `x-synapse-reasoning-effort` and
   `x-synapse-routing-degraded` response headers; `route_decision` ledger rows;
-  a `synapse::routing` tracing event; `synapse_routing_decisions_total` and
-  `synapse_routing_decision_duration_seconds` metrics. Public API:
+  a `synapse::routing` tracing event per planned request, plus a warning (failure
+  kind and HTTP status only) when a Jev call fails or times out;
+  `synapse_routing_decisions_total` and
+  `synapse_routing_decision_duration_seconds` metrics. `jev` routes never seed
+  the Gemini passthrough fallback chain. Public API:
   `Gateway::chat_routed`, `GuardedStream::routing()`,
   `routing::jev_router::RoutingReport`, `RouteTable::jev_route`.
 
@@ -42,7 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on static routes. Previously the field was ignored.
 - The standard lane now forwards a client-supplied `reasoning_effort` on every
   route. A client `"none"` or an unparseable value is not forwarded.
-
+- `ChainLeg` gained a public `effort` field (never read from config), so
+  struct literals outside the crate need `..Default::default()`.
 - Metrics are recorded with OpenTelemetry (opentelemetry-rust 0.32) instead of
   the `metrics` crate. Prometheus output on `SYNAPSE_METRICS_ADDR` keeps the
   same series names and labels; setting `OTEL_EXPORTER_OTLP_ENDPOINT` also

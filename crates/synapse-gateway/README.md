@@ -103,7 +103,9 @@ A full four-tier example ships commented out at the end of `config/routes.toml`.
 - `effort = "none"` sends nothing, so the model's default applies. On Gemini
   2.5 Pro and Flash that default is dynamic thinking, which can cost more than
   `minimal` (512).
-- A client's own `reasoning_effort` or `vertex.thinking_config` always wins.
+- A client's own effort always wins on its lane: `reasoning_effort` on the
+  standard lane, `vertex.thinking_config` on the native Vertex lane (which
+  ignores `reasoning_effort`, so the tier's `thinkingBudget` still applies).
 - Send `"routing_strategy": "static"` to skip the decision for one request; it
   is served from `default_tier` with each tier's configured effort. On a plain
   route, `"routing_strategy": "jev"` or any unknown value returns `400`.
@@ -120,8 +122,11 @@ A full four-tier example ships commented out at the end of `config/routes.toml`.
   first chunk.
 - Each decision Jev answers writes a ledger row with `op = "route_decision"`
   (provider `typesafe`, model `jev_router.model`), sharing the chat row's
-  `request_id`. Every request to a `jev` route also emits one `tracing` event
-  with target `synapse::routing`.
+  `request_id`. Every planned request on a `jev` route also emits one
+  `tracing` event with target `synapse::routing` and is counted in
+  `synapse_routing_decisions_total`; requests rejected with `400` or by
+  guardrails emit neither. A failed or timed-out Jev call also logs a
+  `synapse::routing` warning carrying only the failure kind and HTTP status.
 - A `jev` route references the `typesafe` provider, so strict validation
   requires `TYPESAFE_API_KEY`. Under lenient validation, unservable legs are
   pruned inside tiers (empty tiers dropped, `default_tier` re-picked); the
@@ -537,7 +542,7 @@ no-op); pass `.metrics(Arc<GatewayMetrics>)` to record them. Build it with
 | `synapse_passthrough_total` | Counter | `provider`, `model`, `action`, `status` | Gemini (`provider="vertex"`) and Jev (`provider="typesafe"`) passthrough calls. |
 | `synapse_passthrough_fallback_total` | Counter | `from_model`, `to_model` | Gemini passthrough hops to the next Vertex leg. |
 | `synapse_jev_extraction_total` | Counter | `route`, `degraded` | Jev hybrid extraction responses. |
-| `synapse_routing_decisions_total` | Counter | `route`, `tier`, `outcome` | One per request to a `jev` route; `tier` is the decided tier; `outcome` is `decided`, `low_confidence`, `timeout`, `error` (including no Jev provider configured), or `static_override`. |
+| `synapse_routing_decisions_total` | Counter | `route`, `tier`, `outcome` | One per planned request to a `jev` route (not those rejected with `400` or by guardrails); `tier` is the decided tier; `outcome` is `decided`, `low_confidence`, `timeout`, `error` (including no Jev provider configured), or `static_override`. |
 | `synapse_routing_decision_duration_seconds` | Histogram | `route` | Jev decision latency, recorded for each Jev call made. |
 | `synapse_resilience_calls_total` | Counter | `label`, `outcome` | Outbound provider calls by outcome (`success`, `exhausted`, `circuit_open`). |
 | `synapse_resilience_call_duration_seconds` | Histogram | `label`, `outcome` | Outbound call latency including retries. |

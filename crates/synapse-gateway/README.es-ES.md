@@ -65,7 +65,10 @@ legs = [{ provider = "vertex", model = "gemini-2.5-flash" }]
   en `thinkingBudget` en tramos Vertex nativos. `none` no envía nada, así que se
   aplica el valor por defecto del modelo; en Gemini 2.5 Pro y Flash es el
   pensamiento dinámico, que puede costar más que `minimal` (512).
-- El `reasoning_effort` o `vertex.thinking_config` del cliente siempre gana.
+- El esfuerzo del propio cliente siempre gana en su carril: `reasoning_effort`
+  en el carril estándar y `vertex.thinking_config` en el carril Vertex nativo
+  (que ignora `reasoning_effort`, así que se sigue aplicando el
+  `thinkingBudget` del nivel).
 - Envía `"routing_strategy": "static"` para omitir la decisión en una petición.
   En rutas normales, cualquier otro valor devuelve `400`.
 - Las respuestas llevan `x-synapse-routing` (`jev`, `static-override` o
@@ -366,7 +369,7 @@ vivo el `MetricsExporter` devuelto durante toda la vida del proceso.
 | `synapse_passthrough_total` | Counter | `provider`, `model`, `action`, `status` | Llamadas passthrough de Gemini (`provider="vertex"`) y Jev (`provider="typesafe"`). |
 | `synapse_passthrough_fallback_total` | Counter | `from_model`, `to_model` | Saltos del passthrough de Gemini al siguiente tramo de Vertex. |
 | `synapse_jev_extraction_total` | Counter | `route`, `degraded` | Respuestas de extracción híbrida de Jev. |
-| `synapse_routing_decisions_total` | Counter | `route`, `tier`, `outcome` | Una por petición a una ruta `jev`; `tier` es el nivel decidido; `outcome` es `decided`, `low_confidence`, `timeout`, `error` o `static_override`. |
+| `synapse_routing_decisions_total` | Counter | `route`, `tier`, `outcome` | Una por petición planificada a una ruta `jev` (no las rechazadas con `400` o por los guardrails); `tier` es el nivel decidido; `outcome` es `decided`, `low_confidence`, `timeout`, `error` o `static_override`. |
 | `synapse_routing_decision_duration_seconds` | Histogram | `route` | Latencia de la decisión de Jev. |
 | `synapse_resilience_calls_total` | Counter | `label`, `outcome` | Llamadas salientes a proveedores por resultado (`success`, `exhausted`, `circuit_open`). |
 | `synapse_resilience_call_duration_seconds` | Histogram | `label`, `outcome` | Latencia de llamadas salientes, reintentos incluidos. |
