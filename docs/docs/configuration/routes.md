@@ -56,7 +56,8 @@ client never sees the failed attempts. What counts as a failure depends on the l
 When every leg of a standard-lane request fails, the client receives `502` with error code
 `all_legs_failed` and a `failures` array naming each leg and its error. The
 [fallback tutorial](../get-started/tutorials/fallback-across-providers.md) walks through
-these cases.
+these cases, and the [fallback chains guide](../guides/fallback-chains.md) covers how to
+design a chain.
 
 ## Regions
 
@@ -145,6 +146,9 @@ thinking, which can cost more than `minimal`. A client's own effort always wins 
 lane: `reasoning_effort` on the standard lane, translated the same way, and
 `vertex.thinking_config` on the native Vertex lane.
 
+The [Jev router guide](../guides/jev-router.md#effort) explains how to choose an effort for
+each tier.
+
 ### Tier fallback
 
 The chosen tier's legs run first, then each harder tier's, then each easier tier's. A
@@ -166,7 +170,8 @@ legs = [{ provider = "vertex", model = "text-embedding-004" }]
 ```
 
 `dimensions` must be greater than 0 and `legs` must not be empty. Embedding legs support the
-`vertex` and `openai` providers.
+`vertex` and `openai` providers. See the [embeddings guide](../guides/embeddings.md) for
+fallback, cost and attribution.
 
 ## Complete example
 

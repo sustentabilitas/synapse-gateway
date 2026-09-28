@@ -64,28 +64,33 @@ Native capabilities:
 
 - **Native Vertex lane**: `cachedContent`, `gs://` media URIs, strict `responseSchema` and
   `thinking_config`, sent directly to Vertex AI's `:streamGenerateContent` endpoint. See
-  [Native Vertex lane](architecture.md#native-vertex-lane).
+  [Native Vertex lane](architecture.md#native-vertex-lane) and the
+  [native Vertex guide](../guides/native-vertex.md).
 - **Native tool calling**: tools work on both lanes; on the native Vertex lane,
-  `tool_choice` is honoured through Vertex `toolConfig`.
+  `tool_choice` is honoured through Vertex `toolConfig`. See
+  [Streaming and tool calling](../guides/streaming-and-tools.md#tool-calling).
 - **Jev lane**: typed decisions from Jev, plus hybrid judge-then-extract in one call. See
-  [Jev lane](architecture.md#jev-lane).
+  [Jev lane](architecture.md#jev-lane) and the [Jev lane guide](../guides/jev-lane.md).
 - **Jev router**: per-request tier and reasoning effort, mapped to Vertex `thinkingBudget`
   on native Vertex legs and reported in `x-synapse-routing` and `x-synapse-tier` response
-  headers.
+  headers. See the [Jev router guide](../guides/jev-router.md).
 - **Real streaming**: Synapse always streams from upstream, so `stream: true` clients get
   token-by-token server-sent events; non-streaming clients get the buffered result and keep
-  the full fallback chain.
+  the full fallback chain. See [Streaming and tool calling](../guides/streaming-and-tools.md).
 - **Embeddable**: run the `synapse-gateway` binary, or depend on the library crate and call
-  `Gateway::chat()` in-process.
+  `Gateway::chat()` in-process. See
+  [Embedding Synapse as a library](../guides/embedding-as-library.md).
 
 Compatibility and operations:
 
 - **OpenAI-compatible API**: existing OpenAI SDKs work unchanged, including
-  `POST /v1/embeddings`.
+  `POST /v1/embeddings`. See the [embeddings guide](../guides/embeddings.md).
 - **Multi-provider fallback**: Vertex AI, OpenAI, Qwen (DashScope), and self-hosted vLLM,
-  Ollama or TGI through the `oai_compat` provider.
+  Ollama or TGI through the `oai_compat` provider. See
+  [Fallback chains](../guides/fallback-chains.md).
 - **Per-tenant cost ledger**: token usage and cost per request, written to SQLite or
-  Postgres and optionally fanned out to Google Cloud Pub/Sub and AWS SNS.
+  Postgres and optionally fanned out to Google Cloud Pub/Sub and AWS SNS. See the
+  [cost ledger guide](../guides/cost-ledger.md).
 - **Observability**: OpenTelemetry `gen_ai.*` spans and `synapse_*` metrics, served in
   Prometheus format and optionally pushed over OTLP.
 - **Input guardrails**: named scanner policies (prompt injection, secrets, PII and more)

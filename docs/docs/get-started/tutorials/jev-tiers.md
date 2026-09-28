@@ -228,6 +228,8 @@ response carries `x-synapse-routing-degraded` with the reason: `timeout`, `error
 
 If the chosen tier's legs fail, Synapse tries the harder tiers first, then the easier ones.
 When a different tier ends up serving, `x-synapse-tier-decided` names the tier Jev chose.
+[Failure behaviour](../../guides/jev-router.md#failure-behaviour) in the Jev router guide
+covers each reason and how to monitor it.
 
 ## Next steps
 

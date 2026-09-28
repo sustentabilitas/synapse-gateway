@@ -54,7 +54,8 @@ the `POST /typesafe/v1/systemone` passthrough.
 ## Embedding aliases
 
 Embedding aliases, declared under `[embeddings."<alias>"]` in `routes.toml`, support only
-the `vertex` and `openai` providers. Validation covers their legs too.
+the `vertex` and `openai` providers. Validation covers their legs too. See the
+[embeddings guide](../guides/embeddings.md).
 
 ## Strict and lenient validation
 

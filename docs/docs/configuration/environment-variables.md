@@ -25,7 +25,7 @@ Relative paths resolve against the gateway's working directory. In the Docker im
 | `SYNAPSE_ROUTES_PATH` | `config/routes.toml` | Route aliases, their legs and tiers. Required: the gateway does not start without it. See [Routes](routes.md). |
 | `SYNAPSE_PRICING_PATH` | `config/pricing.toml` | Prices per `provider:model`, used to cost ledger rows. Required. See [Pricing](pricing.md). |
 | `SYNAPSE_GUARDRAILS_PATH` | `config/guardrails.toml` | Guardrail policies. Optional: without the file, guardrails are off. See [Guardrails policy](guardrails-policy.md). |
-| `SYNAPSE_AI_TASK_TYPES_PATH` | `config/ai_task_types.toml` | Maps route aliases to the AI task type recorded on ledger rows. Optional: without the file, every request records `simple`. |
+| `SYNAPSE_AI_TASK_TYPES_PATH` | `config/ai_task_types.toml` | Maps route aliases to the AI task type recorded on ledger rows. Optional: without the file, every request records `simple`. See [AI task types](../guides/tenant-attribution.md#ai-task-types). |
 | `SYNAPSE_A2A_PATH` | `config/a2a.toml` | Seed file for the in-memory A2A agent registry served on the API port. Optional: without the file, the registry starts empty. |
 
 ## Providers
@@ -80,13 +80,17 @@ Vertex lane has no first-chunk or idle timeout: only the provider HTTP timeout b
 The `postgres`, `pubsub` and `sns` sinks need the Cargo features `ledger-postgres`,
 `ledger-pubsub` and `ledger-sns`; the Docker image includes all of them. A sink whose
 feature is missing, or that cannot connect at startup, is logged and skipped. If no sink
-connects, the gateway still starts and serves requests without recording usage.
+connects, the gateway still starts and serves requests without recording usage. See the
+[cost ledger guide](../guides/cost-ledger.md) for what each sink receives and how reliable
+delivery is.
 
 ## Tenancy
 
 | Variable | Default | Description |
 |---|---|---|
 | `SYNAPSE_DEFAULT_TENANT` | `unattributed` | Tenant recorded for requests without an `x-synapse-tenant` header. |
+
+See [Tenant attribution](../guides/tenant-attribution.md) for the attribution headers.
 
 ## Telemetry
 

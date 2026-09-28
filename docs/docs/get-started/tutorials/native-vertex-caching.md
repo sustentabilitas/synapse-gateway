@@ -188,3 +188,5 @@ curl -s -X DELETE \
   effort per request.
 - Read about the [native Vertex lane](../../overview/architecture.md#native-vertex-lane),
   including `media_uris` and `thinking_config`.
+- Use every native Vertex feature, from structured output to tool calling, with the
+  [native Vertex guide](../../guides/native-vertex.md).
