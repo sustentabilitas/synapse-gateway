@@ -115,7 +115,8 @@ impl JevRoute {
     }
 
     /// This route without legs of `drop`: empty tiers removed and `default_tier`
-    /// re-picked (nearest surviving by index, preferring harder). `None` when
+    /// re-picked (the first surviving tier at or above the old default, else the
+    /// hardest surviving tier). `None` when
     /// fewer than two tiers survive — nothing is left to choose between.
     fn pruned(&self, drop: &HashSet<String>) -> Option<JevRoute> {
         let default = self.default_index();
@@ -249,7 +250,7 @@ impl RouteTable {
                 .tap(|kept| match kept {
                     None => tracing::warn!(
                         route = %name,
-                        "jev route downgraded to static: typesafe unavailable or fewer than two tiers left"
+                        "jev route downgraded to static (removed if no legs remain): typesafe unavailable or fewer than two tiers left"
                     ),
                     Some(k) if k.router.default_tier != route.router.default_tier => {
                         tracing::warn!(
@@ -861,6 +862,43 @@ mod tests {
             .unwrap()
             .without_providers(&drop_set(&["openai"]));
         assert_eq!(t.jev_route("auto").unwrap().router.default_tier, "hard");
+    }
+
+    #[test]
+    fn pruning_the_hardest_default_falls_back_to_the_nearest_easier_tier() {
+        use crate::routing::effort::Effort;
+        let toml = jev_toml(
+            "",
+            &[
+                tier("trivial", "none", "qwen", "qwen-flash"),
+                tier("easy", "low", "openai", "gpt-mini"),
+                tier("moderate", "high", "vertex", "gemini-2.5-pro"),
+            ],
+        );
+        let t = RouteTable::from_toml_str(&toml)
+            .unwrap()
+            .without_providers(&drop_set(&["vertex"]));
+        assert_eq!(t.jev_route("auto").unwrap().router.default_tier, "easy");
+        assert_eq!(
+            t.legs("auto")
+                .unwrap()
+                .iter()
+                .map(|l| (l.model.as_str(), l.effort))
+                .collect::<Vec<_>>(),
+            vec![
+                ("gpt-mini", Some(Effort::Low)),
+                ("qwen-flash", Some(Effort::None)),
+            ]
+        );
+    }
+
+    #[test]
+    fn pruning_every_tier_removes_the_route() {
+        let t = RouteTable::from_toml_str(&jev_toml("", &three_tiers()))
+            .unwrap()
+            .without_providers(&drop_set(&["qwen", "vertex"]));
+        assert!(t.jev_route("auto").is_none());
+        assert!(t.legs("auto").is_none());
     }
 
     #[test]
