@@ -1,6 +1,7 @@
 //! Routing: request model, lane classification, route table, executor.
 pub mod classify;
 pub mod content_parts;
+pub mod effort;
 pub mod embeddings;
 pub mod executor;
 pub mod jev_extract;
