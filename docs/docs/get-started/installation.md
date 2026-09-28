@@ -113,4 +113,7 @@ The library crate is named `synapse`, so you import it as `synapse::…`, for ex
 `Gateway::chat()` in-process. Add `ledger-sqlite`, `ledger-postgres`, `ledger-pubsub` or
 `ledger-sns` to `features` if you want the corresponding ledger backend.
 
+[Embedding Synapse as a library](../guides/embedding-as-library.md) walks through a complete
+example, including streaming, embeddings and what the builder leaves out.
+
 The API reference is on [docs.rs](https://docs.rs/synapse-gateway).
