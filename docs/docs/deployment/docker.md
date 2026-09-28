@@ -68,7 +68,7 @@ The gateway reads its TOML files from `/app/config`:
 | `pricing.toml` | Yes | [Pricing](../configuration/pricing.md) |
 | `guardrails.toml` | No | [Guardrails policy](../configuration/guardrails-policy.md) |
 | `ai_task_types.toml` | No | [AI task types](../guides/tenant-attribution.md#ai-task-types) |
-| `a2a.toml` | No | Seed for the A2A agent registry. |
+| `a2a.toml` | No | [Configuration keys](../reference/configuration-keys.md#a2atoml) (seed for the A2A agent registry) |
 
 The image ships with the example configuration from
 [`crates/synapse-gateway/config/`](https://github.com/sustentabilitas/synapse-gateway/blob/main/crates/synapse-gateway/config),
@@ -80,7 +80,7 @@ To keep the files somewhere else in the container, set `SYNAPSE_ROUTES_PATH`,
 `SYNAPSE_PRICING_PATH` and the other path variables listed in
 [Environment variables](../configuration/environment-variables.md#configuration-files).
 
-The files must be readable by UID 1001. The gateway never writes to its configuration
+The configuration files and the service-account key must be readable by UID 1001. The gateway never writes to its configuration
 directory, so a read-only mount (`:ro`) works.
 
 ### Credentials

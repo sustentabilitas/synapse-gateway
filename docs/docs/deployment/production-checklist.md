@@ -60,9 +60,10 @@ that explains the setting in full.
 
 ## Observability
 
-- [ ] **Scrape `:9090`.** Point Prometheus, or an OpenTelemetry collector with
-  `OTEL_EXPORTER_OTLP_ENDPOINT`, at the gateway, and keep the metrics port off the public
-  network. See [Environment variables](../configuration/environment-variables.md#telemetry).
+- [ ] **Collect metrics.** Scrape `:9090` with Prometheus, or set
+  `OTEL_EXPORTER_OTLP_ENDPOINT` so the gateway pushes metrics to your collector. Keep the
+  metrics port off the public network. See
+  [Environment variables](../configuration/environment-variables.md#telemetry).
 - [ ] **Measure errors outside the gateway.** Synapse's request metrics count requests that
   produced a response; requests that fail with a `4xx` or `5xx` are not counted. Take error
   rates from your load balancer, ingress or service mesh.

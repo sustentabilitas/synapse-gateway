@@ -43,9 +43,8 @@ produce:
 
 - Metric names are exactly as listed, with no extra `_total` or unit suffixes, and no
   `otel_scope_*` labels or `target_info` series.
-- Durations are histograms in seconds (`_bucket`, `_sum` and `_count` series) with the
-  bucket boundaries 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60 and 120
-  seconds. Requests slower than 120 seconds land only in the `+Inf` bucket.
+- Durations are histograms in seconds (`_bucket`, `_sum` and `_count` series). The
+  [metrics catalogue](../reference/metrics-catalogue.md#gateway) lists the bucket boundaries.
 - Each metric keeps at most 2,000 label combinations. Beyond that, new combinations are
   folded into a single series labelled `otel_metric_overflow="true"`.
 
@@ -81,8 +80,8 @@ per-tenant numbers.
 - A hybrid extraction request is counted once for its Jev answer and once for each
   extraction.
 
-There is no metric for failed requests. Measure error rates at the load balancer, ingress or
-service mesh in front of the gateway.
+There is no metric for failed chat completions. Measure error rates at the load balancer,
+ingress or service mesh in front of the gateway.
 
 ## Queries
 

@@ -4,11 +4,12 @@ title: Configuration keys
 description: Every key of every gateway configuration file, with its type, whether it is required and its default.
 ---
 
-# Configuration keys
+This page lists every key the gateway reads from its TOML files, on one page for lookup. The
+[configuration pages](../configuration/environment-variables.md) explain what the keys do and
+how they combine; each section below links to its page.
 
-This page lists every key the gateway reads from its TOML files, on one page for lookup. The [configuration pages](../configuration/environment-variables.md) explain what the keys do and how they combine; each section below links to its page.
-
-The gateway reads every file once at startup; restart it to apply a change. Keys the gateway doesn't know are ignored without an error, so a misspelled optional key silently has no effect.
+The gateway reads every file once at startup; restart it to apply a change. Keys the gateway
+doesn't know are ignored without an error, so a misspelled optional key silently has no effect.
 
 ## Files
 
@@ -20,13 +21,16 @@ The gateway reads every file once at startup; restart it to apply a change. Keys
 | `ai_task_types.toml` | `SYNAPSE_AI_TASK_TYPES_PATH` | `config/ai_task_types.toml` | Every request records the AI task type `simple`. |
 | `a2a.toml` | `SYNAPSE_A2A_PATH` | `config/a2a.toml` | The A2A registry starts empty. |
 
-A file that exists but doesn't parse, or fails validation, stops the gateway at startup with a message naming the problem. Environment variables are listed in [Environment variables](../configuration/environment-variables.md).
+A file that exists but doesn't parse, or fails validation, stops the gateway at startup with a
+message naming the problem. Environment variables are listed in
+[Environment variables](../configuration/environment-variables.md).
 
 ## `routes.toml`
 
 Chat routes and embedding aliases. See [Routes](../configuration/routes.md).
 
-The file must contain a `routes` table, even if every alias you need is an embedding alias. A file with only `[embeddings.*]` tables fails to load.
+The file must contain a `routes` table, even if every alias you need is an embedding alias. A
+file with only `[embeddings.*]` tables fails to load.
 
 ### `[routes."<alias>"]`
 
@@ -124,9 +128,11 @@ See [Scanners](../configuration/guardrails-policy.md#scanners).
 
 ## `ai_task_types.toml`
 
-Maps route aliases to the AI task type on ledger rows. See [AI task types](../guides/tenant-attribution.md#ai-task-types).
+Maps route aliases to the AI task type on ledger rows. See
+[AI task types](../guides/tenant-attribution.md#ai-task-types).
 
-Every top-level key is a task type name, and its value is an array of route aliases, chat or embedding:
+Every top-level key is a task type name, and its value is an array of route aliases, chat or
+embedding:
 
 ```toml
 conversation = ["chat", "support-bot"]
@@ -137,7 +143,8 @@ An alias listed under two task types stops the gateway. Aliases not listed resol
 
 ## `a2a.toml`
 
-Agents to register in the gateway's A2A registry at startup. Each agent is an `[[a2a_agents]]` table:
+Agents to register in the gateway's A2A registry at startup. Each agent is an `[[a2a_agents]]`
+table:
 
 | Key | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -159,4 +166,8 @@ card_url = "https://agents.example.com/invoice/.well-known/agent-card.json"
 tags = ["finance"]
 ```
 
-At startup the gateway fetches each agent's card from `card_url`, with a 15-second timeout. Connection errors, `5xx` and `429` responses are retried twice with backoff. An agent whose card can't be fetched is logged and skipped, and the gateway starts without it; a duplicate `id` is also skipped. The registry and its endpoints are described in [A2A agent registry](./http-api.md#a2a-agent-registry).
+At startup the gateway fetches each agent's card from `card_url`, with a 15-second timeout.
+Connection errors, `5xx` and `429` responses are retried twice with backoff. An agent whose
+card can't be fetched is logged and skipped, and the gateway starts without it; a duplicate
+`id` is also skipped. The registry and its endpoints are described in
+[A2A agent registry](./http-api.md#a2a-agent-registry).

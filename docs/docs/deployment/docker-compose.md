@@ -160,13 +160,14 @@ The [cost ledger guide](../guides/cost-ledger.md) describes every column and wha
 ## Explore the metrics
 
 Open Prometheus at `http://localhost:9091`. **Status → Targets** should show the
-`synapse-gateway` job as up. Try these queries:
+`synapse-gateway` job as up. Try the request rate per route and lane:
 
 ```text
 sum by (route, lane) (rate(synapse_requests_total[5m]))
-histogram_quantile(0.95, sum by (le, route) (rate(synapse_request_duration_seconds_bucket[5m])))
-sum by (model) (rate(synapse_output_tokens_total[5m]))
 ```
+
+[Queries](../operating/metrics.md#queries) has more, for latency, tokens, fallback and Jev
+routing.
 
 You can also read the raw metrics from the gateway with `curl -s http://localhost:9090/metrics`.
 
