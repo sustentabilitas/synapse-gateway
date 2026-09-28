@@ -36,7 +36,7 @@ fallback chain             leg 1 → leg 2 → … until one succeeds
 provider ──► response to the client (JSON or server-sent events)
   │
   ├─► cost ledger          tokens and cost per tenant, written asynchronously
-  └─► metrics and traces   OpenTelemetry metrics, gen_ai.* spans
+  └─► metrics              OpenTelemetry synapse_* metrics (Prometheus, OTLP)
 ```
 
 Each route alias in `routes.toml` maps to an ordered list of legs (provider plus model).

@@ -54,8 +54,8 @@ tiers, then easier ones. See [Request flow](architecture.md#request-flow).
 
 The customer, team or application a request is attributed to, taken from the
 `x-synapse-tenant` header. Without the header, Synapse uses `SYNAPSE_DEFAULT_TENANT`
-(default `unattributed`). The tenant is recorded on ledger rows and tracing spans, but it is
-never a metric label, because clients control its value. See
+(default `unattributed`). The tenant is recorded on ledger rows, but it is never a metric
+label, because clients control its value. See
 [Tenant attribution](../guides/tenant-attribution.md).
 
 ## AI task type

@@ -20,13 +20,15 @@ exact invoice: read [Accuracy](#accuracy) before billing customers from it.
 | A Jev router decision | `jev` | `typesafe` and `jev_router.model`. |
 | Each hybrid extraction | `standard` or `native` | The leg that served it. |
 | An embedding request | `embedding` | The leg that served it; `output_tokens` is 0. |
-| A Gemini or Jev passthrough call | `passthrough` | `vertex` or `typesafe` and the model called. |
+| A Gemini `generateContent` or `streamGenerateContent` passthrough call | `passthrough` | `vertex` and the leg's model. |
+| A Jev passthrough call | `passthrough` | `typesafe` and the model called. |
 
 Failed chat and embedding requests write no row: a non-streaming request that fails, a
 streaming request that fails before its first chunk, a request blocked by guardrails or
 rejected with `400`. A streaming response writes its row when the stream ends, whether it
 completes, fails or the client disconnects; a stream that fails mid-way is recorded with
-`status` `error`. Passthrough calls write a row even when they fail.
+`status` `error`. Passthrough calls write a row even when they fail. Other Gemini
+passthrough actions, such as `countTokens`, are forwarded without a row.
 
 ## Row format
 
@@ -105,8 +107,9 @@ The Pub/Sub and SNS sinks publish one JSON event per row, in camelCase, with the
 ```
 
 `workspace`, `user`, `threadId`, `messageId` and `userTaskType` appear only when set. `op`
-says what produced the event: `chat`, `embedding`, `route_decision` for a Jev router
-decision, or `systemone` for a Jev passthrough call. The database tables have no `op`
+says what produced the event: `chat` for a chat completion or a Gemini passthrough call,
+`embedding`, `route_decision` for a Jev router decision, or `systemone` for a Jev
+passthrough call. The database tables have no `op`
 column.
 
 Each message also carries attributes for subscription filters: `EventType`

@@ -90,9 +90,9 @@ Every ledger row has one. Synapse resolves it per request:
 that kind of work:
 
 ```toml
-conversation = ["chat", "planning"]
-extraction = ["extract", "doc-extract"]
-vision = ["pdf-ocr"]
+conversation = ["chat", "support-bot"]
+extraction = ["invoice-extract"]
+vision = ["receipt-ocr"]
 ```
 
 - The gateway reads it from `SYNAPSE_AI_TASK_TYPES_PATH` (default

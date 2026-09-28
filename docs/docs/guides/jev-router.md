@@ -54,16 +54,25 @@ latency to every request on the route.
 
 ## Effort
 
-Each tier sets a reasoning `effort`: `none`, `minimal`, `low`, `medium`, `high`, `xhigh` or
-`max`. When the reasoning answer reaches the threshold, the effort goes one step up that
-list, stopping at `max`. The tier's legs receive the effort in the form their lane
-understands: `reasoning_effort` for OpenAI-style providers, `thinkingLevel` for Gemini 3 on
-the standard lane, and `thinkingBudget` on the native Vertex lane (512, 1024, 4096, 8192,
-16384 or 24576 tokens for `minimal` through `max`). [Effort](../configuration/routes.md#effort)
-has the full mapping.
+Each tier sets a reasoning `effort`, and Synapse translates it for each provider and lane.
+[Effort](../configuration/routes.md#effort) in the routes reference has the translation
+table. Choosing efforts:
 
-`none` sends nothing, so the model's default applies. On Gemini 2.5 Pro and Flash that
-default is dynamic thinking, which can cost more than `minimal`.
+- **Easy tiers: `none` or `minimal`.** Greetings, lookups and rewrites gain nothing from
+  thinking, and thinking tokens are billed as output. `none` sends no effort at all, so the
+  model's default applies; on some Gemini models that default is dynamic thinking, so set
+  `minimal` when you want thinking kept small.
+- **Middle tiers: `low`.** Everyday questions and simple code edits benefit from a little
+  thinking without much added latency.
+- **Hard tiers: `medium` or `high`.** Multi-step analysis, maths and debugging are where
+  thinking pays for itself. Keep `xhigh` and `max` for tiers where answer quality matters far
+  more than latency and cost.
+- **Leave room for the bump.** When Jev's reasoning probability reaches
+  `reasoning_threshold` (default 0.7), the tier's effort goes one step up the list `none`,
+  `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, stopping at `max`. A `medium` tier
+  serves reasoning-heavy requests at `high`, so you rarely need to set a tier's effort at the
+  top of what you would pay for. Raise `reasoning_threshold` to bump less often, or lower it
+  to bump more.
 
 A client's own effort always wins on its lane:
 
@@ -92,8 +101,9 @@ What counts as a leg failure depends on the lane; see [Fallback chains](fallback
 - `"routing_strategy": "static"` skips Jev for one request. It is served from
   `default_tier` with each tier's configured effort, never raised, and falls back in the same
   order. Use it for latency-sensitive calls or to compare against a fixed tier.
-- `"routing_strategy": "jev"` is accepted on a `jev` route and changes nothing. On a static
-  route it returns `400`, as does any other value.
+- `"routing_strategy": "jev"` is accepted on a `jev` route and changes nothing; on a static
+  route it returns `400`. `"routing_strategy": "static"` on a static route changes nothing.
+  Any value other than `static` or `jev` returns `400`.
 - A `jev` block, with `questions` or `extract`, returns `400` on a `jev` route; the
   [Jev lane](jev-lane.md) needs a route with `typesafe` legs.
 
@@ -104,7 +114,7 @@ they apply:
 
 | Header | Value |
 |---|---|
-| `x-synapse-routing` | `jev` when Jev decided, `static-override` when the client sent `"routing_strategy": "static"`, `static` on routes without tiers. |
+| `x-synapse-routing` | `jev` on a `jev` route, including when the decision was degraded; `static-override` when the client sent `"routing_strategy": "static"`; `static` on routes without tiers. |
 | `x-synapse-tier` | The tier whose leg served the request. |
 | `x-synapse-tier-decided` | The tier Jev chose, only when a different tier served. |
 | `x-synapse-reasoning-effort` | The effort the serving leg ran with, or `client`. |

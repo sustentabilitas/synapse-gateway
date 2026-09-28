@@ -57,7 +57,7 @@ Each provider reads its own credential and endpoint variables. The table lists t
 | Variable | Default | Description |
 |---|---|---|
 | `SYNAPSE_REQUEST_TIMEOUT_SECS` | `120` | Maximum time, in seconds, for a leg to produce its first chunk on the standard lane. A leg that misses it is abandoned and the next leg is tried. The same value is the HTTP timeout of every provider call, covering the whole response. |
-| `SYNAPSE_STREAM_IDLE_TIMEOUT_SECS` | `60` | Maximum gap, in seconds, between two chunks on the standard lane. A leg that stalls this long is terminated as a mid-stream failure. |
+| `SYNAPSE_STREAM_IDLE_TIMEOUT_SECS` | `60` | Maximum gap, in seconds, between two chunks for non-streaming requests on the standard lane. A leg that stalls this long fails, and the next leg is tried. Streaming requests have no idle timeout once their first chunk arrives. See [Timeouts](../guides/streaming-and-tools.md#timeouts). |
 
 Both values must be whole numbers; anything else stops the gateway at startup. The native
 Vertex lane has no first-chunk or idle timeout: only the provider HTTP timeout bounds it.

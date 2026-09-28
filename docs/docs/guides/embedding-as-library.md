@@ -151,9 +151,9 @@ attribution the HTTP headers carry in the binary; see
 correlate ledger rows with your own ids.
 
 Errors are `synapse::error::GatewayError`: `UnknownModel`, `BadRequest`,
-`NativeFeatureUnsupported`, `ContentBlocked`, `AllLegsFailed` (with each leg's failure),
-`UpstreamTimeout`, `Upstream` and `AllCircuitsOpen`, the same cases the HTTP API maps to
-status codes.
+`NativeFeatureUnsupported`, `ContentBlocked`, `AllLegsFailed` (with each leg's failure) and
+`Upstream`, the same cases the HTTP API maps to status codes. The enum also declares
+`UpstreamTimeout` and `AllCircuitsOpen`, which the gateway does not currently return.
 
 ## Read the routing report
 
@@ -195,9 +195,18 @@ use synapse::embeddings::vertex::VertexEmbedder;
 use synapse::embeddings::{EmbeddingInput, EmbeddingRequest};
 use synapse::routing::embeddings::EmbeddingRouteTable;
 
+const EMBED_ROUTES: &str = r#"
+[embeddings."embed"]
+dimensions = 768
+legs = [{ provider = "vertex", model = "text-embedding-004" }]
+"#;
+
+let project = vertex_project_from_env(&env)
+    .ok_or_else(|| anyhow::anyhow!("set VERTEX_PROJECT_ID"))?;
+
 let gateway = Gateway::builder()
     // ... routes, catalog, pricing and ledger as above
-    .embed_routes(EmbeddingRouteTable::from_toml_str(ROUTES)?)
+    .embed_routes(EmbeddingRouteTable::from_toml_str(EMBED_ROUTES)?)
     .embedder(
         "vertex",
         Arc::new(VertexEmbedder::new(

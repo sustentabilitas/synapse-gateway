@@ -75,8 +75,8 @@ Native capabilities:
   on native Vertex legs and reported in `x-synapse-routing` and `x-synapse-tier` response
   headers. See the [Jev router guide](../guides/jev-router.md).
 - **Real streaming**: Synapse always streams from upstream, so `stream: true` clients get
-  token-by-token server-sent events; non-streaming clients get the buffered result and keep
-  the full fallback chain. See [Streaming and tool calling](../guides/streaming-and-tools.md).
+  token-by-token server-sent events; non-streaming clients get the buffered result and, on
+  the standard lane, keep the full fallback chain. See [Streaming and tool calling](../guides/streaming-and-tools.md).
 - **Embeddable**: run the `synapse-gateway` binary, or depend on the library crate and call
   `Gateway::chat()` in-process. See
   [Embedding Synapse as a library](../guides/embedding-as-library.md).
@@ -91,7 +91,7 @@ Compatibility and operations:
 - **Per-tenant cost ledger**: token usage and cost per request, written to SQLite or
   Postgres and optionally fanned out to Google Cloud Pub/Sub and AWS SNS. See the
   [cost ledger guide](../guides/cost-ledger.md).
-- **Observability**: OpenTelemetry `gen_ai.*` spans and `synapse_*` metrics, served in
-  Prometheus format and optionally pushed over OTLP.
+- **Observability**: OpenTelemetry `synapse_*` metrics, served in Prometheus format and
+  optionally pushed over OTLP.
 - **Input guardrails**: named scanner policies (prompt injection, secrets, PII and more)
   that block or observe requests before they reach a provider.
