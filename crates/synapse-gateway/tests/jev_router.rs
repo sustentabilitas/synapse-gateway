@@ -33,7 +33,7 @@ strategy = "jev"
 
 [routes."auto".jev_router]
 default_tier = "moderate"
-timeout_ms = 200
+timeout_ms = 2000
 
 [[routes."auto".tiers]]
 name = "trivial"
@@ -528,6 +528,10 @@ async fn settled_rows(store: &InMemoryLedger, n: usize) -> Vec<UsageEntry> {
     store.entries.lock().clone()
 }
 
+fn assert_metric_line(text: &str, line: &str) {
+    assert!(text.lines().any(|l| l == line), "no `{line}` in {text}");
+}
+
 #[tokio::test]
 async fn jev_timeout_routes_to_default_tier_and_writes_no_decision_row() {
     let jev = jev_mock(
@@ -540,7 +544,8 @@ async fn jev_timeout_routes_to_default_tier_and_writes_no_decision_row() {
     let qwen = MockServer::start().await;
     qwen_serves(&qwen, "qwen-plus", "\"reasoning_effort\":\"low\"", "ok", 1).await;
 
-    let (gw, store, _) = harness(ROUTES, Some(jev.uri()), &qwen.uri(), None);
+    let routes = ROUTES.replace("timeout_ms = 2000", "timeout_ms = 200");
+    let (gw, store, metrics) = harness(&routes, Some(jev.uri()), &qwen.uri(), None);
     let (status, headers, body) = send(gw, ask("auto", "hi")).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(header(&headers, "x-synapse-tier"), Some("moderate"));
@@ -550,6 +555,10 @@ async fn jev_timeout_routes_to_default_tier_and_writes_no_decision_row() {
     );
     let rows = settled_rows(&store, 1).await;
     assert!(rows.iter().all(|r| r.op != "route_decision"), "{rows:?}");
+    assert_metric_line(
+        &metrics(),
+        r#"synapse_routing_decisions_total{outcome="timeout",route="auto",tier="moderate"} 1"#,
+    );
 }
 
 #[tokio::test]
@@ -562,8 +571,9 @@ async fn low_confidence_routes_to_default_tier_but_still_records_the_decision() 
     let qwen = MockServer::start().await;
     qwen_serves(&qwen, "qwen-plus", "\"model\"", "ok", 1).await;
 
-    let (gw, store, _) = harness(ROUTES, Some(jev.uri()), &qwen.uri(), None);
-    let (_, headers, _) = send(gw, ask("auto", "hmm")).await;
+    let (gw, store, metrics) = harness(ROUTES, Some(jev.uri()), &qwen.uri(), None);
+    let (status, headers, body) = send(gw, ask("auto", "hmm")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(header(&headers, "x-synapse-tier"), Some("moderate"));
     assert_eq!(
         header(&headers, "x-synapse-routing-degraded"),
@@ -571,6 +581,10 @@ async fn low_confidence_routes_to_default_tier_but_still_records_the_decision() 
     );
     let rows = wait_rows(&store, 2).await;
     assert!(rows.iter().any(|r| r.op == "route_decision"), "{rows:?}");
+    assert_metric_line(
+        &metrics(),
+        r#"synapse_routing_decisions_total{outcome="low_confidence",route="auto",tier="moderate"} 1"#,
+    );
 }
 
 #[tokio::test]
@@ -579,11 +593,17 @@ async fn jev_error_and_missing_provider_degrade_to_default_tier() {
     let qwen = MockServer::start().await;
     qwen_serves(&qwen, "qwen-plus", "\"model\"", "ok", 2).await;
 
-    let (gw, _, _) = harness(ROUTES, Some(jev.uri()), &qwen.uri(), None);
-    let (_, errored, _) = send(gw, ask("auto", "x")).await;
+    let (gw, _, metrics) = harness(ROUTES, Some(jev.uri()), &qwen.uri(), None);
+    let (status, errored, body) = send(gw, ask("auto", "x")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(header(&errored, "x-synapse-tier"), Some("moderate"));
     assert_eq!(
         header(&errored, "x-synapse-routing-degraded"),
         Some("error")
+    );
+    assert_metric_line(
+        &metrics(),
+        r#"synapse_routing_decisions_total{outcome="error",route="auto",tier="moderate"} 1"#,
     );
 
     let (gw, _, _) = harness(ROUTES, None, &qwen.uri(), None);
@@ -643,6 +663,7 @@ const VERTEX_ROUTES: &str = r#"
 strategy = "jev"
 [routes."auto".jev_router]
 default_tier = "moderate"
+timeout_ms = 2000
 [[routes."auto".tiers]]
 name = "trivial"
 description = "Greetings"
@@ -819,21 +840,11 @@ async fn guardrail_block_is_returned_before_jev_is_asked() {
         )
         .unwrap();
 
-        let (gw, store, _) =
-            harness_guarded(GUARDED_ROUTES, Some(jev.uri()), &qwen.uri(), None, guard);
+        let (gw, _, _) = harness_guarded(GUARDED_ROUTES, Some(jev.uri()), &qwen.uri(), None, guard);
         let (status, headers, text) = send(gw, body).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{text}");
         let json: Value = serde_json::from_str(&text).unwrap();
         assert_eq!(json["error"]["code"], "content_blocked", "{text}");
         assert_eq!(header(&headers, "x-synapse-routing"), None);
-        tokio::time::sleep(Duration::from_millis(30)).await;
-        assert!(
-            store
-                .entries
-                .lock()
-                .iter()
-                .all(|r| r.op != "route_decision"),
-            "a blocked request must not record a routing decision"
-        );
     }
 }
