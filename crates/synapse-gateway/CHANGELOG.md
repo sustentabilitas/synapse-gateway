@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.38] - 2026-09-28
+
 ### Added
 
 - `telemetry` module: `GatewayMetrics` (all gateway instruments, built from any
