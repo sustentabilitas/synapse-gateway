@@ -710,12 +710,10 @@ mod tests {
         let crabs = "🦀".repeat(LATEST_CAP + 101);
         let separator = "\n…\n";
         let kept = head_tail(&crabs, LATEST_CAP);
-        assert!(std::str::from_utf8(kept.as_bytes()).is_ok());
         assert_eq!(kept.chars().filter(|c| *c == '🦀').count(), LATEST_CAP);
         assert_eq!(kept.chars().count(), LATEST_CAP + separator.chars().count());
         assert_eq!(kept.replacen(separator, "", 1), "🦀".repeat(LATEST_CAP));
         let cut = truncate(&crabs, SYSTEM_CAP);
-        assert!(std::str::from_utf8(cut.as_bytes()).is_ok());
         assert_eq!(cut, "🦀".repeat(SYSTEM_CAP));
     }
 
@@ -1028,6 +1026,32 @@ mod tests {
         assert!(report
             .headers()
             .contains(&("x-synapse-routing-degraded", "timeout".to_string())));
+    }
+
+    #[test]
+    fn unserved_tiered_plan_reports_no_tier_or_effort() {
+        let report = tiered_plan(DecisionOutcome::Decided, false).report_for(None);
+        assert_eq!(
+            report.headers(),
+            vec![("x-synapse-routing", "jev".to_string())]
+        );
+    }
+
+    #[test]
+    fn static_override_reports_tier_and_effort_without_degradation() {
+        let plan = RoutePlan {
+            mode: RoutingMode::StaticOverride,
+            outcome: Some(DecisionOutcome::StaticOverride),
+            ..tiered_plan(DecisionOutcome::StaticOverride, false)
+        };
+        assert_eq!(
+            plan.report_for(Some(("vertex", "gemini-2.5-pro"))).headers(),
+            vec![
+                ("x-synapse-routing", "static-override".to_string()),
+                ("x-synapse-tier", "hard".to_string()),
+                ("x-synapse-reasoning-effort", "medium".to_string()),
+            ]
+        );
     }
 
     #[test]
