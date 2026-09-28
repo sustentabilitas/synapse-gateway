@@ -138,6 +138,7 @@ impl Gateway {
                     tracing::warn!(
                         target: "synapse::routing",
                         route = %req.model,
+                        error.kind = "timeout",
                         timeout_ms = route.router.timeout_ms,
                         "jev decision timed out; routing to default_tier"
                     )

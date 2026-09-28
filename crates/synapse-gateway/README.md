@@ -126,7 +126,8 @@ A full four-tier example ships commented out at the end of `config/routes.toml`.
   `tracing` event with target `synapse::routing` and is counted in
   `synapse_routing_decisions_total`; requests rejected with `400` or by
   guardrails emit neither. A failed or timed-out Jev call also logs a
-  `synapse::routing` warning carrying only the failure kind and HTTP status.
+  `synapse::routing` warning carrying only the failure kind (`error.kind`) and
+  the HTTP status or configured timeout — never the Jev response body.
 - A `jev` route references the `typesafe` provider, so strict validation
   requires `TYPESAFE_API_KEY`. Under lenient validation, unservable legs are
   pruned inside tiers (empty tiers dropped, `default_tier` re-picked); the

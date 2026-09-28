@@ -75,8 +75,12 @@ legs = [{ provider = "vertex", model = "gemini-2.5-flash" }]
   `static` en rutas normales), `x-synapse-tier`, `x-synapse-reasoning-effort`
   y, cuando procede, `x-synapse-tier-decided` y `x-synapse-routing-degraded`
   (`timeout`, `error`, `low_confidence`, `jev_unavailable`).
-- Cada decisión de Jev escribe una fila en el registro con
+- Cada decisión de Jev que se puede interpretar escribe una fila en el registro con
   `op = "route_decision"`, con el mismo `request_id` que la fila del chat.
+- Cada petición planificada emite un evento `tracing` con target
+  `synapse::routing`. Una llamada a Jev fallida o agotada por tiempo registra
+  además una advertencia con solo el tipo de fallo (`error.kind`) y el estado
+  HTTP o el timeout configurado, nunca el cuerpo de la respuesta de Jev.
 - Con validación estricta, una ruta `jev` exige `TYPESAFE_API_KEY`; con
   validación `lenient`, pasa a enrutado estático si no está disponible. Una
   ruta degradada conserva el `effort` de cada nivel en sus tramos, así que sus
