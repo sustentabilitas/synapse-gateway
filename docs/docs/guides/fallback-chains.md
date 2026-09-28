@@ -25,7 +25,8 @@ failing over from Vertex AI to OpenAI.
 
 Only one leg serves each request. Synapse never sends the same request to two legs at once.
 Each leg gets exactly one attempt per request: chat requests have no retries on the same leg
-and no circuit breakers, so a leg that is down is tried, and fails, on every request.
+and no circuit breakers, so a leg that is down is tried, and fails, on every request. See
+[Limitations and roadmap](../reference/limitations-roadmap.md#resilience).
 
 ## What moves to the next leg
 

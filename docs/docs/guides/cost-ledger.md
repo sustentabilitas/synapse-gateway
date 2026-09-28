@@ -74,8 +74,9 @@ Ledger writes never slow a request down. Synapse puts each row on an in-memory q
 10,000 rows and a background task writes them out. That design has consequences:
 
 - If the queue is full, new rows are dropped and counted in `synapse_ledger_dropped_total`.
-- A failed write is logged and counted in `synapse_ledger_errors_total`, labelled with the
-  sink's `backend`, and not retried.
+- A failed write is logged and counted in `synapse_ledger_errors_total`, and not retried.
+  With several sinks, the `backend` label names the failing sink; with one sink, it is
+  `writer`.
 - Rows still in the queue when the process stops are lost.
 
 Alert on both counters being above zero. For usage you must not lose, publish to Pub/Sub or

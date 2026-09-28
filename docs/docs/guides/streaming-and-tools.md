@@ -131,4 +131,6 @@ The two lanes differ in a few details:
 
 If you rely on `tool_choice` to force or forbid a tool call on a Gemini model, make the
 request use the native Vertex lane by adding a `vertex` block with a native feature, such as
-`thinking_config`. Otherwise, enforce the choice in your application.
+`thinking_config`. Otherwise, enforce the choice in your application. The standard lane
+drops other request fields too, including `max_tokens`; see
+[Request fields](../reference/limitations-roadmap.md#request-fields).

@@ -55,7 +55,8 @@ Use Synapse when:
 Synapse is not a good fit when:
 
 - You need inbound authentication or rate limiting today. Synapse has neither yet; run it
-  behind your own API gateway, ingress or service mesh.
+  behind your own API gateway, ingress or service mesh. See
+  [Limitations and roadmap](../reference/limitations-roadmap.md).
 - You want a hosted SaaS. Synapse is self-hosted software.
 
 ## Key features

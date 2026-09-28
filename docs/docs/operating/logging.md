@@ -108,4 +108,5 @@ so a request through Synapse does not appear in a distributed trace, and `RUST_L
 controls logs. For request-level telemetry, use the [metrics](metrics.md) and the
 [cost ledger](../guides/cost-ledger.md), whose `request_id` you can set per request with the
 `x-synapse-message` header; see
-[Correlate requests](../guides/tenant-attribution.md#correlate-requests).
+[Correlate requests](../guides/tenant-attribution.md#correlate-requests). Tracing is listed
+under [Limitations and roadmap](../reference/limitations-roadmap.md#observability).
