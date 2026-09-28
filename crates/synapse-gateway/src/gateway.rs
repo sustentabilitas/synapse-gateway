@@ -22,6 +22,7 @@ use crate::routing::classify::{classify, vertex_triggers, Lane};
 use crate::routing::executor::{
     execute_buffered_with_timeouts, CommittedStream, Completion, LegError, StreamTimeouts,
 };
+use crate::routing::jev_router::RoutingReport;
 use crate::routing::request::ChatRequest;
 use crate::routing::stream::{Accumulator, FinishReason, StreamItem};
 use crate::routing::table::{ChainLeg, RouteTable};
@@ -185,21 +186,14 @@ impl Gateway {
         self.routes.aliases()
     }
 
-    fn resolve_legs(&self, req: &ChatRequest) -> Result<Vec<ChainLeg>, GatewayError> {
-        self.routes
-            .legs(&req.model)
-            .ok_or_else(|| GatewayError::UnknownModel(req.model.clone()))
-            .map(<[ChainLeg]>::to_vec)
-    }
-
     /// Run the route's guardrail policy over the request input. Falls back to
     /// the `default` policy; a no-op when neither is configured.
-    fn guard_input(&self, req: &ChatRequest) -> Result<(), GatewayError> {
+    pub(crate) fn guard_input(&self, req: &ChatRequest) -> Result<(), GatewayError> {
         let policy = self.routes.policy_of(&req.model).unwrap_or("default");
         self.guard.guard(policy, req)
     }
 
-    fn tenant_of<'a>(&'a self, ctx: &'a RequestCtx) -> &'a str {
+    pub(crate) fn tenant_of<'a>(&'a self, ctx: &'a RequestCtx) -> &'a str {
         ctx.tenant.as_deref().unwrap_or(&self.default_tenant)
     }
 
@@ -475,11 +469,11 @@ impl Gateway {
     ) -> Result<GuardedStream, GatewayError> {
         use crate::routing::executor::execute_streaming_with_timeouts;
         let started = Instant::now();
-        let legs = self.resolve_legs(&req)?;
-        self.guard_input(&req)?;
         let request_id = ctx
             .resolved_request_id()
             .unwrap_or_else(|| Uuid::new_v4().to_string());
+        let plan = self.plan_route(&req, ctx, &request_id).await?;
+        let legs = plan.chain();
         let vertex_leg_count = legs.iter().filter(|l| l.provider == "vertex").count() as u32;
         require_jev_block(&req, &legs)?;
         if let Err(message) = crate::routing::jev_extract::validate_extract(
@@ -550,6 +544,10 @@ impl Gateway {
             },
         };
         let model = committed.model.clone();
+        let routing = plan.report_for(Some((
+            committed.provider.as_str(),
+            committed.model.as_str(),
+        )));
         let guard = StreamSideEffects::new(
             self.ledger.clone(),
             self.pricing.clone(),
@@ -564,7 +562,7 @@ impl Gateway {
             legs_attempted,
             started,
         );
-        Ok(GuardedStream::new(committed.stream, model, guard))
+        Ok(GuardedStream::new(committed.stream, model, guard, routing))
     }
 
     /// Buffered in-process chat: stream the chain internally, aggregate, fire
@@ -574,12 +572,22 @@ impl Gateway {
         req: ChatRequest,
         ctx: &RequestCtx,
     ) -> Result<ChatOutcome, GatewayError> {
+        self.chat_routed(req, ctx).await.map(|(outcome, _)| outcome)
+    }
+
+    /// [`Gateway::chat`] plus how the request was routed (tier, effort,
+    /// degradation), for callers that surface it (the HTTP layer's headers).
+    pub async fn chat_routed(
+        &self,
+        req: ChatRequest,
+        ctx: &RequestCtx,
+    ) -> Result<(ChatOutcome, RoutingReport), GatewayError> {
         let started = Instant::now();
-        let legs = self.resolve_legs(&req)?;
-        self.guard_input(&req)?;
         let request_id = ctx
             .resolved_request_id()
             .unwrap_or_else(|| Uuid::new_v4().to_string());
+        let plan = self.plan_route(&req, ctx, &request_id).await?;
+        let legs = plan.chain();
         require_jev_block(&req, &legs)?;
         if let Err(message) = crate::routing::jev_extract::validate_extract(
             &req,
@@ -592,7 +600,7 @@ impl Gateway {
             let outcome = self
                 .chat_hybrid(req, ctx, &legs, started, &request_id)
                 .await?;
-            return Ok(ChatOutcome::Hybrid(outcome));
+            return Ok((ChatOutcome::Hybrid(outcome), plan.report_for(None)));
         }
         let (completion, lane_str, legs_n) = match classify(&req) {
             Lane::Standard => execute_buffered_with_timeouts(
@@ -662,7 +670,11 @@ impl Gateway {
             legs_n,
             started,
         );
-        Ok(ChatOutcome::Plain(completion))
+        let routing = plan.report_for(Some((
+            completion.provider.as_str(),
+            completion.model.as_str(),
+        )));
+        Ok((ChatOutcome::Plain(completion), routing))
     }
 
     /// Embed `req.input` against the embedding alias `req.model`, pinning output to
@@ -1100,6 +1112,7 @@ pub struct GuardedStream {
     inner: BoxStream<'static, Result<StreamItem, LegError>>,
     model: String,
     guard: StreamSideEffects,
+    routing: RoutingReport,
 }
 
 impl GuardedStream {
@@ -1107,17 +1120,24 @@ impl GuardedStream {
         inner: BoxStream<'static, Result<StreamItem, LegError>>,
         model: String,
         guard: StreamSideEffects,
+        routing: RoutingReport,
     ) -> Self {
         Self {
             inner,
             model,
             guard,
+            routing,
         }
     }
 
     /// The model id of the committed leg (for the OpenAI chunk `model` field).
     pub fn model(&self) -> &str {
         &self.model
+    }
+
+    /// How this request was routed (for response headers).
+    pub fn routing(&self) -> &RoutingReport {
+        &self.routing
     }
 }
 
@@ -1276,7 +1296,7 @@ mod tests {
             std::time::Instant::now(),
         );
         {
-            let mut gs = GuardedStream::new(inner, "m".into(), guard);
+            let mut gs = GuardedStream::new(inner, "m".into(), guard, RoutingReport::default());
             let mut n = 0;
             while let Some(item) = gs.next().await {
                 item.unwrap();

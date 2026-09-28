@@ -1045,7 +1045,8 @@ mod tests {
             ..tiered_plan(DecisionOutcome::StaticOverride, false)
         };
         assert_eq!(
-            plan.report_for(Some(("vertex", "gemini-2.5-pro"))).headers(),
+            plan.report_for(Some(("vertex", "gemini-2.5-pro")))
+                .headers(),
             vec![
                 ("x-synapse-routing", "static-override".to_string()),
                 ("x-synapse-tier", "hard".to_string()),
