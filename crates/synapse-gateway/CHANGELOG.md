@@ -29,8 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `routing_strategy: "static"` override; `x-synapse-tier`,
   `x-synapse-tier-decided`, `x-synapse-reasoning-effort` and
   `x-synapse-routing-degraded` response headers; `route_decision` ledger rows;
-  a `synapse::routing` tracing event per planned request, plus a warning (failure
-  kind and HTTP status only) when a Jev call fails or times out;
+  a `synapse::routing` tracing event per planned request, plus a warning
+  (`error.kind` and the HTTP status or timeout only) when a Jev call fails or
+  times out;
   `synapse_routing_decisions_total` and
   `synapse_routing_decision_duration_seconds` metrics. `jev` routes never seed
   the Gemini passthrough fallback chain. Public API:
