@@ -310,7 +310,11 @@ impl Gateway {
         let mut last_retryable: Option<GatewayError> = None;
         for leg in &vertex_legs {
             match provider
-                .stream_generate(&leg.model, req, leg.region.as_deref())
+                .stream_generate(
+                    &leg.model,
+                    &with_leg_thinking(req, leg),
+                    leg.region.as_deref(),
+                )
                 .await
             {
                 Ok(stream) => {
@@ -816,6 +820,32 @@ fn non_typesafe_legs(legs: &[ChainLeg]) -> Vec<ChainLeg> {
         .filter(|l| l.provider != "typesafe")
         .cloned()
         .collect()
+}
+
+/// The request one native-Vertex leg sends: the leg's effort becomes a
+/// `thinkingBudget` unless the client already sent a `thinking_config`.
+fn with_leg_thinking<'a>(
+    req: &'a ChatRequest,
+    leg: &ChainLeg,
+) -> std::borrow::Cow<'a, ChatRequest> {
+    let client_set = req
+        .vertex
+        .as_ref()
+        .is_some_and(|v| v.thinking_config.is_some());
+    match (
+        client_set,
+        leg.effort
+            .and_then(crate::routing::effort::Effort::thinking_budget),
+    ) {
+        (false, Some(budget)) => std::borrow::Cow::Owned(ChatRequest {
+            vertex: Some(crate::routing::request::VertexExt {
+                thinking_config: Some(serde_json::json!({ "thinkingBudget": budget })),
+                ..req.vertex.clone().unwrap_or_default()
+            }),
+            ..req.clone()
+        }),
+        _ => std::borrow::Cow::Borrowed(req),
+    }
 }
 
 impl GatewayBuilder {
@@ -1599,5 +1629,64 @@ mod tests {
         .unwrap();
         let err = gw.chat(req, &RequestCtx::default()).await.unwrap_err();
         assert!(matches!(err, GatewayError::ContentBlocked { .. }));
+    }
+
+    fn vertex_req(vertex: serde_json::Value) -> ChatRequest {
+        serde_json::from_value(serde_json::json!({
+            "model": "auto",
+            "messages": [{"role": "user", "content": "hi"}],
+            "vertex": vertex
+        }))
+        .unwrap()
+    }
+
+    fn vertex_leg(effort: Option<crate::routing::effort::Effort>) -> ChainLeg {
+        ChainLeg {
+            provider: "vertex".into(),
+            model: "gemini-2.5-pro".into(),
+            effort,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn leg_effort_becomes_a_thinking_budget_and_keeps_the_vertex_block() {
+        let req = vertex_req(serde_json::json!({"response_schema": {"type": "object"}}));
+        let sent = with_leg_thinking(
+            &req,
+            &vertex_leg(Some(crate::routing::effort::Effort::High)),
+        );
+        let v = sent.vertex.as_ref().unwrap();
+        assert_eq!(
+            v.thinking_config,
+            Some(serde_json::json!({"thinkingBudget": 8192}))
+        );
+        assert_eq!(
+            v.response_schema,
+            Some(serde_json::json!({"type": "object"}))
+        );
+    }
+
+    #[test]
+    fn client_thinking_config_wins_over_leg_effort() {
+        let req = vertex_req(serde_json::json!({"thinking_config": {"thinkingLevel": "low"}}));
+        let sent = with_leg_thinking(&req, &vertex_leg(Some(crate::routing::effort::Effort::Max)));
+        assert!(matches!(sent, std::borrow::Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn effort_none_or_absent_leaves_the_request_untouched() {
+        let req = vertex_req(serde_json::json!({"response_schema": {"type": "object"}}));
+        assert!(matches!(
+            with_leg_thinking(
+                &req,
+                &vertex_leg(Some(crate::routing::effort::Effort::None))
+            ),
+            std::borrow::Cow::Borrowed(_)
+        ));
+        assert!(matches!(
+            with_leg_thinking(&req, &vertex_leg(None)),
+            std::borrow::Cow::Borrowed(_)
+        ));
     }
 }
