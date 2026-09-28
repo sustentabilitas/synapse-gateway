@@ -5,7 +5,7 @@ import {themes as prismThemes} from 'prism-react-renderer';
 const REPO = 'https://github.com/sustentabilitas/synapse-gateway';
 
 // Read the Docs serves each version under a path such as /en/latest/.
-const site = new URL(process.env.READTHEDOCS_CANONICAL_URL ?? 'http://localhost:3000/');
+const site = new URL(process.env.READTHEDOCS_CANONICAL_URL || 'http://localhost:3000/');
 const baseUrl = site.pathname.endsWith('/') ? site.pathname : `${site.pathname}/`;
 
 const config: Config = {
