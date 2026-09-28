@@ -75,7 +75,10 @@ legs = [{ provider = "vertex", model = "gemini-2.5-flash" }]
 - Cada decisión de Jev escribe una fila en el registro con
   `op = "route_decision"`, con el mismo `request_id` que la fila del chat.
 - Con validación estricta, una ruta `jev` exige `TYPESAFE_API_KEY`; con
-  validación `lenient`, pasa a enrutado estático si no está disponible.
+  validación `lenient`, pasa a enrutado estático si no está disponible. Una
+  ruta degradada conserva el `effort` de cada nivel en sus tramos, así que sus
+  respuestas siguen llevando `x-synapse-reasoning-effort` (pero no
+  `x-synapse-tier`).
 
 ### Carril Vertex nativo
 

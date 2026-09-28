@@ -376,12 +376,15 @@ pub struct RoutePlan {
     /// Tier Jev picked (or `default_tier`), before eligibility.
     pub decided: Option<usize>,
     pub outcome: Option<DecisionOutcome>,
+    /// The client's own effort replaces the effort this plan would apply.
     pub client_effort: bool,
 }
 
 impl RoutePlan {
-    /// A plain `legs` route: today's behaviour, legs untouched.
-    pub fn static_legs(legs: &[ChainLeg]) -> Self {
+    /// A static plan, legs untouched. `client_effort` sticks only when a leg
+    /// carries an effort for it to override (a `jev` route downgraded to
+    /// static); plain routes plan no effort and report none.
+    pub fn static_legs(legs: &[ChainLeg], client_effort: bool) -> Self {
         Self {
             mode: RoutingMode::Static,
             legs: legs
@@ -394,7 +397,7 @@ impl RoutePlan {
             tier_names: Vec::new(),
             decided: None,
             outcome: None,
-            client_effort: false,
+            client_effort: client_effort && legs.iter().any(|l| l.effort.is_some()),
         }
     }
 
@@ -430,10 +433,9 @@ impl RoutePlan {
         RoutingReport {
             mode: self.mode,
             tier_decided: decided.filter(|d| tier.as_ref().is_some_and(|t| t != d)),
-            effort: match (self.tier_names.is_empty(), self.client_effort) {
-                (true, _) => None,
-                (false, true) => Some("client".to_string()),
-                (false, false) => served
+            effort: match self.client_effort {
+                true => Some("client".to_string()),
+                false => served
                     .and_then(|p| p.leg.effort)
                     .map(|e| e.as_str().to_string()),
             },
@@ -1057,7 +1059,7 @@ mod tests {
             tiered_plan(DecisionOutcome::Decided, true).planned_effort(),
             Some("client")
         );
-        assert_eq!(RoutePlan::static_legs(&[]).planned_effort(), None);
+        assert_eq!(RoutePlan::static_legs(&[], false).planned_effort(), None);
     }
 
     #[test]
@@ -1094,12 +1096,39 @@ mod tests {
             model: "qwen-max".into(),
             ..Default::default()
         }];
-        let plan = RoutePlan::static_legs(&legs);
+        let plan = RoutePlan::static_legs(&legs, false);
         assert_eq!(plan.chain(), legs);
         assert_eq!(
             plan.report_for(Some(("qwen", "qwen-max"))).headers(),
             vec![("x-synapse-routing", "static".to_string())]
         );
         assert_eq!(plan.report_for(None).tier, None);
+        let client = RoutePlan::static_legs(&legs, true);
+        assert!(!client.client_effort);
+        assert_eq!(client.report_for(Some(("qwen", "qwen-max"))).effort, None);
+    }
+
+    #[test]
+    fn downgraded_jev_route_reports_the_served_legs_effort_or_client() {
+        let legs = route().static_legs();
+        let plan = RoutePlan::static_legs(&legs, false);
+        assert_eq!(
+            plan.report_for(Some(("vertex", "gemini-2.5-pro")))
+                .headers(),
+            vec![
+                ("x-synapse-routing", "static".to_string()),
+                ("x-synapse-reasoning-effort", "medium".to_string()),
+            ]
+        );
+        assert_eq!(plan.planned_effort(), Some("low"));
+        let client = RoutePlan::static_legs(&legs, true);
+        assert_eq!(
+            client
+                .report_for(Some(("vertex", "gemini-2.5-pro")))
+                .effort
+                .as_deref(),
+            Some("client")
+        );
+        assert_eq!(client.planned_effort(), Some("client"));
     }
 }

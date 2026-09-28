@@ -49,7 +49,7 @@ impl Gateway {
             (RoutingMode::Jev | RoutingMode::StaticOverride, Some(route)) => {
                 self.plan_tiered(req, ctx, request_id, route, mode).await
             }
-            _ => Ok(RoutePlan::static_legs(legs)),
+            _ => Ok(RoutePlan::static_legs(legs, client_sets_effort(req))),
         }
     }
 

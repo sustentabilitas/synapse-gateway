@@ -126,7 +126,9 @@ A full four-tier example ships commented out at the end of `config/routes.toml`.
   requires `TYPESAFE_API_KEY`. Under lenient validation, unservable legs are
   pruned inside tiers (empty tiers dropped, `default_tier` re-picked); the
   route downgrades to static routing when `typesafe` is unavailable or fewer
-  than two tiers remain.
+  than two tiers remain. A downgraded route keeps each tier's effort on its
+  legs, so its responses still carry `x-synapse-reasoning-effort` (but no
+  `x-synapse-tier`).
 - Embedders can read the report with `Gateway::chat_routed` (returns
   `(ChatOutcome, RoutingReport)`) or `GuardedStream::routing()`.
 
