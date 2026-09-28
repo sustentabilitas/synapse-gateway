@@ -930,4 +930,22 @@ mod tests {
         );
         assert!(!t.referenced_providers().contains("typesafe"));
     }
+
+    #[test]
+    fn shipped_routes_and_commented_jev_example_parse() {
+        let shipped = include_str!("../../config/routes.toml");
+        assert!(RouteTable::from_toml_str(shipped).is_ok());
+        let example = shipped
+            .lines()
+            .skip_while(|l| !l.starts_with("# [routes.\"auto\"]"))
+            .map(|l| {
+                l.strip_prefix("# ")
+                    .or_else(|| l.strip_prefix('#'))
+                    .unwrap_or(l)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let t = RouteTable::from_toml_str(&example).unwrap();
+        assert_eq!(t.jev_route("auto").unwrap().tiers.len(), 4);
+    }
 }

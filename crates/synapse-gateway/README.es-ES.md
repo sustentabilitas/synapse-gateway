@@ -31,6 +31,52 @@ En resumen: synapse es el gateway compatible con OpenAI *sencillo* que no te obl
 
 Las peticiones sin un bloque de extensión `vertex` son gestionadas por el carril estándar, que utiliza el crate [`genai`](https://crates.io/crates/genai) como adaptador HTTP. Cualquier proveedor accesible mediante una API compatible con OpenAI (OpenAI, Qwen/DashScope, vLLM/Ollama/TGI autoalojado a través de `oai_compat`) puede aparecer en una cadena de fallback.
 
+### Router Jev
+
+Una ruta con `strategy = "jev"` elige modelo y esfuerzo de razonamiento en cada
+petición. En lugar de `legs`, declara niveles (tiers) ordenados del más fácil al
+más difícil. Antes de servir, Synapse pregunta a TypeSafe Jev lo exigente que es
+la petición, puntuada contra las descripciones de los niveles, y si requiere
+razonamiento paso a paso. La petición la sirve el nivel más cercano con su
+`effort`, subido un paso cuando es probable que requiera razonamiento. Si ese
+nivel falla, se prueban primero los niveles más difíciles y después los más
+fáciles.
+
+```toml
+[routes."auto"]
+strategy = "jev"
+
+[routes."auto".jev_router]
+default_tier = "moderate"   # con baja confianza, timeout o error de Jev
+timeout_ms = 400
+
+[[routes."auto".tiers]]
+name = "moderate"
+description = "Everyday Q&A, summarising, simple extraction or code edits"
+effort = "low"              # none|minimal|low|medium|high|xhigh|max
+legs = [{ provider = "vertex", model = "gemini-2.5-flash" }]
+# … de 2 a 10 niveles en total
+```
+
+- Las descripciones describen el trabajo, nunca el modelo. Los nombres de nivel
+  deben ser ASCII imprimible, porque se envían como valores de encabezado.
+- Los tramos de un nivel no pueden usar el proveedor `typesafe`.
+- `effort` se convierte en `reasoning_effort` en tramos compatibles con OpenAI y
+  en `thinkingBudget` en tramos Vertex nativos. `none` no envía nada, así que se
+  aplica el valor por defecto del modelo; en Gemini 2.5 Pro y Flash es el
+  pensamiento dinámico, que puede costar más que `minimal` (512).
+- El `reasoning_effort` o `vertex.thinking_config` del cliente siempre gana.
+- Envía `"routing_strategy": "static"` para omitir la decisión en una petición.
+  En rutas normales, cualquier otro valor devuelve `400`.
+- Las respuestas llevan `x-synapse-routing` (`jev`, `static-override` o
+  `static` en rutas normales), `x-synapse-tier`, `x-synapse-reasoning-effort`
+  y, cuando procede, `x-synapse-tier-decided` y `x-synapse-routing-degraded`
+  (`timeout`, `error`, `low_confidence`, `jev_unavailable`).
+- Cada decisión de Jev escribe una fila en el registro con
+  `op = "route_decision"`, con el mismo `request_id` que la fila del chat.
+- Con validación estricta, una ruta `jev` exige `TYPESAFE_API_KEY`; con
+  validación `lenient`, pasa a enrutado estático si no está disponible.
+
 ### Carril Vertex nativo
 
 Si el cuerpo de la petición contiene un objeto de extensión `vertex` con alguno de los campos `cached_content`, `media_uris` o `response_schema`, la petición se enruta al carril Vertex nativo. Este carril se comunica directamente con el endpoint REST `generateContent` de Vertex AI, traduciendo el formato de mensajes de OpenAI mientras preserva las funcionalidades específicas de Vertex:
@@ -317,6 +363,8 @@ vivo el `MetricsExporter` devuelto durante toda la vida del proceso.
 | `synapse_passthrough_total` | Counter | `provider`, `model`, `action`, `status` | Llamadas passthrough de Gemini (`provider="vertex"`) y Jev (`provider="typesafe"`). |
 | `synapse_passthrough_fallback_total` | Counter | `from_model`, `to_model` | Saltos del passthrough de Gemini al siguiente tramo de Vertex. |
 | `synapse_jev_extraction_total` | Counter | `route`, `degraded` | Respuestas de extracción híbrida de Jev. |
+| `synapse_routing_decisions_total` | Counter | `route`, `tier`, `outcome` | Una por petición a una ruta `jev`; `tier` es el nivel decidido; `outcome` es `decided`, `low_confidence`, `timeout`, `error` o `static_override`. |
+| `synapse_routing_decision_duration_seconds` | Histogram | `route` | Latencia de la decisión de Jev. |
 | `synapse_resilience_calls_total` | Counter | `label`, `outcome` | Llamadas salientes a proveedores por resultado (`success`, `exhausted`, `circuit_open`). |
 | `synapse_resilience_call_duration_seconds` | Histogram | `label`, `outcome` | Latencia de llamadas salientes, reintentos incluidos. |
 | `synapse_resilience_retry_attempts_total` | Counter | `label` | Reintentos de llamadas salientes. |

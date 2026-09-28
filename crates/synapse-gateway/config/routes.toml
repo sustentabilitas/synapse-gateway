@@ -103,3 +103,47 @@ legs = [{ provider = "vertex", model = "text-embedding-004" }]
 [embeddings."vector-embed"]
 dimensions = 768
 legs = [{ provider = "vertex", model = "text-embedding-004" }]
+
+# Jev router (strategy = "jev"): TypeSafe Jev rates each request's difficulty
+# against the tier descriptions (easiest → hardest) and the request is served
+# by that tier with its reasoning effort; low confidence, timeouts and Jev
+# errors use default_tier. Requires TYPESAFE_API_KEY (strict validation) or
+# downgrades to static routing (SYNAPSE_PROVIDER_VALIDATION=lenient).
+# Clients can send "routing_strategy": "static" to skip the decision.
+# 2–10 tiers; names are printable ASCII (sent as headers); tier legs cannot use
+# provider "typesafe". effort: none|minimal|low|medium|high|xhigh|max. "none"
+# sends nothing, so the model default applies — on Gemini 2.5 Pro/Flash that is
+# dynamic thinking, which can cost more than "minimal".
+#
+# [routes."auto"]
+# strategy = "jev"
+#
+# [routes."auto".jev_router]
+# default_tier = "moderate"
+# timeout_ms = 400
+# min_confidence = 0.5
+# reasoning_threshold = 0.7
+#
+# [[routes."auto".tiers]]
+# name = "trivial"
+# description = "Greetings, chit-chat, one-line lookups or rewrites"
+# effort = "none"
+# legs = [{ provider = "qwen", model = "qwen3-flash" }]
+#
+# [[routes."auto".tiers]]
+# name = "moderate"
+# description = "Everyday Q&A, summarising, simple extraction or code edits"
+# effort = "low"
+# legs = [{ provider = "vertex", model = "gemini-2.5-flash", region = "us-central1" }]
+#
+# [[routes."auto".tiers]]
+# name = "hard"
+# description = "Multi-step analysis, non-trivial code, long documents"
+# effort = "medium"
+# legs = [{ provider = "vertex", model = "gemini-2.5-pro", region = "us-central1" }]
+#
+# [[routes."auto".tiers]]
+# name = "expert"
+# description = "Deep reasoning, maths or proofs, complex architecture or debugging"
+# effort = "high"
+# legs = [{ provider = "vertex", model = "gemini-3.1-pro-preview", region = "global" }]
