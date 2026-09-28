@@ -131,9 +131,17 @@ impl Gateway {
                 });
                 tokio::time::timeout(
                     Duration::from_millis(route.router.timeout_ms),
-                    call_jev(provider, body),
+                    call_jev(provider, body, &req.model),
                 )
                 .await
+                .tap_err(|_| {
+                    tracing::warn!(
+                        target: "synapse::routing",
+                        route = %req.model,
+                        timeout_ms = route.router.timeout_ms,
+                        "jev decision timed out; routing to default_tier"
+                    )
+                })
                 .unwrap_or(Err(DecisionOutcome::Timeout))
                 .tap(|_| {
                     self.metrics
@@ -186,21 +194,44 @@ impl Gateway {
     }
 }
 
-async fn call_jev(provider: &JevNativeProvider, body: Value) -> Result<Decision, DecisionOutcome> {
+/// Logs only the failure kind and HTTP status: Jev's body may echo customer
+/// text.
+async fn call_jev(
+    provider: &JevNativeProvider,
+    body: Value,
+    route: &str,
+) -> Result<Decision, DecisionOutcome> {
+    let warn = |kind: &str, status: Option<u16>| {
+        tracing::warn!(
+            target: "synapse::routing",
+            route,
+            error.kind = kind,
+            http.status = ?status,
+            "jev decision failed; routing to default_tier"
+        )
+    };
     let resp = provider
         .evaluate(body)
         .await
+        .tap_err(|_| warn("transport", None))
+        .map_err(|_| DecisionOutcome::Error)?
+        .error_for_status()
+        .tap_err(|e| warn("http_status", e.status().map(|s| s.as_u16())))
         .map_err(|_| DecisionOutcome::Error)?;
-    let ok = resp.status().is_success();
-    let value: Value = resp.json().await.map_err(|_| DecisionOutcome::Error)?;
-    match (ok, jev_router::parse_answers(&value["answers"])) {
-        (true, Some(answers)) => Ok(Decision {
+    let status = resp.status().as_u16();
+    let value: Value = resp
+        .json()
+        .await
+        .tap_err(|_| warn("unreadable_body", Some(status)))
+        .map_err(|_| DecisionOutcome::Error)?;
+    jev_router::parse_answers(&value["answers"])
+        .map(|answers| Decision {
             answers,
             input_tokens: value["usage"]["input_tokens"].as_u64().unwrap_or(0),
             output_tokens: value["usage"]["output_tokens"].as_u64().unwrap_or(0),
-        }),
-        _ => Err(DecisionOutcome::Error),
-    }
+        })
+        .ok_or(DecisionOutcome::Error)
+        .tap_err(|_| warn("unparseable_answers", Some(status)))
 }
 
 /// The client chose its own effort on the lane that will serve it: a Vertex
