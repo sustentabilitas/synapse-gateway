@@ -5,6 +5,7 @@ pub mod effort;
 pub mod embeddings;
 pub mod executor;
 pub mod jev_extract;
+pub mod jev_router;
 pub mod request;
 pub mod stream;
 pub mod table;

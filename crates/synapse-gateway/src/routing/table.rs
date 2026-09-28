@@ -1,7 +1,14 @@
 //! Route table: client-facing model alias → ordered fallback legs.
 
+use anyhow::{anyhow, bail};
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
+use crate::routing::effort::Effort;
+use crate::routing::jev_router::{order_legs, EffortPolicy};
+
+/// Jev Score questions accept at most ten levels.
+pub const MAX_TIERS: usize = 10;
 
 #[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
 pub struct ChainLeg {
@@ -16,14 +23,22 @@ pub struct ChainLeg {
     /// Reasoning effort the route planner chose for this leg. Never read from
     /// config: tiers carry effort and the planner stamps it onto their legs.
     #[serde(skip)]
-    pub effort: Option<crate::routing::effort::Effort>,
+    pub effort: Option<Effort>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 struct RouteEntry {
-    legs: Vec<ChainLeg>,
+    /// Optional only so `jev` routes can omit it; static routes still require it.
+    #[serde(default)]
+    legs: Option<Vec<ChainLeg>>,
     #[serde(default)]
     policy: Option<String>,
+    #[serde(default)]
+    strategy: Option<String>,
+    #[serde(default)]
+    jev_router: Option<JevRouterConfig>,
+    #[serde(default)]
+    tiers: Vec<Tier>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -31,24 +46,120 @@ struct RoutesFile {
     routes: HashMap<String, RouteEntry>,
 }
 
+/// Decision settings of a `strategy = "jev"` route.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct JevRouterConfig {
+    #[serde(default = "default_jev_model")]
+    pub model: String,
+    pub default_tier: String,
+    #[serde(default = "default_timeout_ms")]
+    pub timeout_ms: u64,
+    #[serde(default = "default_min_confidence")]
+    pub min_confidence: f64,
+    #[serde(default = "default_reasoning_threshold")]
+    pub reasoning_threshold: f64,
+}
+
+fn default_jev_model() -> String {
+    crate::jev_native::DEFAULT_MODEL.to_string()
+}
+fn default_timeout_ms() -> u64 {
+    400
+}
+fn default_min_confidence() -> f64 {
+    0.5
+}
+fn default_reasoning_threshold() -> f64 {
+    0.7
+}
+
+/// One difficulty level of a `jev` route; tiers are ordered easiest → hardest.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct Tier {
+    pub name: String,
+    /// Task difficulty in words; sent to Jev as a Score level, so it must
+    /// describe the work, never the model.
+    pub description: String,
+    pub effort: Effort,
+    pub legs: Vec<ChainLeg>,
+}
+
+/// A validated `strategy = "jev"` route.
+#[derive(Debug, Clone, PartialEq)]
+pub struct JevRoute {
+    pub router: JevRouterConfig,
+    pub tiers: Vec<Tier>,
+}
+
+impl JevRoute {
+    /// Index of `default_tier` (validated to exist at load time).
+    pub fn default_index(&self) -> usize {
+        self.tiers
+            .iter()
+            .position(|t| t.name == self.router.default_tier)
+            .unwrap_or(0)
+    }
+
+    /// Legs in static order: `default_tier`, each harder tier, then each easier
+    /// tier, stamped with their tier's configured effort.
+    pub fn static_legs(&self) -> Vec<ChainLeg> {
+        order_legs(
+            &self.tiers,
+            self.default_index(),
+            EffortPolicy::Tier { bump: false },
+        )
+        .into_iter()
+        .map(|p| p.leg)
+        .collect()
+    }
+}
+
+/// Tier indices in fallback order: `start`, each harder tier, then each easier
+/// tier. `start` is clamped into range.
+pub fn escalation_order(len: usize, start: usize) -> Vec<usize> {
+    let start = start.min(len.saturating_sub(1));
+    (start..len).chain((0..start).rev()).collect()
+}
+
 #[derive(Debug, Clone)]
 pub struct RouteTable {
+    /// Every route's legs; a `jev` route's in static order.
     routes: HashMap<String, Vec<ChainLeg>>,
     policies: HashMap<String, String>,
+    jev: HashMap<String, JevRoute>,
 }
 
 impl RouteTable {
     pub fn from_toml_str(s: &str) -> anyhow::Result<Self> {
         let file = toml::from_str::<RoutesFile>(s)?;
-        let mut routes = HashMap::new();
-        let mut policies = HashMap::new();
-        for (name, entry) in file.routes {
-            if let Some(policy) = entry.policy {
-                policies.insert(name.clone(), policy);
-            }
-            routes.insert(name, entry.legs);
-        }
-        Ok(Self { routes, policies })
+        let policies = file
+            .routes
+            .iter()
+            .filter_map(|(name, e)| e.policy.clone().map(|p| (name.clone(), p)))
+            .collect();
+        let kinds = file
+            .routes
+            .into_iter()
+            .map(|(name, entry)| route_kind(&name, entry).map(|kind| (name, kind)))
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        let jev = kinds
+            .iter()
+            .filter_map(|(name, (_, j))| j.clone().map(|j| (name.clone(), j)))
+            .collect();
+        let routes = kinds
+            .into_iter()
+            .map(|(name, (legs, _))| (name, legs))
+            .collect();
+        Ok(Self {
+            routes,
+            policies,
+            jev,
+        })
+    }
+
+    /// The tiers and decision settings of a `strategy = "jev"` route.
+    pub fn jev_route(&self, model: &str) -> Option<&JevRoute> {
+        self.jev.get(model)
     }
 
     /// Ordered legs for a model alias, or `None` if the alias is unknown.
@@ -68,12 +179,14 @@ impl RouteTable {
         v
     }
 
-    /// Provider ids referenced by any leg (for fail-fast credential validation).
-    pub fn referenced_providers(&self) -> std::collections::HashSet<String> {
+    /// Provider ids referenced by any leg, plus `typesafe` when a `jev` route
+    /// needs Jev to decide (for fail-fast credential validation).
+    pub fn referenced_providers(&self) -> HashSet<String> {
         self.routes
             .values()
             .flatten()
             .map(|l| l.provider.clone())
+            .chain((!self.jev.is_empty()).then(|| "typesafe".to_string()))
             .collect()
     }
 
@@ -82,7 +195,7 @@ impl RouteTable {
     ///
     /// A multi-leg route survives on its remaining legs, so a route whose first
     /// choice is unavailable degrades to its fallback instead of disappearing.
-    pub fn without_providers(&self, drop: &std::collections::HashSet<String>) -> Self {
+    pub fn without_providers(&self, drop: &HashSet<String>) -> Self {
         let routes: HashMap<String, Vec<ChainLeg>> = self
             .routes
             .iter()
@@ -102,7 +215,11 @@ impl RouteTable {
             .filter(|(name, _)| routes.contains_key(*name))
             .map(|(name, policy)| (name.clone(), policy.clone()))
             .collect();
-        Self { routes, policies }
+        Self {
+            routes,
+            policies,
+            jev: HashMap::new(),
+        }
     }
 
     /// Consecutive Vertex legs for Gemini-native passthrough fallback.
@@ -158,6 +275,81 @@ impl RouteTable {
             },
         }
     }
+}
+
+/// Split one `routes.toml` entry into its flat legs and, for `jev` routes, the
+/// validated tiers.
+fn route_kind(name: &str, entry: RouteEntry) -> anyhow::Result<(Vec<ChainLeg>, Option<JevRoute>)> {
+    match (
+        entry.strategy.as_deref().unwrap_or("static"),
+        entry.tiers.is_empty(),
+        entry.legs,
+    ) {
+        ("static", false, _) => bail!("route '{name}': tiers require strategy = \"jev\""),
+        ("static", true, Some(legs)) => Ok((legs, None)),
+        ("static", true, None) => bail!("route '{name}': missing field `legs`"),
+        ("jev", _, Some(legs)) if !legs.is_empty() => {
+            bail!("route '{name}': a jev route declares tiers, not legs")
+        }
+        ("jev", true, _) => bail!("route '{name}': strategy = \"jev\" requires tiers"),
+        ("jev", false, _) => validate_jev_route(name, entry.jev_router, entry.tiers)
+            .map(|r| (r.static_legs(), Some(r))),
+        (other, _, _) => {
+            bail!("route '{name}': unknown strategy '{other}' (expected \"static\" or \"jev\")")
+        }
+    }
+}
+
+fn validate_jev_route(
+    name: &str,
+    router: Option<JevRouterConfig>,
+    tiers: Vec<Tier>,
+) -> anyhow::Result<JevRoute> {
+    let router = router
+        .ok_or_else(|| anyhow!("route '{name}': strategy = \"jev\" requires a jev_router table"))?;
+    let problems: Vec<String> = [
+        (!(2..=MAX_TIERS).contains(&tiers.len()))
+            .then(|| format!("needs 2 to {MAX_TIERS} tiers, found {}", tiers.len())),
+        tiers
+            .iter()
+            .find(|t| t.name.trim().is_empty())
+            .map(|_| "tier names must be non-empty".to_string()),
+        duplicate_name(&tiers).map(|n| format!("duplicate tier name '{n}'")),
+        tiers
+            .iter()
+            .find(|t| t.description.trim().is_empty())
+            .map(|t| format!("tier '{}' needs a description", t.name)),
+        tiers
+            .iter()
+            .find(|t| t.legs.is_empty())
+            .map(|t| format!("tier '{}' has no legs", t.name)),
+        tiers
+            .iter()
+            .find(|t| t.legs.iter().any(|l| l.provider == "typesafe"))
+            .map(|t| format!("tier '{}' cannot use provider 'typesafe'", t.name)),
+        (!tiers.iter().any(|t| t.name == router.default_tier))
+            .then(|| format!("default_tier '{}' is not a tier", router.default_tier)),
+        (!(0.0..=1.0).contains(&router.min_confidence))
+            .then(|| "min_confidence must be within [0, 1]".to_string()),
+        (!(0.0..=1.0).contains(&router.reasoning_threshold))
+            .then(|| "reasoning_threshold must be within [0, 1]".to_string()),
+        (router.timeout_ms == 0).then(|| "timeout_ms must be > 0".to_string()),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    match problems.as_slice() {
+        [] => Ok(JevRoute { router, tiers }),
+        _ => bail!("route '{name}': {}", problems.join("; ")),
+    }
+}
+
+fn duplicate_name(tiers: &[Tier]) -> Option<&str> {
+    tiers
+        .iter()
+        .enumerate()
+        .find(|(i, t)| tiers[..*i].iter().any(|p| p.name == t.name))
+        .map(|(_, t)| t.name.as_str())
 }
 
 /// Vertex-only fallback chain used by Gemini passthrough.
@@ -351,5 +543,174 @@ mod tests {
         assert_eq!(c.route, None);
         assert_eq!(c.legs.len(), 1);
         assert_eq!(c.legs[0].model, "totally-unknown");
+    }
+
+    fn tier(name: &str, effort: &str, provider: &str, model: &str) -> String {
+        format!(
+            "[[routes.\"auto\".tiers]]\nname = \"{name}\"\ndescription = \"{name} work\"\n\
+             effort = \"{effort}\"\nlegs = [{{ provider = \"{provider}\", model = \"{model}\" }}]\n"
+        )
+    }
+
+    fn jev_toml(router_extra: &str, tiers: &[String]) -> String {
+        format!(
+            "[routes.\"auto\"]\nstrategy = \"jev\"\n[routes.\"auto\".jev_router]\n\
+             default_tier = \"moderate\"\n{router_extra}\n{}",
+            tiers.concat()
+        )
+    }
+
+    fn three_tiers() -> Vec<String> {
+        vec![
+            tier("trivial", "none", "qwen", "qwen-flash"),
+            tier("moderate", "low", "vertex", "gemini-2.5-flash"),
+            tier("hard", "medium", "vertex", "gemini-2.5-pro"),
+        ]
+    }
+
+    fn load_err(toml: &str) -> String {
+        RouteTable::from_toml_str(toml).unwrap_err().to_string()
+    }
+
+    #[test]
+    fn parses_a_tiered_route_with_router_defaults() {
+        let t = RouteTable::from_toml_str(&jev_toml("", &three_tiers())).unwrap();
+        let r = t.jev_route("auto").unwrap();
+        assert_eq!(r.tiers.len(), 3);
+        assert_eq!(r.tiers[2].effort, crate::routing::effort::Effort::Medium);
+        assert_eq!(r.router.model, "jev-latest");
+        assert_eq!(r.router.timeout_ms, 400);
+        assert_eq!(r.router.min_confidence, 0.5);
+        assert_eq!(r.router.reasoning_threshold, 0.7);
+        assert_eq!(r.default_index(), 1);
+        assert!(t.jev_route("missing").is_none());
+    }
+
+    #[test]
+    fn jev_route_legs_are_in_static_order_with_tier_effort() {
+        let t = RouteTable::from_toml_str(&jev_toml("", &three_tiers())).unwrap();
+        let legs = t.legs("auto").unwrap();
+        let got: Vec<(&str, Option<crate::routing::effort::Effort>)> =
+            legs.iter().map(|l| (l.model.as_str(), l.effort)).collect();
+        use crate::routing::effort::Effort;
+        assert_eq!(
+            got,
+            vec![
+                ("gemini-2.5-flash", Some(Effort::Low)),
+                ("gemini-2.5-pro", Some(Effort::Medium)),
+                ("qwen-flash", Some(Effort::None)),
+            ]
+        );
+    }
+
+    #[test]
+    fn referenced_providers_include_typesafe_for_jev_routes() {
+        let t = RouteTable::from_toml_str(&jev_toml("", &three_tiers())).unwrap();
+        let p = t.referenced_providers();
+        assert!(p.contains("typesafe"));
+        assert!(p.contains("qwen"));
+        assert!(!RouteTable::from_toml_str(SAMPLE)
+            .unwrap()
+            .referenced_providers()
+            .contains("typesafe"));
+    }
+
+    #[test]
+    fn empty_static_legs_stay_legal() {
+        assert!(RouteTable::from_toml_str("[routes.\"dummy\"]\nlegs = []").is_ok());
+    }
+
+    #[test]
+    fn static_route_without_legs_is_still_rejected() {
+        assert!(
+            load_err("[routes.\"dummy\"]\npolicy = \"default\"\n").contains("missing field `legs`")
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_tier_config() {
+        let cases: Vec<(String, &str)> = vec![
+            (
+                format!("[routes.\"auto\"]\n{}", tier("a", "low", "qwen", "m")),
+                "tiers require strategy = \"jev\"",
+            ),
+            (
+                "[routes.\"auto\"]\nstrategy = \"jev\"\nlegs = [{ provider = \"qwen\", model = \"m\" }]\n\
+                 [routes.\"auto\".jev_router]\ndefault_tier = \"a\"\n"
+                    .to_string(),
+                "declares tiers, not legs",
+            ),
+            (
+                "[routes.\"auto\"]\nstrategy = \"jev\"\n[routes.\"auto\".jev_router]\ndefault_tier = \"a\"\n"
+                    .to_string(),
+                "requires tiers",
+            ),
+            (
+                "[routes.\"auto\"]\nstrategy = \"fastest\"\nlegs = []\n".to_string(),
+                "unknown strategy 'fastest'",
+            ),
+            (
+                format!("[routes.\"auto\"]\nstrategy = \"jev\"\n{}", three_tiers().concat()),
+                "requires a jev_router table",
+            ),
+            (jev_toml("", &[tier("moderate", "low", "qwen", "m")]), "needs 2 to 10 tiers"),
+            (
+                jev_toml(
+                    "",
+                    &[tier("moderate", "low", "qwen", "a"), tier("moderate", "high", "qwen", "b")],
+                ),
+                "duplicate tier name 'moderate'",
+            ),
+            (
+                jev_toml(
+                    "",
+                    &[tier("easy", "low", "qwen", "a"), tier("hard", "high", "qwen", "b")],
+                ),
+                "default_tier 'moderate' is not a tier",
+            ),
+            (
+                jev_toml(
+                    "",
+                    &[tier("moderate", "low", "qwen", "a"), tier("jev", "high", "typesafe", "jev-latest")],
+                ),
+                "tier 'jev' cannot use provider 'typesafe'",
+            ),
+            (
+                jev_toml(
+                    "",
+                    &[
+                        tier("moderate", "low", "qwen", "a"),
+                        "[[routes.\"auto\".tiers]]\nname = \"hard\"\ndescription = \"hard work\"\neffort = \"high\"\nlegs = []\n"
+                            .to_string(),
+                    ],
+                ),
+                "tier 'hard' has no legs",
+            ),
+            (
+                jev_toml(
+                    "",
+                    &[
+                        tier("moderate", "low", "qwen", "a"),
+                        "[[routes.\"auto\".tiers]]\nname = \"hard\"\ndescription = \" \"\neffort = \"high\"\nlegs = [{ provider = \"qwen\", model = \"b\" }]\n"
+                            .to_string(),
+                    ],
+                ),
+                "tier 'hard' needs a description",
+            ),
+            (jev_toml("min_confidence = 1.5", &three_tiers()), "min_confidence must be within [0, 1]"),
+            (
+                jev_toml("reasoning_threshold = -0.1", &three_tiers()),
+                "reasoning_threshold must be within [0, 1]",
+            ),
+            (jev_toml("timeout_ms = 0", &three_tiers()), "timeout_ms must be > 0"),
+            (
+                jev_toml("", &[tier("moderate", "extreme", "qwen", "a"), tier("hard", "high", "qwen", "b")]),
+                "unknown variant",
+            ),
+        ];
+        cases.iter().for_each(|(toml, needle)| {
+            let err = load_err(toml);
+            assert!(err.contains(needle), "expected '{needle}' in: {err}");
+        });
     }
 }
