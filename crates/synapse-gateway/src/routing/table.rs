@@ -387,6 +387,10 @@ fn validate_jev_route(
             .iter()
             .find(|t| t.name.trim().is_empty())
             .map(|_| "tier names must be non-empty".to_string()),
+        tiers
+            .iter()
+            .find(|t| !t.name.chars().all(|c| c.is_ascii_graphic() || c == ' '))
+            .map(|t| format!("tier names must be printable ASCII: '{}'", t.name)),
         duplicate_name(&tiers).map(|n| format!("duplicate tier name '{n}'")),
         tiers
             .iter()
@@ -799,6 +803,10 @@ mod tests {
             (
                 jev_toml("", &[tier("moderate", "low", "qwen", "a"), tier("  ", "high", "qwen", "b")]),
                 "tier names must be non-empty",
+            ),
+            (
+                jev_toml("", &[tier("moderate", "low", "qwen", "a"), tier("difícil", "high", "qwen", "b")]),
+                "tier names must be printable ASCII: 'difícil'",
             ),
             (
                 jev_toml(
