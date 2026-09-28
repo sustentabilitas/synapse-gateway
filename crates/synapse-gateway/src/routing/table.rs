@@ -13,6 +13,10 @@ pub struct ChainLeg {
     /// (e.g. `global` for Gemini 3 previews) without a process-wide env change.
     #[serde(default)]
     pub region: Option<String>,
+    /// Reasoning effort the route planner chose for this leg. Never read from
+    /// config: tiers carry effort and the planner stamps it onto their legs.
+    #[serde(skip)]
+    pub effort: Option<crate::routing::effort::Effort>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -149,7 +153,7 @@ impl RouteTable {
                 legs: vec![ChainLeg {
                     provider: "vertex".into(),
                     model: model.to_string(),
-                    region: None,
+                    ..Default::default()
                 }],
             },
         }
