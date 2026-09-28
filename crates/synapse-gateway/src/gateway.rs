@@ -1,6 +1,7 @@
 //! In-process LLM gateway: routing, fallback, native Vertex, ledger, metrics.
 //! Transport-independent core; the axum HTTP layer (`server`) delegates here.
 
+use std::borrow::Cow;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -19,11 +20,12 @@ use crate::observability::GenAiSpan;
 use crate::pricing::PricingTable;
 use crate::providers::Catalog;
 use crate::routing::classify::{classify, vertex_triggers, Lane};
+use crate::routing::effort::Effort;
 use crate::routing::executor::{
     execute_buffered_with_timeouts, CommittedStream, Completion, LegError, StreamTimeouts,
 };
 use crate::routing::jev_router::RoutingReport;
-use crate::routing::request::ChatRequest;
+use crate::routing::request::{ChatRequest, VertexExt};
 use crate::routing::stream::{Accumulator, FinishReason, StreamItem};
 use crate::routing::table::{ChainLeg, RouteTable};
 use crate::telemetry::GatewayMetrics;
@@ -836,27 +838,20 @@ fn non_typesafe_legs(legs: &[ChainLeg]) -> Vec<ChainLeg> {
 
 /// The request one native-Vertex leg sends: the leg's effort becomes a
 /// `thinkingBudget` unless the client already sent a `thinking_config`.
-fn with_leg_thinking<'a>(
-    req: &'a ChatRequest,
-    leg: &ChainLeg,
-) -> std::borrow::Cow<'a, ChatRequest> {
+fn with_leg_thinking<'a>(req: &'a ChatRequest, leg: &ChainLeg) -> Cow<'a, ChatRequest> {
     let client_set = req
         .vertex
         .as_ref()
         .is_some_and(|v| v.thinking_config.is_some());
-    match (
-        client_set,
-        leg.effort
-            .and_then(crate::routing::effort::Effort::thinking_budget),
-    ) {
-        (false, Some(budget)) => std::borrow::Cow::Owned(ChatRequest {
-            vertex: Some(crate::routing::request::VertexExt {
+    match (client_set, leg.effort.and_then(Effort::thinking_budget)) {
+        (false, Some(budget)) => Cow::Owned(ChatRequest {
+            vertex: Some(VertexExt {
                 thinking_config: Some(serde_json::json!({ "thinkingBudget": budget })),
                 ..req.vertex.clone().unwrap_or_default()
             }),
             ..req.clone()
         }),
-        _ => std::borrow::Cow::Borrowed(req),
+        _ => Cow::Borrowed(req),
     }
 }
 
