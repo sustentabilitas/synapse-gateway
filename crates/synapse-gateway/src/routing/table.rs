@@ -621,6 +621,18 @@ mod tests {
     }
 
     #[test]
+    fn jev_route_with_empty_legs_and_valid_tiers_is_accepted() {
+        let toml = jev_toml("", &three_tiers()).replacen(
+            "strategy = \"jev\"\n",
+            "strategy = \"jev\"\nlegs = []\n",
+            1,
+        );
+        let t = RouteTable::from_toml_str(&toml).unwrap();
+        assert_eq!(t.jev_route("auto").unwrap().tiers.len(), 3);
+        assert_eq!(t.legs("auto").unwrap().len(), 3);
+    }
+
+    #[test]
     fn static_route_without_legs_is_still_rejected() {
         assert!(
             load_err("[routes.\"dummy\"]\npolicy = \"default\"\n").contains("missing field `legs`")
@@ -706,6 +718,23 @@ mod tests {
             (
                 jev_toml("", &[tier("moderate", "extreme", "qwen", "a"), tier("hard", "high", "qwen", "b")]),
                 "unknown variant",
+            ),
+            (
+                jev_toml("", &[tier("moderate", "low", "qwen", "a"), tier("", "high", "qwen", "b")]),
+                "tier names must be non-empty",
+            ),
+            (
+                jev_toml("", &[tier("moderate", "low", "qwen", "a"), tier("  ", "high", "qwen", "b")]),
+                "tier names must be non-empty",
+            ),
+            (
+                jev_toml(
+                    "",
+                    &std::iter::once(tier("moderate", "low", "qwen", "m"))
+                        .chain((1..=MAX_TIERS).map(|i| tier(&format!("t{i}"), "low", "qwen", "m")))
+                        .collect::<Vec<_>>(),
+                ),
+                "needs 2 to 10 tiers, found 11",
             ),
         ];
         cases.iter().for_each(|(toml, needle)| {
