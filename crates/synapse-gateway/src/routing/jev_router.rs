@@ -77,8 +77,8 @@ pub fn build_state(req: &ChatRequest) -> Value {
     })
 }
 
-/// Non-system messages other than the latest user message, filled newest-first
-/// until `budget` characters, returned in chronological order.
+/// Non-system messages with text, other than the latest user message, filled
+/// newest-first until `budget` characters, returned in chronological order.
 fn recent_history(messages: &[Message], latest: Option<usize>, budget: usize) -> Vec<Value> {
     messages
         .iter()
@@ -91,6 +91,7 @@ fn recent_history(messages: &[Message], latest: Option<usize>, budget: usize) ->
                 truncate(&message_text(&m.content), HISTORY_ENTRY_CAP),
             )
         })
+        .filter(|(_, text)| !text.is_empty())
         .scan(0usize, |used, (role, text)| {
             *used += text.chars().count();
             (*used <= budget).then_some((role, text))
@@ -680,6 +681,91 @@ mod tests {
     }
 
     #[test]
+    fn questions_match_the_spec_contract_exactly() {
+        assert_eq!(
+            Value::Object(build_questions(&route().tiers)),
+            json!({
+                "difficulty": {
+                    "type": "score",
+                    "instructions": "How demanding is it to produce a high-quality reply to \
+                        `latest_user_message`, given `recent_history` and `system_prompt`?",
+                    "criteria": [
+                        "Greetings",
+                        "Everyday questions",
+                        "Multi-step analysis",
+                        "Proofs and deep debugging"
+                    ]
+                },
+                "needs_reasoning": {
+                    "type": "noul",
+                    "instructions": "Does replying well to `latest_user_message` require \
+                        careful step-by-step reasoning such as maths, logic, planning, or debugging?"
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn truncation_counts_characters_not_bytes() {
+        let crabs = "🦀".repeat(LATEST_CAP + 101);
+        let separator = "\n…\n";
+        let kept = head_tail(&crabs, LATEST_CAP);
+        assert!(std::str::from_utf8(kept.as_bytes()).is_ok());
+        assert_eq!(kept.chars().filter(|c| *c == '🦀').count(), LATEST_CAP);
+        assert_eq!(kept.chars().count(), LATEST_CAP + separator.chars().count());
+        assert_eq!(kept.replacen(separator, "", 1), "🦀".repeat(LATEST_CAP));
+        let cut = truncate(&crabs, SYSTEM_CAP);
+        assert!(std::str::from_utf8(cut.as_bytes()).is_ok());
+        assert_eq!(cut, "🦀".repeat(SYSTEM_CAP));
+    }
+
+    #[test]
+    fn history_entries_are_capped_individually() {
+        let s = build_state(&req(json!({
+            "model": "auto",
+            "messages": [
+                {"role": "user", "content": "q".repeat(HISTORY_ENTRY_CAP + 700)},
+                {"role": "assistant", "content": "short"},
+                {"role": "user", "content": "latest"}
+            ]
+        })));
+        assert_eq!(
+            s["recent_history"][0]["content"]
+                .as_str()
+                .unwrap()
+                .chars()
+                .count(),
+            HISTORY_ENTRY_CAP
+        );
+        assert_eq!(s["recent_history"][1]["content"], "short");
+    }
+
+    #[test]
+    fn history_skips_entries_without_text() {
+        let s = build_state(&req(json!({
+            "model": "auto",
+            "messages": [
+                {"role": "user", "content": "weather in Lisbon?"},
+                {"role": "assistant", "content": null, "tool_calls": [
+                    {"id": "c1", "type": "function",
+                     "function": {"name": "weather", "arguments": "{}"}}
+                ]},
+                {"role": "tool", "tool_call_id": "c1", "content": "sunny"},
+                {"role": "assistant", "content": ""},
+                {"role": "assistant", "content": [{"type": "unknown"}]},
+                {"role": "user", "content": "and tomorrow?"}
+            ]
+        })));
+        assert_eq!(
+            s["recent_history"],
+            json!([
+                {"role": "user", "content": "weather in Lisbon?"},
+                {"role": "tool", "content": "sunny"}
+            ])
+        );
+    }
+
+    #[test]
     fn parses_score_and_noul_answers() {
         let a = parse_answers(&json!({
             "difficulty": {"type": "score", "score": 1.15, "confidence": 0.77, "probabilities": {}},
@@ -713,6 +799,18 @@ mod tests {
         assert_eq!(score_to_tier(9.0, 4), 3);
         assert_eq!(score_to_tier(-1.0, 4), 0);
         assert_eq!(score_to_tier(f64::NAN, 4), 0);
+    }
+
+    #[test]
+    fn score_maps_onto_one_and_ten_tiers() {
+        [0.0, 0.5, 0.99, 7.0, -3.0]
+            .into_iter()
+            .for_each(|s| assert_eq!(score_to_tier(s, 1), 0, "score {s}"));
+        assert_eq!(score_to_tier(0.49, 10), 0);
+        assert_eq!(score_to_tier(4.5, 10), 5);
+        assert_eq!(score_to_tier(8.49, 10), 8);
+        assert_eq!(score_to_tier(9.0, 10), 9);
+        assert_eq!(score_to_tier(12.0, 10), 9);
     }
 
     #[test]
