@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import {existsSync, readdirSync} from 'node:fs';
-import {join, posix, resolve} from 'node:path';
+import {existsSync, readdirSync, realpathSync} from 'node:fs';
+import {join, posix} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 export const PAIRS = [
@@ -13,19 +13,22 @@ export const REQUIRED = [
   'i18n/es/docusaurus-theme-classic/navbar.json',
   'i18n/es/docusaurus-theme-classic/footer.json',
   'i18n/es/docusaurus-plugin-content-docs/current.json',
+  'i18n/es/docusaurus-plugin-content-blog/options.json',
 ];
 
 const CONTENT = /\.mdx?$/;
 
 export function listContent(root, prefix = '') {
   if (!existsSync(root)) return [];
-  return readdirSync(root, {withFileTypes: true}).flatMap((entry) =>
-    entry.isDirectory()
-      ? listContent(join(root, entry.name), posix.join(prefix, entry.name))
-      : CONTENT.test(entry.name)
-        ? [posix.join(prefix, entry.name)]
-        : [],
-  );
+  return readdirSync(root, {withFileTypes: true})
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    .flatMap((entry) =>
+      entry.isDirectory()
+        ? listContent(join(root, entry.name), posix.join(prefix, entry.name))
+        : CONTENT.test(entry.name)
+          ? [posix.join(prefix, entry.name)]
+          : [],
+    );
 }
 
 export function findParityGaps(siteDir, {pairs = PAIRS, required = REQUIRED} = {}) {
@@ -49,7 +52,7 @@ export function findParityGaps(siteDir, {pairs = PAIRS, required = REQUIRED} = {
   return [...pairGaps, ...requiredGaps];
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
   const siteDir = fileURLToPath(new URL('..', import.meta.url));
   const gaps = findParityGaps(siteDir);
   if (gaps.length > 0) {

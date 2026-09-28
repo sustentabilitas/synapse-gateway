@@ -1,14 +1,18 @@
-import {test} from 'node:test';
+import {after, test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, mkdirSync, writeFileSync} from 'node:fs';
+import {mkdtempSync, mkdirSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname, join} from 'node:path';
 import {findParityGaps} from './check-i18n-parity.mjs';
 
 const PAIRS = [['docs', 'es/docs']];
+const dirs = [];
+
+after(() => dirs.forEach((dir) => rmSync(dir, {recursive: true, force: true})));
 
 function site(files) {
   const dir = mkdtempSync(join(tmpdir(), 'parity-'));
+  dirs.push(dir);
   files.forEach((file) => {
     mkdirSync(dirname(join(dir, file)), {recursive: true});
     writeFileSync(join(dir, file), '# page\n');
