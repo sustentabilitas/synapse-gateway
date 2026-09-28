@@ -80,8 +80,10 @@ const config: Config = {
       defaultMode: 'dark',
       respectPrefersColorScheme: true,
     },
+    image: 'img/social-card.png',
     navbar: {
       title: 'Synapse',
+      logo: {alt: 'Synapse', src: 'img/logo.svg', srcDark: 'img/logo-dark.svg'},
       items: [
         {type: 'docSidebar', sidebarId: 'docsSidebar', position: 'left', label: 'Docs'},
         {type: 'localeDropdown', position: 'right'},
