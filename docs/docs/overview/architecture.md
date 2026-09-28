@@ -43,8 +43,8 @@ Each route alias in `routes.toml` maps to an ordered list of legs (provider plus
 Synapse tries the legs in order until one succeeds. On the standard lane, any failure moves
 to the next leg: an error response, a first-chunk timeout or a broken stream. On the native
 Vertex lane, only a `5xx`, `429` or `408` response, a connection error or a timeout moves
-on; any other `4xx` stops the chain. A streaming response can fall back only until its first chunk reaches the
-client.
+on; any other `4xx` stops the chain. A streaming response can fall back only until its
+first chunk reaches the client.
 
 The ledger write never blocks the response: if the ledger's queue is full, the event is
 dropped and counted in `synapse_ledger_dropped_total`.

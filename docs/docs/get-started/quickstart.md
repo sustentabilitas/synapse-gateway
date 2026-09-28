@@ -22,7 +22,8 @@ Vertex AI request. Then you look up what each request cost.
 The gateway starts without valid credentials: at startup it only checks that
 `VERTEX_PROJECT_ID` and `OPENAI_API_KEY` are set. Credentials are used on the first request.
 If they are missing or invalid, a standard request fails with `502` and error code
-`all_legs_failed`; a native Vertex request fails with `502` and error code `upstream_error`.
+`all_legs_failed`. A native Vertex request fails with `502` and `upstream_error` when
+credentials are missing, or with `400` when Vertex AI rejects them.
 
 ## Create the configuration
 
