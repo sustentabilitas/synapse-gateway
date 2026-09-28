@@ -260,6 +260,10 @@ Each request you sent appears as a row attributed to `my-team`, with its lane (`
 
 ## Next steps
 
+- Follow the tutorials: [cache a video and get structured answers](tutorials/native-vertex-caching.md),
+  [route requests by difficulty with Jev](tutorials/jev-tiers.md) and
+  [fall back across providers](tutorials/fallback-across-providers.md).
+- Add your own routes, legs and tiers with the [routes reference](../configuration/routes.md).
 - Read [Architecture](../overview/architecture.md) to see how lanes and fallback chains fit
   together.
 - Look up routes, legs, tiers and tenants in [Concepts](../overview/concepts.md).
