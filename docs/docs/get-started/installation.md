@@ -18,7 +18,8 @@ docker pull sustentabilitas/synapse-gateway
 
 Tags are published for every release (for example `0.5.38`), as `latest` for the most
 recent release, and as `edge` for the tip of `main`. Images are built for `linux/amd64`
-only; on Apple silicon, Docker runs them under emulation.
+only. On Apple silicon or another ARM machine, add `--platform linux/amd64` to `docker pull`
+and `docker run`, and Docker runs them under emulation.
 
 The image:
 

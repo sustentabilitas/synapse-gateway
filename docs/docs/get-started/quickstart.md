@@ -85,6 +85,9 @@ docker run --rm -p 8080:8080 -p 9090:9090 \
   sustentabilitas/synapse-gateway
 ```
 
+On a Mac with Apple silicon, add `--platform linux/amd64` after `docker run`: the image is
+built for `linux/amd64` only.
+
 The image runs as the non-root user `synapse` (UID 1001) with no home directory, so it
 cannot see your `gcloud` credentials; the mounted key takes their place.
 `SYNAPSE_LEDGER_SQLITE_DSN` puts the SQLite ledger in the mounted `data/` folder, so it
