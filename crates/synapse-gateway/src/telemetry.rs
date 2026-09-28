@@ -49,6 +49,8 @@ pub struct GatewayMetrics {
     guard_scans: Counter<u64>,
     guard_matches: Counter<u64>,
     guard_scan_duration: Histogram<f64>,
+    routing_decisions: Counter<u64>,
+    routing_decision_duration: Histogram<f64>,
 }
 
 impl Default for GatewayMetrics {
@@ -88,6 +90,11 @@ impl GatewayMetrics {
             guard_scans: meter.u64_counter("synapse_guard_scans_total").build(),
             guard_matches: meter.u64_counter("synapse_guard_matches_total").build(),
             guard_scan_duration: seconds_histogram(meter, "synapse_guard_scan_duration_seconds"),
+            routing_decisions: meter.u64_counter("synapse_routing_decisions_total").build(),
+            routing_decision_duration: seconds_histogram(
+                meter,
+                "synapse_routing_decision_duration_seconds",
+            ),
         }
     }
 
@@ -209,6 +216,24 @@ impl GatewayMetrics {
                 KeyValue::new("severity", severity),
             ],
         );
+    }
+
+    /// One per request to a `jev` route; `tier` is the decided tier.
+    pub fn routing_decision(&self, route: &str, tier: &str, outcome: &'static str) {
+        self.routing_decisions.add(
+            1,
+            &[
+                KeyValue::new("route", route.to_string()),
+                KeyValue::new("tier", tier.to_string()),
+                KeyValue::new("outcome", outcome),
+            ],
+        );
+    }
+
+    /// Latency of one Jev decision call.
+    pub fn routing_decision_duration(&self, route: &str, secs: f64) {
+        self.routing_decision_duration
+            .record(secs, &[KeyValue::new("route", route.to_string())]);
     }
 }
 
@@ -364,6 +389,30 @@ mod tests {
         m.breaker_transition("qwen", "open", 1);
         m.guard_scan("strict", "block", 0.001);
         m.guard_match("strict", "ban_substrings", "block");
+        m.routing_decision("auto", "hard", "decided");
+        m.routing_decision_duration("auto", 0.12);
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn routing_decision_instruments_export() {
+        let (m, exporter) = test_metrics();
+        m.routing_decision("auto", "hard", "decided");
+        m.routing_decision_duration("auto", 0.12);
+        let text = scrape(&exporter);
+        assert!(text.contains("synapse_routing_decisions_total"), "{text}");
+        ["route=\"auto\"", "tier=\"hard\"", "outcome=\"decided\""]
+            .iter()
+            .for_each(|label| assert!(text.contains(label), "{label} missing in {text}"));
+        assert!(
+            !text.contains("synapse_routing_decisions_total_total"),
+            "{text}"
+        );
+        assert!(
+            text.contains("synapse_routing_decision_duration_seconds_bucket"),
+            "{text}"
+        );
+        assert!(text.contains("le=\"0.25\""), "{text}");
     }
 
     #[cfg(feature = "server")]
@@ -382,6 +431,8 @@ mod tests {
         m.breaker_transition("qwen", "open", 1);
         m.guard_scan("strict", "block", 0.001);
         m.guard_match("strict", "ban_substrings", "block");
+        m.routing_decision("auto", "hard", "decided");
+        m.routing_decision_duration("auto", 0.12);
         let text = scrape(&exporter);
         for line in [
             r#"synapse_requests_total{lane="standard",model="qwen-max",route="fast",system="dashscope"} 1"#,
@@ -403,6 +454,8 @@ mod tests {
             r#"synapse_guard_scans_total{outcome="block",policy="strict"} 1"#,
             r#"synapse_guard_matches_total{policy="strict",scanner="ban_substrings",severity="block"} 1"#,
             r#"synapse_guard_scan_duration_seconds_count{policy="strict"} 1"#,
+            r#"synapse_routing_decisions_total{outcome="decided",route="auto",tier="hard"} 1"#,
+            r#"synapse_routing_decision_duration_seconds_count{route="auto"} 1"#,
         ] {
             assert!(
                 text.lines().any(|l| l == line),
