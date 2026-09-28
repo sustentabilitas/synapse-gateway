@@ -3,6 +3,7 @@
 use anyhow::{anyhow, bail};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
+use tap::Tap;
 
 use crate::routing::effort::Effort;
 use crate::routing::jev_router::{order_legs, EffortPolicy};
@@ -112,6 +113,45 @@ impl JevRoute {
         .map(|p| p.leg)
         .collect()
     }
+
+    /// This route without legs of `drop`: empty tiers removed and `default_tier`
+    /// re-picked (nearest surviving by index, preferring harder). `None` when
+    /// fewer than two tiers survive — nothing is left to choose between.
+    fn pruned(&self, drop: &HashSet<String>) -> Option<JevRoute> {
+        let default = self.default_index();
+        let survivors: Vec<(usize, Tier)> = self
+            .tiers
+            .iter()
+            .enumerate()
+            .map(|(i, t)| {
+                (
+                    i,
+                    Tier {
+                        legs: t
+                            .legs
+                            .iter()
+                            .filter(|l| !drop.contains(&l.provider))
+                            .cloned()
+                            .collect(),
+                        ..t.clone()
+                    },
+                )
+            })
+            .filter(|(_, t)| !t.legs.is_empty())
+            .collect();
+        let default_tier = survivors
+            .iter()
+            .find(|(i, _)| *i >= default)
+            .or_else(|| survivors.last())
+            .map(|(_, t)| t.name.clone())?;
+        (survivors.len() >= 2).then(|| JevRoute {
+            router: JevRouterConfig {
+                default_tier,
+                ..self.router.clone()
+            },
+            tiers: survivors.into_iter().map(|(_, t)| t).collect(),
+        })
+    }
 }
 
 /// Tier indices in fallback order: `start`, each harder tier, then each easier
@@ -195,16 +235,48 @@ impl RouteTable {
     ///
     /// A multi-leg route survives on its remaining legs, so a route whose first
     /// choice is unavailable degrades to its fallback instead of disappearing.
+    /// A `jev` route prunes inside its tiers; it becomes a static route when
+    /// `typesafe` is dropped or fewer than two tiers survive.
     pub fn without_providers(&self, drop: &HashSet<String>) -> Self {
+        let jev: HashMap<String, JevRoute> = self
+            .jev
+            .iter()
+            .filter_map(|(name, route)| {
+                match drop.contains("typesafe") {
+                    true => None,
+                    false => route.pruned(drop),
+                }
+                .tap(|kept| match kept {
+                    None => tracing::warn!(
+                        route = %name,
+                        "jev route downgraded to static: typesafe unavailable or fewer than two tiers left"
+                    ),
+                    Some(k) if k.router.default_tier != route.router.default_tier => {
+                        tracing::warn!(
+                            route = %name,
+                            from = %route.router.default_tier,
+                            to = %k.router.default_tier,
+                            "jev route default_tier pruned; re-picked"
+                        )
+                    }
+                    Some(_) => {}
+                })
+                .map(|k| (name.clone(), k))
+            })
+            .collect();
         let routes: HashMap<String, Vec<ChainLeg>> = self
             .routes
             .iter()
             .map(|(name, legs)| {
-                let kept: Vec<ChainLeg> = legs
-                    .iter()
-                    .filter(|l| !drop.contains(&l.provider))
-                    .cloned()
-                    .collect();
+                let kept = jev.get(name).map_or_else(
+                    || {
+                        legs.iter()
+                            .filter(|l| !drop.contains(&l.provider))
+                            .cloned()
+                            .collect()
+                    },
+                    JevRoute::static_legs,
+                );
                 (name.clone(), kept)
             })
             .filter(|(_, legs)| !legs.is_empty())
@@ -218,7 +290,7 @@ impl RouteTable {
         Self {
             routes,
             policies,
-            jev: HashMap::new(),
+            jev,
         }
     }
 
@@ -741,5 +813,75 @@ mod tests {
             let err = load_err(toml);
             assert!(err.contains(needle), "expected '{needle}' in: {err}");
         });
+    }
+
+    #[test]
+    fn pruning_drops_empty_tiers_and_keeps_the_route_jev() {
+        let toml = jev_toml(
+            "",
+            &[
+                tier("trivial", "none", "qwen", "qwen-flash"),
+                tier("moderate", "low", "vertex", "gemini-2.5-flash"),
+                tier("hard", "medium", "vertex", "gemini-2.5-pro"),
+                tier("expert", "high", "openai", "gpt-x"),
+            ],
+        );
+        let t = RouteTable::from_toml_str(&toml)
+            .unwrap()
+            .without_providers(&drop_set(&["qwen"]));
+        let r = t.jev_route("auto").unwrap();
+        assert_eq!(
+            r.tiers.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
+            vec!["moderate", "hard", "expert"]
+        );
+        assert_eq!(r.router.default_tier, "moderate");
+        assert!(t.legs("auto").unwrap().iter().all(|l| l.provider != "qwen"));
+    }
+
+    #[test]
+    fn pruning_the_default_tier_repicks_the_nearest_harder_tier() {
+        let t = RouteTable::from_toml_str(&jev_toml("", &three_tiers()))
+            .unwrap()
+            .without_providers(&drop_set(&["vertex"]));
+        // moderate and hard were vertex-only: one tier left ⇒ downgraded to static.
+        assert!(t.jev_route("auto").is_none());
+        assert_eq!(t.legs("auto").unwrap().len(), 1);
+        assert_eq!(t.legs("auto").unwrap()[0].model, "qwen-flash");
+
+        let four = jev_toml(
+            "",
+            &[
+                tier("trivial", "none", "qwen", "qwen-flash"),
+                tier("moderate", "low", "openai", "gpt-mini"),
+                tier("hard", "medium", "vertex", "gemini-2.5-pro"),
+                tier("expert", "high", "vertex", "gemini-3.1-pro-preview"),
+            ],
+        );
+        let t = RouteTable::from_toml_str(&four)
+            .unwrap()
+            .without_providers(&drop_set(&["openai"]));
+        assert_eq!(t.jev_route("auto").unwrap().router.default_tier, "hard");
+    }
+
+    #[test]
+    fn pruning_typesafe_downgrades_jev_routes_to_static() {
+        use crate::routing::effort::Effort;
+        let t = RouteTable::from_toml_str(&jev_toml("", &three_tiers()))
+            .unwrap()
+            .without_providers(&drop_set(&["typesafe"]));
+        assert!(t.jev_route("auto").is_none());
+        assert_eq!(
+            t.legs("auto")
+                .unwrap()
+                .iter()
+                .map(|l| (l.model.as_str(), l.effort))
+                .collect::<Vec<_>>(),
+            vec![
+                ("gemini-2.5-flash", Some(Effort::Low)),
+                ("gemini-2.5-pro", Some(Effort::Medium)),
+                ("qwen-flash", Some(Effort::None)),
+            ]
+        );
+        assert!(!t.referenced_providers().contains("typesafe"));
     }
 }
