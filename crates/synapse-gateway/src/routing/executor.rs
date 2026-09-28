@@ -650,6 +650,24 @@ mod tests {
     }
 
     #[test]
+    fn client_none_is_not_forwarded_and_leg_effort_does_not_replace_it() {
+        let o = to_genai_options(
+            &opts_req(serde_json::json!({"reasoning_effort": "none"})),
+            Some(Effort::High),
+        );
+        assert_eq!(effort_name(&o), None);
+    }
+
+    #[test]
+    fn unparseable_client_effort_falls_back_to_leg_effort() {
+        let o = to_genai_options(
+            &opts_req(serde_json::json!({"reasoning_effort": "extreme"})),
+            Some(Effort::Low),
+        );
+        assert_eq!(effort_name(&o), Some("low"));
+    }
+
+    #[test]
     fn no_effort_anywhere_sends_nothing() {
         assert_eq!(
             effort_name(&to_genai_options(&opts_req(serde_json::json!({})), None)),

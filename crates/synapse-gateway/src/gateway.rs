@@ -1689,4 +1689,25 @@ mod tests {
             std::borrow::Cow::Borrowed(_)
         ));
     }
+
+    #[test]
+    fn null_thinking_config_or_missing_vertex_block_gets_the_leg_budget() {
+        let budget = Some(serde_json::json!({"thinkingBudget": 1024}));
+        let leg = vertex_leg(Some(crate::routing::effort::Effort::Low));
+        let null_config = vertex_req(serde_json::json!({"thinking_config": null}));
+        let no_vertex: ChatRequest = serde_json::from_value(serde_json::json!({
+            "model": "auto",
+            "messages": [{"role": "user", "content": "hi"}]
+        }))
+        .unwrap();
+        [null_config, no_vertex].iter().for_each(|req| {
+            assert_eq!(
+                with_leg_thinking(req, &leg)
+                    .vertex
+                    .as_ref()
+                    .and_then(|v| v.thinking_config.clone()),
+                budget
+            )
+        });
+    }
 }
