@@ -74,6 +74,9 @@ Synapse asks TypeSafe Jev how demanding the conversation is, scored against the 
 descriptions, and whether it needs step-by-step reasoning. The nearest tier serves the
 request with its reasoning `effort`, raised one step when reasoning is likely.
 
+A `jev` route has a `strategy`, a `jev_router` table and one `[[routes."<alias>".tiers]]`
+table per tier:
+
 ```toml
 [routes."auto"]
 strategy = "jev"
@@ -82,17 +85,15 @@ strategy = "jev"
 default_tier = "moderate"
 
 [[routes."auto".tiers]]
-name = "trivial"
-description = "Greetings, chit-chat, one-line lookups or rewrites"
-effort = "none"
-legs = [{ provider = "vertex", model = "gemini-3.5-flash-lite", region = "us" }]
-
-[[routes."auto".tiers]]
 name = "moderate"
 description = "Everyday Q&A, summarising, simple extraction or code edits"
 effort = "low"
 legs = [{ provider = "vertex", model = "gemini-3.6-flash", region = "global" }]
+
+# ... at least one more tier
 ```
+
+See the [complete example](#complete-example) for a working three-tier route.
 
 A `jev` route needs `TYPESAFE_API_KEY` under strict provider validation. See
 [Providers](providers.md#strict-and-lenient-validation) for what lenient validation does
@@ -121,22 +122,28 @@ Declare 2 to 10 `[[routes."<alias>".tiers]]` tables, ordered from easiest to har
 
 ### Effort
 
-A tier's effort reaches the model differently on each lane:
+On the standard lane, Synapse hands a tier's effort to the `genai` crate as its
+`ReasoningEffort` option, and genai translates it for each provider. On the native Vertex
+lane, Synapse sets `thinkingBudget` itself:
 
-| Effort | Standard lane `reasoning_effort` | Native Vertex `thinkingBudget` |
-|---|---|---|
-| `none` | not sent | not sent |
-| `minimal` | `minimal` | 512 |
-| `low` | `low` | 1024 |
-| `medium` | `medium` | 4096 |
-| `high` | `high` | 8192 |
-| `xhigh` | `xhigh` | 16384 |
-| `max` | `max` | 24576 |
+| Effort | `openai`, `qwen`, `oai_compat`: `reasoning_effort` | `vertex`, standard lane, Gemini 3: `thinkingLevel` | `vertex`, native lane: `thinkingBudget` |
+|---|---|---|---|
+| `none` | not sent | not sent | not sent |
+| `minimal` | `minimal` | `MINIMAL` | 512 |
+| `low` | `low` | `LOW` | 1024 |
+| `medium` | `medium` | `MEDIUM` | 4096 |
+| `high` | `high` | `HIGH` | 8192 |
+| `xhigh` | `xhigh` | `HIGH` | 16384 |
+| `max` | `xhigh` | `HIGH` | 24576 |
+
+On the standard lane, Vertex models whose name does not contain `gemini-3` get a
+`thinkingBudget` from genai instead: 1000 tokens for `minimal` and `low`, 8000 for `medium`,
+and 24000 for `high`, `xhigh` and `max`.
 
 With `none`, the model's default applies; on some Gemini models that default is dynamic
 thinking, which can cost more than `minimal`. A client's own effort always wins on its
-lane: `reasoning_effort` on the standard lane, `vertex.thinking_config` on the native Vertex
-lane.
+lane: `reasoning_effort` on the standard lane, translated the same way, and
+`vertex.thinking_config` on the native Vertex lane.
 
 ### Tier fallback
 
@@ -212,7 +219,7 @@ legs = [{ provider = "vertex", model = "gemini-3.1-pro-preview", region = "globa
 
 The gateway checks the file at startup and stops with a message naming the route when:
 
-- a static route has no `legs`, or declares `tiers` without `strategy = "jev"`;
+- a static route has no `legs` key, or declares `tiers` without `strategy = "jev"`;
 - `strategy` is neither `static` nor `jev`;
 - a `jev` route has non-empty `legs`, no `jev_router` table, fewer than 2 or more than 10 tiers, or a
   `default_tier` that is not one of its tiers;

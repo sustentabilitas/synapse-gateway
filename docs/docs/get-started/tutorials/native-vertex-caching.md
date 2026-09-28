@@ -70,9 +70,8 @@ export CACHE="projects/123456789012/locations/us/cachedContents/1234567890123456
 ```
 
 :::note
-Vertex AI only caches content above a minimum size: 4,096 tokens for Gemini 3 models. The
-sample video is well above it. If you cache your own content and the create call fails,
-check the limits in Google's
+Vertex AI only caches content above a minimum number of tokens, which depends on the model.
+If you cache your own content and the create call fails, check the limits in Google's
 [context caching overview](https://cloud.google.com/vertex-ai/generative-ai/docs/context-cache/context-cache-overview).
 :::
 

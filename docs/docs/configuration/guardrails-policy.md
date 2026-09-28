@@ -90,12 +90,12 @@ Responses are not scanned, and neither are embeddings or the passthrough endpoin
 |---|---|---|---|
 | `prompt_injection` | — | block | `injection` and `role_override`: this entry expands to both scanners. |
 | `secrets` | — | block | `secrets` |
-| `pii` | — | block or warn | `pii_patterns`. US Social Security numbers, payment card numbers and IBANs that pass their checksum are block; email addresses, phone numbers, IP and MAC addresses are warn. |
+| `pii` | — | block or warn | `pii_patterns`. US Social Security numbers, payment card numbers and IBANs that pass their checksum are block; email addresses, E.164 phone numbers, IP and MAC addresses are warn. |
 | `invisible_text` | — | block | `invisible_text`. Zero-width and other invisible Unicode characters. |
 | `role_override` | — | block | `role_override`. Attempts to switch the model's role mid-prompt. |
 | `token_limit` | `max_chars` (required) | block | `token_limit`. Blocks input longer than `max_chars` characters, not tokens. |
 | `ban_substrings` | `substrings` (required, non-empty); `severity`: `block` (default), `warn` or `info` | as configured | `ban_substrings`. Matches any listed substring, ignoring ASCII case. |
-| `script_mix` | `threshold` (default `2`) | warn | `script_mix`. Flags input that mixes more writing scripts than `threshold`. |
+| `script_mix` | `threshold` (default `2`) | warn | `script_mix`. Flags input with more than `threshold` characters outside its dominant script (Latin, Cyrillic, Greek, Arabic, Hebrew or CJK). Catches look-alike characters such as a Cyrillic `а` in `paypal`. Other non-ASCII characters, such as emoji or typographic quotes, also count. |
 
 The "Reported as" name is the one that appears in the block response and in the
 `scanner` label of `synapse_guard_matches_total`.

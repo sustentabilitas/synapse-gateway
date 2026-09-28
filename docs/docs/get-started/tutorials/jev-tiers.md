@@ -68,14 +68,19 @@ What the `auto` route declares:
   the model. Tier `name`s are sent back in response headers, so they must be unique,
   printable ASCII.
 - `effort` is the reasoning effort the tier's legs run with: `none`, `minimal`, `low`,
-  `medium`, `high`, `xhigh` or `max`. On these standard-lane requests it becomes
-  `reasoning_effort`; `none` sends nothing, so the model's default applies.
+  `medium`, `high`, `xhigh` or `max`. On the standard lane Synapse passes it to the `genai`
+  crate, which sends it as `reasoning_effort` to OpenAI-style providers and as
+  `thinkingLevel` to these Gemini 3 models. `none` sends nothing, so the model's default
+  applies. See [Effort](../../configuration/routes.md#effort) for the full mapping.
 - `default_tier` serves when Jev is unsure, slow or unavailable. `timeout_ms` bounds the
   decision call; 400 ms is the default.
 - Tier legs can use any provider except `typesafe`: Jev decides, it is not a candidate.
 
+[Jev routes](../../configuration/routes.md#jev-routes) in the routes reference lists every
+key and its default.
+
 Add prices for the new models and for Jev's decisions to `config/pricing.toml`, so the
-ledger can cost them:
+ledger can cost them (see [Pricing](../../configuration/pricing.md)):
 
 ```toml title="config/pricing.toml"
 "vertex:gemini-3.5-flash-lite" = { input = 0.30, output = 2.50 }
@@ -229,3 +234,4 @@ When a different tier ends up serving, `x-synapse-tier-decided` names the tier J
 - [Fall back across providers](fallback-across-providers.md) to see how a route recovers
   when a leg fails.
 - Look up [tiers and strategies](../../overview/concepts.md#tier) in Concepts.
+- Tune the decision with the [`jev_router` keys](../../configuration/routes.md#jev-routes).

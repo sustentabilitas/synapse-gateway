@@ -148,6 +148,8 @@ Set the first leg of `chat` back to `gemini-3.5-flash-lite`, restore your real
 
 ## Next steps
 
+- Look up the [fallback rules](../../configuration/routes.md#fallback) in the routes
+  reference.
 - Read [Architecture](../../overview/architecture.md) for how fallback fits in the request
   flow.
 - Look up [fallback chains](../../overview/concepts.md#fallback-chain) in Concepts.
