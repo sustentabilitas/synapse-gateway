@@ -3,10 +3,10 @@
 //! answers into an ordered, effort-stamped leg plan and a client-facing report.
 //! Spec: `docs/superpowers/specs/2026-09-28-jev-router-design.md`.
 
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 use crate::routing::request::{ChatRequest, Message};
-use crate::routing::table::{escalation_order, ChainLeg, Tier};
+use crate::routing::table::{escalation_order, ChainLeg, JevRoute, Tier};
 
 /// Character budget for the whole Jev `state` (≈ 6k tokens).
 pub const STATE_BUDGET: usize = 24_000;
@@ -164,6 +164,138 @@ fn head_tail(s: &str, cap: usize) -> String {
             s.chars().take(cap / 2).collect::<String>(),
             s.chars().skip(n - cap / 2).collect::<String>()
         ),
+    }
+}
+
+const DIFFICULTY_INSTRUCTIONS: &str = "How demanding is it to produce a high-quality reply to \
+`latest_user_message`, given `recent_history` and `system_prompt`?";
+const REASONING_INSTRUCTIONS: &str = "Does replying well to `latest_user_message` require careful \
+step-by-step reasoning such as maths, logic, planning, or debugging?";
+
+/// The two questions every decision asks. `difficulty`'s levels are the tier
+/// descriptions, so its score indexes `tiers`.
+pub fn build_questions(tiers: &[Tier]) -> Map<String, Value> {
+    Map::from_iter([
+        (
+            "difficulty".to_string(),
+            json!({
+                "type": "score",
+                "instructions": DIFFICULTY_INSTRUCTIONS,
+                "criteria": tiers.iter().map(|t| t.description.as_str()).collect::<Vec<_>>(),
+            }),
+        ),
+        (
+            "needs_reasoning".to_string(),
+            json!({
+                "type": "noul",
+                "instructions": REASONING_INSTRUCTIONS,
+            }),
+        ),
+    ])
+}
+
+/// The parts of a Jev response the router acts on.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Answers {
+    /// Probability-weighted tier index.
+    pub difficulty: f64,
+    pub confidence: f64,
+    pub needs_reasoning: Option<f64>,
+}
+
+/// `None` when `difficulty` is missing, not a score answer, or lacks its
+/// score or confidence.
+pub fn parse_answers(answers: &Value) -> Option<Answers> {
+    answers
+        .get("difficulty")
+        .filter(|d| d.get("type").and_then(Value::as_str) == Some("score"))
+        .and_then(|d| {
+            Some(Answers {
+                difficulty: d.get("score")?.as_f64()?,
+                confidence: d.get("confidence")?.as_f64()?,
+                needs_reasoning: answers
+                    .get("needs_reasoning")
+                    .and_then(|n| n.get("noul"))
+                    .and_then(Value::as_f64),
+            })
+        })
+}
+
+/// How a decision was reached.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecisionOutcome {
+    Decided,
+    LowConfidence,
+    Timeout,
+    /// Transport error, non-2xx, or an unparseable answer.
+    Error,
+    /// No Jev provider configured on this gateway.
+    Unavailable,
+    StaticOverride,
+}
+
+impl DecisionOutcome {
+    /// `outcome` label of `synapse_routing_decisions_total`.
+    pub fn metric_label(self) -> &'static str {
+        match self {
+            Self::Decided => "decided",
+            Self::LowConfidence => "low_confidence",
+            Self::Timeout => "timeout",
+            Self::Error | Self::Unavailable => "error",
+            Self::StaticOverride => "static_override",
+        }
+    }
+
+    /// `x-synapse-routing-degraded` value when the decision fell back.
+    pub fn degraded_reason(self) -> Option<&'static str> {
+        match self {
+            Self::Decided | Self::StaticOverride => None,
+            Self::LowConfidence => Some("low_confidence"),
+            Self::Timeout => Some("timeout"),
+            Self::Error => Some("error"),
+            Self::Unavailable => Some("jev_unavailable"),
+        }
+    }
+}
+
+/// The tier a decision picked (before eligibility), and whether effort bumps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Selection {
+    pub tier: usize,
+    pub outcome: DecisionOutcome,
+    pub bump: bool,
+}
+
+/// Nearest tier to a probability-weighted score (half rounds up), clamped.
+/// `NaN` maps to tier 0.
+pub fn score_to_tier(score: f64, tiers: usize) -> usize {
+    (score + 0.5)
+        .floor()
+        .clamp(0.0, tiers.saturating_sub(1) as f64) as usize
+}
+
+/// Turn a decision result into a tier and effort bump.
+pub fn select(result: Result<Answers, DecisionOutcome>, route: &JevRoute) -> Selection {
+    let bump = |a: &Answers| {
+        a.needs_reasoning
+            .is_some_and(|p| p >= route.router.reasoning_threshold)
+    };
+    match result {
+        Ok(a) if a.confidence < route.router.min_confidence => Selection {
+            tier: route.default_index(),
+            outcome: DecisionOutcome::LowConfidence,
+            bump: bump(&a),
+        },
+        Ok(a) => Selection {
+            tier: score_to_tier(a.difficulty, route.tiers.len()),
+            outcome: DecisionOutcome::Decided,
+            bump: bump(&a),
+        },
+        Err(outcome) => Selection {
+            tier: route.default_index(),
+            outcome,
+            bump: false,
+        },
     }
 }
 
@@ -352,5 +484,197 @@ mod tests {
         assert_eq!(s["has_images"], true);
         assert_eq!(s["latest_user_message"], "");
         assert_eq!(s["has_tools"], false);
+    }
+
+    use crate::routing::table::RouteTable;
+
+    fn route() -> JevRoute {
+        RouteTable::from_toml_str(
+            r#"
+            [routes."auto"]
+            strategy = "jev"
+            [routes."auto".jev_router]
+            default_tier = "moderate"
+            [[routes."auto".tiers]]
+            name = "trivial"
+            description = "Greetings"
+            effort = "none"
+            legs = [{ provider = "qwen", model = "qwen-flash" }]
+            [[routes."auto".tiers]]
+            name = "moderate"
+            description = "Everyday questions"
+            effort = "low"
+            legs = [{ provider = "vertex", model = "gemini-2.5-flash" }]
+            [[routes."auto".tiers]]
+            name = "hard"
+            description = "Multi-step analysis"
+            effort = "medium"
+            legs = [{ provider = "vertex", model = "gemini-2.5-pro" }]
+            [[routes."auto".tiers]]
+            name = "expert"
+            description = "Proofs and deep debugging"
+            effort = "max"
+            legs = [{ provider = "vertex", model = "gemini-3.1-pro-preview" }]
+            "#,
+        )
+        .unwrap()
+        .jev_route("auto")
+        .unwrap()
+        .clone()
+    }
+
+    fn answers(difficulty: f64, confidence: f64, needs_reasoning: Option<f64>) -> Answers {
+        Answers {
+            difficulty,
+            confidence,
+            needs_reasoning,
+        }
+    }
+
+    #[test]
+    fn questions_use_tier_descriptions_in_order() {
+        let q = build_questions(&route().tiers);
+        assert_eq!(q["difficulty"]["type"], "score");
+        assert_eq!(
+            q["difficulty"]["criteria"],
+            json!([
+                "Greetings",
+                "Everyday questions",
+                "Multi-step analysis",
+                "Proofs and deep debugging"
+            ])
+        );
+        assert_eq!(q["needs_reasoning"]["type"], "noul");
+        assert!(q["difficulty"]["instructions"]
+            .as_str()
+            .unwrap()
+            .contains("`latest_user_message`"));
+        assert_eq!(q.len(), 2);
+    }
+
+    #[test]
+    fn parses_score_and_noul_answers() {
+        let a = parse_answers(&json!({
+            "difficulty": {"type": "score", "score": 1.15, "confidence": 0.77, "probabilities": {}},
+            "needs_reasoning": {"type": "noul", "noul": 0.82}
+        }))
+        .unwrap();
+        assert_eq!(a, answers(1.15, 0.77, Some(0.82)));
+        assert_eq!(
+            parse_answers(
+                &json!({"difficulty": {"type": "score", "score": 2.0, "confidence": 1.0}})
+            ),
+            Some(answers(2.0, 1.0, None))
+        );
+        assert_eq!(
+            parse_answers(&json!({"difficulty": {"type": "noul", "noul": 0.5}})),
+            None
+        );
+        assert_eq!(
+            parse_answers(&json!({"difficulty": {"type": "score", "score": 2.0}})),
+            None
+        );
+        assert_eq!(parse_answers(&json!({})), None);
+    }
+
+    #[test]
+    fn score_rounds_half_up_and_clamps() {
+        assert_eq!(score_to_tier(0.0, 4), 0);
+        assert_eq!(score_to_tier(0.49, 4), 0);
+        assert_eq!(score_to_tier(0.5, 4), 1);
+        assert_eq!(score_to_tier(2.3, 4), 2);
+        assert_eq!(score_to_tier(9.0, 4), 3);
+        assert_eq!(score_to_tier(-1.0, 4), 0);
+        assert_eq!(score_to_tier(f64::NAN, 4), 0);
+    }
+
+    #[test]
+    fn confident_answer_picks_scored_tier_and_bumps_on_reasoning() {
+        let r = route();
+        assert_eq!(
+            select(Ok(answers(2.3, 0.9, Some(0.8))), &r),
+            Selection {
+                tier: 2,
+                outcome: DecisionOutcome::Decided,
+                bump: true
+            }
+        );
+        assert_eq!(
+            select(Ok(answers(2.3, 0.9, Some(0.69))), &r),
+            Selection {
+                tier: 2,
+                outcome: DecisionOutcome::Decided,
+                bump: false
+            }
+        );
+        assert_eq!(
+            select(Ok(answers(2.3, 0.9, None)), &r),
+            Selection {
+                tier: 2,
+                outcome: DecisionOutcome::Decided,
+                bump: false
+            }
+        );
+    }
+
+    #[test]
+    fn thresholds_are_inclusive() {
+        assert_eq!(
+            select(Ok(answers(0.2, 0.5, Some(0.7))), &route()),
+            Selection {
+                tier: 0,
+                outcome: DecisionOutcome::Decided,
+                bump: true
+            }
+        );
+    }
+
+    #[test]
+    fn low_confidence_uses_default_tier() {
+        assert_eq!(
+            select(Ok(answers(3.0, 0.49, Some(0.9))), &route()),
+            Selection {
+                tier: 1,
+                outcome: DecisionOutcome::LowConfidence,
+                bump: true
+            }
+        );
+    }
+
+    #[test]
+    fn failures_use_default_tier_without_bump() {
+        [
+            DecisionOutcome::Timeout,
+            DecisionOutcome::Error,
+            DecisionOutcome::Unavailable,
+        ]
+        .into_iter()
+        .for_each(|o| {
+            assert_eq!(
+                select(Err(o), &route()),
+                Selection {
+                    tier: 1,
+                    outcome: o,
+                    bump: false
+                }
+            )
+        });
+    }
+
+    #[test]
+    fn outcome_labels_and_degraded_reasons() {
+        use DecisionOutcome::*;
+        assert_eq!(Decided.metric_label(), "decided");
+        assert_eq!(LowConfidence.metric_label(), "low_confidence");
+        assert_eq!(Timeout.metric_label(), "timeout");
+        assert_eq!(Error.metric_label(), "error");
+        assert_eq!(Unavailable.metric_label(), "error");
+        assert_eq!(StaticOverride.metric_label(), "static_override");
+        assert_eq!(Decided.degraded_reason(), None);
+        assert_eq!(StaticOverride.degraded_reason(), None);
+        assert_eq!(Timeout.degraded_reason(), Some("timeout"));
+        assert_eq!(LowConfidence.degraded_reason(), Some("low_confidence"));
+        assert_eq!(Unavailable.degraded_reason(), Some("jev_unavailable"));
+        assert_eq!(Error.degraded_reason(), Some("error"));
     }
 }
