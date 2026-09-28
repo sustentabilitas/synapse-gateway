@@ -15,9 +15,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `install` (Prometheus registry plus optional OTLP/HTTP reader),
   `MetricsExporter` and `metrics_router`. `CircuitBreaker::attach_metrics`
   records breaker and retry metrics for breakers built outside a `Catalog`.
+- Jev router: routes with `strategy = "jev"` declare 2–10 difficulty tiers
+  (`[routes."x".jev_router]` plus `[[routes."x".tiers]]`); TypeSafe Jev scores
+  each request and Synapse serves it from the matching tier with its reasoning
+  effort (`reasoning_effort` on OpenAI-compatible legs, `thinkingBudget` on
+  native Vertex), escalating to harder tiers on failure and falling back to
+  `default_tier` on low confidence, timeout, or Jev errors. `effort = "none"`
+  sends nothing, so the model's default applies (dynamic thinking on Gemini
+  2.5 Pro/Flash, which can cost more than `minimal`). Tier names must be
+  printable ASCII; tier legs cannot use provider `typesafe`, and a `jev` route
+  requires the `typesafe` provider under strict validation (under lenient
+  validation it prunes inside tiers or downgrades to static). Per-request
+  `routing_strategy: "static"` override; `x-synapse-tier`,
+  `x-synapse-tier-decided`, `x-synapse-reasoning-effort` and
+  `x-synapse-routing-degraded` response headers; `route_decision` ledger rows;
+  a `synapse::routing` tracing event per planned request, plus a warning
+  (`error.kind` and the HTTP status or timeout only) when a Jev call fails or
+  times out;
+  `synapse_routing_decisions_total` and
+  `synapse_routing_decision_duration_seconds` metrics. `jev` routes never seed
+  the Gemini passthrough fallback chain. Public API:
+  `Gateway::chat_routed`, `GuardedStream::routing()`,
+  `routing::jev_router::RoutingReport`, `RouteTable::jev_route`.
 
 ### Changed
 
+- Every chat response now carries `x-synapse-routing` (`static` on plain
+  routes).
+- `routing_strategy` values other than `"static"` now return `400 Bad Request`
+  on static routes. Previously the field was ignored.
+- The standard lane now forwards a client-supplied `reasoning_effort` on every
+  route. A client `"none"` or an unparseable value is not forwarded.
+- `ChainLeg` gained a public `effort` field (never read from config), so
+  struct literals outside the crate need `..Default::default()`.
 - Metrics are recorded with OpenTelemetry (opentelemetry-rust 0.32) instead of
   the `metrics` crate. Prometheus output on `SYNAPSE_METRICS_ADDR` keeps the
   same series names and labels; setting `OTEL_EXPORTER_OTLP_ENDPOINT` also

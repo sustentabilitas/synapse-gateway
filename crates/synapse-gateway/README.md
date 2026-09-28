@@ -60,6 +60,84 @@ On success the response carries a `jev` block (`answers`, `survivors`, `degraded
 
 A route that has `typesafe` legs but receives no `jev` block returns `400 Bad Request`.
 
+### Jev router
+
+A route with `strategy = "jev"` picks a model and reasoning effort per request.
+Instead of `legs`, it lists tiers ordered from easiest to hardest. Before
+serving, Synapse asks TypeSafe Jev two questions about the conversation: how
+demanding the request is, scored against the tier descriptions, and whether it
+needs step-by-step reasoning. The request is served by the nearest tier, using
+that tier's `effort`, raised one step when reasoning is likely. If that tier
+fails, harder tiers are tried first, then easier ones.
+
+```toml
+[routes."auto"]
+strategy = "jev"
+
+[routes."auto".jev_router]
+default_tier = "moderate"   # used on low confidence, timeout, or Jev error
+timeout_ms = 400            # default 400
+# model = "jev-latest"      # default
+# min_confidence = 0.5      # below this, default_tier serves
+# reasoning_threshold = 0.7 # at or above this, effort is raised one step
+
+[[routes."auto".tiers]]
+name = "moderate"
+description = "Everyday Q&A, summarising, simple extraction or code edits"
+effort = "low"              # none|minimal|low|medium|high|xhigh|max
+legs = [{ provider = "vertex", model = "gemini-2.5-flash" }]
+# … 2–10 tiers in total
+```
+
+A full four-tier example ships commented out at the end of `config/routes.toml`.
+
+- Tier descriptions describe the work, never the model, because Jev scores
+  against them.
+- Tier names must be non-empty, unique and printable ASCII (spaces allowed),
+  because they are sent as header values. `default_tier` must name a tier.
+- Tier legs cannot use provider `typesafe`: Jev decides, it is not a
+  candidate.
+- `effort` becomes `reasoning_effort` on OpenAI-compatible legs and
+  `thinkingBudget` on native Vertex legs (`minimal` 512, `low` 1024, `medium`
+  4096, `high` 8192, `xhigh` 16384, `max` 24576 tokens).
+- `effort = "none"` sends nothing, so the model's default applies. On Gemini
+  2.5 Pro and Flash that default is dynamic thinking, which can cost more than
+  `minimal` (512).
+- A client's own effort always wins on its lane: `reasoning_effort` on the
+  standard lane, `vertex.thinking_config` on the native Vertex lane (which
+  ignores `reasoning_effort`, so the tier's `thinkingBudget` still applies).
+- Send `"routing_strategy": "static"` to skip the decision for one request; it
+  is served from `default_tier` with each tier's configured effort. On a plain
+  route, `"routing_strategy": "jev"` or any unknown value returns `400`.
+- Requests with native-Vertex features only use `vertex` legs; if the chosen
+  tier has none, the nearest tier that does serves (harder tiers first). A
+  `jev` extension block (`questions` or `extract`) on a `jev` route returns
+  `400`.
+- Responses carry `x-synapse-routing` (`jev`, `static-override`, or `static`
+  on plain routes), `x-synapse-tier` (the tier that served),
+  `x-synapse-reasoning-effort` (that leg's effort, or `client`), and, when
+  relevant, `x-synapse-tier-decided` (only when a different tier served) and
+  `x-synapse-routing-degraded` (`timeout`, `error`, `low_confidence`,
+  `jev_unavailable`). Streaming responses report the leg that produced the
+  first chunk.
+- Each decision Jev answers writes a ledger row with `op = "route_decision"`
+  (provider `typesafe`, model `jev_router.model`), sharing the chat row's
+  `request_id`. Every planned request on a `jev` route also emits one
+  `tracing` event with target `synapse::routing` and is counted in
+  `synapse_routing_decisions_total`; requests rejected with `400` or by
+  guardrails emit neither. A failed or timed-out Jev call also logs a
+  `synapse::routing` warning carrying only the failure kind (`error.kind`) and
+  the HTTP status or configured timeout — never the Jev response body.
+- A `jev` route references the `typesafe` provider, so strict validation
+  requires `TYPESAFE_API_KEY`. Under lenient validation, unservable legs are
+  pruned inside tiers (empty tiers dropped, `default_tier` re-picked); the
+  route downgrades to static routing when `typesafe` is unavailable or fewer
+  than two tiers remain. A downgraded route keeps each tier's effort on its
+  legs, so its responses still carry `x-synapse-reasoning-effort` (but no
+  `x-synapse-tier`).
+- Embedders can read the report with `Gateway::chat_routed` (returns
+  `(ChatOutcome, RoutingReport)`) or `GuardedStream::routing()`.
+
 ### Native Vertex lane
 
 If the request body contains a `vertex` extension object with any of `cached_content`, `media_uris`, `response_schema`, or `thinking_config`, the request is routed to the native Vertex lane. This lane speaks directly to the Vertex AI `generateContent` REST endpoint, translating the OpenAI message format while preserving Vertex-specific features:
@@ -199,7 +277,7 @@ Both timeouts apply to the standard lane. The native Vertex lane is currently bo
 |--------|------|-------------|
 | `GET` | `/health` | Returns `200 OK` with `{"status":"ok"}`. |
 | `GET` | `/v1/models` | Lists all model aliases defined in `routes.toml`. |
-| `POST` | `/v1/chat/completions` | OpenAI-compatible chat completions. Supports `stream: true` (SSE). Accepts optional `vertex` and `jev` extension blocks. |
+| `POST` | `/v1/chat/completions` | OpenAI-compatible chat completions. Supports `stream: true` (SSE). Accepts optional `vertex` and `jev` extension blocks and a `routing_strategy` override (see [Jev router](#jev-router)). |
 | `POST` | `/typesafe/v1/systemone` | TypeSafe System One (Jev) passthrough. Forwards `{state, questions}` bodies verbatim — Jev has no OpenAI-shaped equivalent. Meters usage from the response's `usage` block. Requires `TYPESAFE_API_KEY`; no fallback chain or streaming. |
 
 ---
@@ -230,7 +308,7 @@ Both timeouts apply to the standard lane. The native Vertex lane is currently bo
 | `SYNAPSE_PROVIDER_VALIDATION` | `strict` | `strict` refuses to start when a route references a provider this process cannot build (credential unset, or an id this build does not know). `lenient` drops those legs, keeps each route's remaining legs, removes routes left with no legs, and starts — for a route table shared by several processes, where a leg added for one consumer should not stop the others. |
 | `SYNAPSE_REQUEST_TIMEOUT_SECS` | `120` | Time-to-first-chunk timeout in seconds. A leg that does not produce its first chunk within this window falls back to the next leg. |
 | `SYNAPSE_STREAM_IDLE_TIMEOUT_SECS` | `60` | Maximum inter-chunk idle gap in seconds. A leg that stalls mid-stream for this long is terminated. |
-| `TYPESAFE_API_KEY` | — | Enables the TypeSafe System One (Jev) passthrough at `POST /typesafe/v1/systemone`. Unset = lane off (the route returns 400). |
+| `TYPESAFE_API_KEY` | — | Enables the TypeSafe System One (Jev) passthrough at `POST /typesafe/v1/systemone`. Unset = lane off (the route returns 400). Also required by `strategy = "jev"` routes under strict validation. |
 | `TYPESAFE_BASE_URL` | `https://api.typesafe.ai` | TypeSafe API endpoint override (self-hosted deployments, tests). |
 
 ### Provider credential variables
@@ -259,6 +337,8 @@ legs = [
 [routes."fast"]
 legs = [{ provider = "vertex", model = "gemini-3-flash" }]
 ```
+
+A route with `strategy = "jev"` declares difficulty tiers instead of `legs`; see [Jev router](#jev-router).
 
 ### `config/pricing.toml`
 
@@ -463,6 +543,8 @@ no-op); pass `.metrics(Arc<GatewayMetrics>)` to record them. Build it with
 | `synapse_passthrough_total` | Counter | `provider`, `model`, `action`, `status` | Gemini (`provider="vertex"`) and Jev (`provider="typesafe"`) passthrough calls. |
 | `synapse_passthrough_fallback_total` | Counter | `from_model`, `to_model` | Gemini passthrough hops to the next Vertex leg. |
 | `synapse_jev_extraction_total` | Counter | `route`, `degraded` | Jev hybrid extraction responses. |
+| `synapse_routing_decisions_total` | Counter | `route`, `tier`, `outcome` | One per planned request to a `jev` route (not those rejected with `400` or by guardrails); `tier` is the decided tier; `outcome` is `decided`, `low_confidence`, `timeout`, `error` (including no Jev provider configured), or `static_override`. |
+| `synapse_routing_decision_duration_seconds` | Histogram | `route` | Jev decision latency, recorded for each Jev call made. |
 | `synapse_resilience_calls_total` | Counter | `label`, `outcome` | Outbound provider calls by outcome (`success`, `exhausted`, `circuit_open`). |
 | `synapse_resilience_call_duration_seconds` | Histogram | `label`, `outcome` | Outbound call latency including retries. |
 | `synapse_resilience_retry_attempts_total` | Counter | `label` | Retries of outbound calls. |

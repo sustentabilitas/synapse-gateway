@@ -12,6 +12,7 @@ pub mod observability;
 pub mod pricing;
 pub mod providers;
 pub mod resilience;
+mod route_planner;
 pub mod routing;
 #[cfg(feature = "server")]
 pub mod server;

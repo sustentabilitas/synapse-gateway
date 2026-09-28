@@ -57,8 +57,7 @@ impl GenAiSpan {
         }
     }
 
-    /// Record this request on `metrics`. Span emission (tracing) is wired in
-    /// the server handler via `tracing::info_span!` using these same fields.
+    /// Record this request on `metrics`.
     pub fn emit_metrics(&self, metrics: &GatewayMetrics, latency_secs: f64) {
         metrics.request(self, latency_secs);
     }

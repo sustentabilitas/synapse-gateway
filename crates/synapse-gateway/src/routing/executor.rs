@@ -8,6 +8,7 @@ use crate::error::{GatewayError, LegFailure};
 use crate::providers::genai_provider::Provider;
 use crate::providers::Catalog;
 use crate::resilience::{run_with_classifier, ResilienceError};
+use crate::routing::effort::Effort;
 use crate::routing::request::ChatRequest;
 use crate::routing::stream::{Accumulator, FinishReason, StreamItem, ToolCallOut};
 use crate::routing::table::ChainLeg;
@@ -112,7 +113,7 @@ fn openai_tool_call_to_genai(v: &serde_json::Value) -> Option<genai::chat::ToolC
     })
 }
 
-fn to_genai_options(req: &ChatRequest) -> genai::chat::ChatOptions {
+fn to_genai_options(req: &ChatRequest, effort: Option<Effort>) -> genai::chat::ChatOptions {
     genai::chat::ChatOptions::default()
         .pipe(|o| match req.temperature {
             Some(t) => o.with_temperature(t as f64),
@@ -134,6 +135,19 @@ fn to_genai_options(req: &ChatRequest) -> genai::chat::ChatOptions {
             },
             None => o,
         })
+        .pipe(
+            |o| match client_effort(req).or(effort).and_then(Effort::to_genai) {
+                Some(e) => o.with_reasoning_effort(e),
+                None => o,
+            },
+        )
+}
+
+/// A client-supplied OpenAI `reasoning_effort` (captured in `passthrough`).
+pub(crate) fn client_effort(req: &ChatRequest) -> Option<Effort> {
+    req.passthrough
+        .get("reasoning_effort")
+        .and_then(Effort::from_value)
 }
 
 /// True if a genai error is worth advancing the chain for (transient/5xx/timeout).
@@ -228,9 +242,10 @@ pub async fn stream_one_leg_standard(
     provider: &Arc<Provider>,
     model: &str,
     req: &ChatRequest,
+    effort: Option<Effort>,
 ) -> Result<impl Stream<Item = Result<StreamItem, LegError>>, LegError> {
     let chat_req = to_genai_request(req);
-    let opts = to_genai_options(req)
+    let opts = to_genai_options(req, effort)
         .with_capture_usage(true)
         .with_capture_tool_calls(true);
 
@@ -385,7 +400,7 @@ mod tests {
         let req = req(
             serde_json::json!({"model":"m","messages":[{"role":"user","content":"hi"}],"stream":true}),
         );
-        let mut stream = std::pin::pin!(stream_one_leg_standard(&provider, "m", &req)
+        let mut stream = std::pin::pin!(stream_one_leg_standard(&provider, "m", &req, None)
             .await
             .expect("stream starts"));
         let mut items = Vec::new();
@@ -582,6 +597,83 @@ mod tests {
             .unwrap();
         assert_eq!(c.provider, "p2");
     }
+
+    fn opts_req(extra: serde_json::Value) -> ChatRequest {
+        let mut body = serde_json::json!({
+            "model": "m",
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        body.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().cloned().unwrap_or_default());
+        serde_json::from_value(body).unwrap()
+    }
+
+    fn effort_name(o: &genai::chat::ChatOptions) -> Option<&'static str> {
+        o.reasoning_effort.as_ref().map(|e| e.variant_name())
+    }
+
+    #[test]
+    fn leg_effort_becomes_reasoning_effort() {
+        let o = to_genai_options(
+            &opts_req(serde_json::json!({})),
+            Some(crate::routing::effort::Effort::Medium),
+        );
+        assert_eq!(effort_name(&o), Some("medium"));
+    }
+
+    #[test]
+    fn effort_none_sends_no_reasoning_effort() {
+        let o = to_genai_options(
+            &opts_req(serde_json::json!({})),
+            Some(crate::routing::effort::Effort::None),
+        );
+        assert_eq!(effort_name(&o), None);
+    }
+
+    #[test]
+    fn client_reasoning_effort_is_forwarded() {
+        let o = to_genai_options(
+            &opts_req(serde_json::json!({"reasoning_effort": "high"})),
+            None,
+        );
+        assert_eq!(effort_name(&o), Some("high"));
+    }
+
+    #[test]
+    fn client_reasoning_effort_wins_over_leg_effort() {
+        let o = to_genai_options(
+            &opts_req(serde_json::json!({"reasoning_effort": "low"})),
+            Some(crate::routing::effort::Effort::Max),
+        );
+        assert_eq!(effort_name(&o), Some("low"));
+    }
+
+    #[test]
+    fn client_none_is_not_forwarded_and_leg_effort_does_not_replace_it() {
+        let o = to_genai_options(
+            &opts_req(serde_json::json!({"reasoning_effort": "none"})),
+            Some(Effort::High),
+        );
+        assert_eq!(effort_name(&o), None);
+    }
+
+    #[test]
+    fn unparseable_client_effort_falls_back_to_leg_effort() {
+        let o = to_genai_options(
+            &opts_req(serde_json::json!({"reasoning_effort": "extreme"})),
+            Some(Effort::Low),
+        );
+        assert_eq!(effort_name(&o), Some("low"));
+    }
+
+    #[test]
+    fn no_effort_anywhere_sends_nothing() {
+        assert_eq!(
+            effort_name(&to_genai_options(&opts_req(serde_json::json!({})), None)),
+            None
+        );
+    }
 }
 
 async fn run_one_leg(
@@ -592,7 +684,7 @@ async fn run_one_leg(
     let client = provider.client.clone();
     let model = leg.model.clone();
     let chat_req = to_genai_request(req);
-    let opts = to_genai_options(req);
+    let opts = to_genai_options(req, leg.effort);
 
     let resp = run_with_classifier(
         move || {
@@ -699,7 +791,7 @@ async fn buffer_one_leg_timed(
     let provider = catalog
         .get(&leg.provider)
         .ok_or_else(|| LegError::Start(format!("unbuilt provider '{}'", leg.provider)))?;
-    let stream = stream_one_leg_standard(provider, &leg.model, req).await?;
+    let stream = stream_one_leg_standard(provider, &leg.model, req, leg.effort).await?;
     let mut stream = std::pin::pin!(stream);
     let mut acc = Accumulator::default();
     let mut first = true;
@@ -829,7 +921,7 @@ pub async fn execute_streaming_with_timeouts(
                 continue;
             }
         };
-        let started = match stream_one_leg_standard(provider, &leg.model, req).await {
+        let started = match stream_one_leg_standard(provider, &leg.model, req, leg.effort).await {
             Ok(s) => s,
             Err(e) => {
                 failures.push(LegFailure {
