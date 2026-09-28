@@ -170,6 +170,9 @@ sum by (model) (rate(synapse_output_tokens_total[5m]))
 
 You can also read the raw metrics from the gateway with `curl -s http://localhost:9090/metrics`.
 
+To chart them, add Grafana to the stack with the example dashboard: see
+[Provision it with Docker Compose](../operating/grafana-dashboard.md#provision-it-with-docker-compose).
+
 ## Stop the stack
 
 ```bash
