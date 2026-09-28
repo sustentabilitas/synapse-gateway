@@ -86,26 +86,29 @@ impl Gateway {
         let decided = route.tiers[selection.tier].name.as_str();
         self.metrics
             .routing_decision(&req.model, decided, selection.outcome.metric_label());
-        tracing::info!(
-            target: "synapse::routing",
-            route = %req.model,
-            routing.mode = mode.as_str(),
-            routing.tier_decided = decided,
-            routing.outcome = selection.outcome.metric_label(),
-            routing.effort = ?policy,
-            routing.difficulty_score = ?answers.map(|a| a.difficulty),
-            routing.confidence = ?answers.map(|a| a.confidence),
-            routing.needs_reasoning = ?answers.and_then(|a| a.needs_reasoning),
-            "route planned"
-        );
-        Ok(RoutePlan {
+        RoutePlan {
             mode,
             legs: jev_router::order_legs(&tiers, start, policy),
             tier_names: route.tiers.iter().map(|t| t.name.clone()).collect(),
             decided: Some(selection.tier),
             outcome: Some(selection.outcome),
             client_effort: matches!(policy, EffortPolicy::Client),
+        }
+        .tap(|plan| {
+            tracing::info!(
+                target: "synapse::routing",
+                route = %req.model,
+                routing.mode = mode.as_str(),
+                routing.tier_decided = decided,
+                routing.outcome = selection.outcome.metric_label(),
+                routing.effort = plan.planned_effort(),
+                routing.difficulty_score = ?answers.map(|a| a.difficulty),
+                routing.confidence = ?answers.map(|a| a.confidence),
+                routing.needs_reasoning = ?answers.and_then(|a| a.needs_reasoning),
+                "route planned"
+            )
         })
+        .pipe(Ok)
     }
 
     /// Ask Jev to rate the request under the route's timeout. Records latency

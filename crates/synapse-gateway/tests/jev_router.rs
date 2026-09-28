@@ -13,6 +13,7 @@ use axum::http::{HeaderMap, Request, StatusCode};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use synapse::gateway::Gateway;
+use synapse::guard::{GuardEngine, GuardrailsConfig};
 use synapse::jev_native::JevNativeProvider;
 use synapse::ledger::{InMemoryLedger, LedgerHandle, LedgerStore, UsageEntry};
 use synapse::pricing::PricingTable;
@@ -111,6 +112,22 @@ fn harness(
     qwen_uri: &str,
     vertex_uri: Option<String>,
 ) -> (Gateway, Arc<InMemoryLedger>, impl Fn() -> String) {
+    harness_guarded(
+        routes_toml,
+        jev_uri,
+        qwen_uri,
+        vertex_uri,
+        GuardEngine::empty(),
+    )
+}
+
+fn harness_guarded(
+    routes_toml: &str,
+    jev_uri: Option<String>,
+    qwen_uri: &str,
+    vertex_uri: Option<String>,
+    guard: GuardEngine,
+) -> (Gateway, Arc<InMemoryLedger>, impl Fn() -> String) {
     let routes = RouteTable::from_toml_str(routes_toml).unwrap();
     let env = HashMap::from([
         ("DASHSCOPE_API_KEY".to_string(), "sk-test".to_string()),
@@ -132,6 +149,7 @@ fn harness(
                 64,
             ))
             .metrics(metrics)
+            .guard(guard)
             .jev_native(jev_uri.map(|uri| {
                 JevNativeProvider::new("sk-test".into(), Some(uri), Duration::from_secs(5))
             }))
@@ -232,9 +250,11 @@ async fn hard_decision_serves_the_hard_tier_with_its_effort() {
     assert_eq!(decision.lane, "jev");
     assert_eq!(decision.input_tokens, 400);
     assert_eq!(decision.route, "auto");
+    assert_eq!(decision.tenant, "acme");
     let chat = rows.iter().find(|r| r.op == "chat").expect("chat row");
     assert_eq!(chat.model, "qwen-max");
     assert_eq!(chat.request_id, decision.request_id);
+    assert_eq!(chat.tenant, decision.tenant);
 }
 
 #[tokio::test]
@@ -324,9 +344,8 @@ async fn static_override_skips_jev_and_serves_the_default_tier() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    let rows = wait_rows(&store, 1).await;
-    tokio::time::sleep(Duration::from_millis(30)).await;
-    assert!(rows.iter().all(|r| r.op != "route_decision"));
+    let rows = settled_rows(&store, 1).await;
+    assert!(rows.iter().all(|r| r.op != "route_decision"), "{rows:?}");
 }
 
 #[tokio::test]
@@ -356,6 +375,10 @@ async fn invalid_routing_requests_are_400_before_any_upstream_call() {
     let cases = vec![
         (
             with(ask("auto", "x"), json!({"routing_strategy": "fastest"})),
+            "unknown routing_strategy",
+        ),
+        (
+            with(ask("plain", "x"), json!({"routing_strategy": "fastest"})),
             "unknown routing_strategy",
         ),
         (
@@ -749,4 +772,68 @@ async fn static_override_alone_records_no_latency_sample() {
     )
     .await;
     assert!(!metrics().contains("synapse_routing_decision_duration_seconds"));
+}
+
+const GUARDED_ROUTES: &str = r#"
+[routes."auto"]
+strategy = "jev"
+policy = "strict"
+[routes."auto".jev_router]
+default_tier = "moderate"
+[[routes."auto".tiers]]
+name = "moderate"
+description = "Everyday questions"
+effort = "low"
+legs = [{ provider = "qwen", model = "qwen-plus" }]
+[[routes."auto".tiers]]
+name = "hard"
+description = "Multi-step analysis"
+effort = "medium"
+legs = [{ provider = "qwen", model = "qwen-max" }]
+"#;
+
+#[tokio::test]
+async fn guardrail_block_is_returned_before_jev_is_asked() {
+    for body in [
+        ask("auto", "this is forbidden"),
+        with(ask("auto", "this is forbidden"), json!({"stream": true})),
+    ] {
+        let jev = jev_mock(
+            ResponseTemplate::new(200).set_body_json(jev_answers(2.0, 1.0, 0.0)),
+            0,
+        )
+        .await;
+        let qwen = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(qwen_sse("must not run"))
+            .expect(0)
+            .mount(&qwen)
+            .await;
+        let guard = GuardEngine::from_config(
+            &GuardrailsConfig::from_toml_str(
+                r#"[guardrails.strict]
+                   scanners = [{ type = "ban_substrings", substrings = ["forbidden"] }]"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        let (gw, store, _) =
+            harness_guarded(GUARDED_ROUTES, Some(jev.uri()), &qwen.uri(), None, guard);
+        let (status, headers, text) = send(gw, body).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{text}");
+        let json: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(json["error"]["code"], "content_blocked", "{text}");
+        assert_eq!(header(&headers, "x-synapse-routing"), None);
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        assert!(
+            store
+                .entries
+                .lock()
+                .iter()
+                .all(|r| r.op != "route_decision"),
+            "a blocked request must not record a routing decision"
+        );
+    }
 }

@@ -5,6 +5,7 @@
 
 use serde_json::{json, Map, Value};
 
+use crate::routing::effort::Effort;
 use crate::routing::request::{ChatRequest, Message};
 use crate::routing::table::{escalation_order, ChainLeg, JevRoute, Tier};
 
@@ -400,6 +401,19 @@ impl RoutePlan {
     /// The legs in execution order, for the lane executors.
     pub fn chain(&self) -> Vec<ChainLeg> {
         self.legs.iter().map(|p| p.leg.clone()).collect()
+    }
+
+    /// Effort the first leg will run with, or `client`; `None` when the plan
+    /// sets no effort (static routes).
+    pub fn planned_effort(&self) -> Option<&'static str> {
+        match self.client_effort {
+            true => Some("client"),
+            false => self
+                .legs
+                .first()
+                .and_then(|p| p.leg.effort)
+                .map(Effort::as_str),
+        }
     }
 
     /// What to tell the client once `served` (`provider`, `model`) answered;
@@ -1026,6 +1040,24 @@ mod tests {
         assert!(report
             .headers()
             .contains(&("x-synapse-routing-degraded", "timeout".to_string())));
+    }
+
+    #[test]
+    fn planned_effort_is_the_first_legs_effort_or_client() {
+        assert_eq!(
+            tiered_plan(DecisionOutcome::Decided, false).planned_effort(),
+            Some("medium")
+        );
+        let bumped = RoutePlan {
+            legs: order_legs(&route().tiers, 2, EffortPolicy::Tier { bump: true }),
+            ..tiered_plan(DecisionOutcome::Decided, false)
+        };
+        assert_eq!(bumped.planned_effort(), Some("high"));
+        assert_eq!(
+            tiered_plan(DecisionOutcome::Decided, true).planned_effort(),
+            Some("client")
+        );
+        assert_eq!(RoutePlan::static_legs(&[]).planned_effort(), None);
     }
 
     #[test]
