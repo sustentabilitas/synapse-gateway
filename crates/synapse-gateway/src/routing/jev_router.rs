@@ -337,6 +337,133 @@ pub fn order_legs(tiers: &[Tier], start: usize, policy: EffortPolicy) -> Vec<Pla
         .collect()
 }
 
+/// `tiers` with legs the request cannot use removed (native-Vertex features
+/// only run on `vertex` legs). Empty tiers are kept so indices still match
+/// Jev's score levels.
+pub fn eligible_tiers(tiers: &[Tier], vertex_only: bool) -> Vec<Tier> {
+    tiers
+        .iter()
+        .map(|t| Tier {
+            legs: t
+                .legs
+                .iter()
+                .filter(|l| !vertex_only || l.provider == "vertex")
+                .cloned()
+                .collect(),
+            ..t.clone()
+        })
+        .collect()
+}
+
+/// `wanted` if it has legs, else the nearest harder tier with legs, else the
+/// nearest easier one; `None` when no tier has legs.
+pub fn nearest_serving(tiers: &[Tier], wanted: usize) -> Option<usize> {
+    let serving = |i: &usize| !tiers[*i].legs.is_empty();
+    (wanted..tiers.len())
+        .find(serving)
+        .or_else(|| (0..wanted.min(tiers.len())).rev().find(serving))
+}
+
+/// A request's execution order plus what is needed to report on it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RoutePlan {
+    pub mode: RoutingMode,
+    pub legs: Vec<PlannedLeg>,
+    /// Tier names by index; empty for static routes.
+    pub tier_names: Vec<String>,
+    /// Tier Jev picked (or `default_tier`), before eligibility.
+    pub decided: Option<usize>,
+    pub outcome: Option<DecisionOutcome>,
+    pub client_effort: bool,
+}
+
+impl RoutePlan {
+    /// A plain `legs` route: today's behaviour, legs untouched.
+    pub fn static_legs(legs: &[ChainLeg]) -> Self {
+        Self {
+            mode: RoutingMode::Static,
+            legs: legs
+                .iter()
+                .map(|l| PlannedLeg {
+                    leg: l.clone(),
+                    tier: 0,
+                })
+                .collect(),
+            tier_names: Vec::new(),
+            decided: None,
+            outcome: None,
+            client_effort: false,
+        }
+    }
+
+    /// The legs in execution order, for the lane executors.
+    pub fn chain(&self) -> Vec<ChainLeg> {
+        self.legs.iter().map(|p| p.leg.clone()).collect()
+    }
+
+    /// What to tell the client once `served` (`provider`, `model`) answered;
+    /// `None` when no single leg served (e.g. hybrid extraction). The first
+    /// matching leg in plan order wins.
+    pub fn report_for(&self, served: Option<(&str, &str)>) -> RoutingReport {
+        let served = served.and_then(|(provider, model)| {
+            self.legs
+                .iter()
+                .find(|p| p.leg.provider == provider && p.leg.model == model)
+        });
+        let tier = served.and_then(|p| self.tier_names.get(p.tier)).cloned();
+        let decided = self.decided.and_then(|d| self.tier_names.get(d)).cloned();
+        RoutingReport {
+            mode: self.mode,
+            tier_decided: decided.filter(|d| tier.as_ref().is_some_and(|t| t != d)),
+            effort: match (self.tier_names.is_empty(), self.client_effort) {
+                (true, _) => None,
+                (false, true) => Some("client".to_string()),
+                (false, false) => served
+                    .and_then(|p| p.leg.effort)
+                    .map(|e| e.as_str().to_string()),
+            },
+            degraded: self.outcome.and_then(DecisionOutcome::degraded_reason),
+            tier,
+        }
+    }
+}
+
+/// Client-facing summary of how a request was routed.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RoutingReport {
+    pub mode: RoutingMode,
+    /// Tier that served.
+    pub tier: Option<String>,
+    /// Tier Jev picked, only when a different tier served.
+    pub tier_decided: Option<String>,
+    /// Effort applied by the serving leg, or `client`.
+    pub effort: Option<String>,
+    pub degraded: Option<&'static str>,
+}
+
+impl RoutingReport {
+    /// `x-synapse-*` response headers, in a stable order.
+    pub fn headers(&self) -> Vec<(&'static str, String)> {
+        std::iter::once(("x-synapse-routing", self.mode.as_str().to_string()))
+            .chain(self.tier.clone().map(|t| ("x-synapse-tier", t)))
+            .chain(
+                self.tier_decided
+                    .clone()
+                    .map(|t| ("x-synapse-tier-decided", t)),
+            )
+            .chain(
+                self.effort
+                    .clone()
+                    .map(|e| ("x-synapse-reasoning-effort", e)),
+            )
+            .chain(
+                self.degraded
+                    .map(|d| ("x-synapse-routing-degraded", d.to_string())),
+            )
+            .collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -676,5 +803,148 @@ mod tests {
         assert_eq!(LowConfidence.degraded_reason(), Some("low_confidence"));
         assert_eq!(Unavailable.degraded_reason(), Some("jev_unavailable"));
         assert_eq!(Error.degraded_reason(), Some("error"));
+    }
+
+    use crate::routing::effort::Effort;
+
+    fn models(plan: &[PlannedLeg]) -> Vec<(&str, usize, Option<Effort>)> {
+        plan.iter()
+            .map(|p| (p.leg.model.as_str(), p.tier, p.leg.effort))
+            .collect()
+    }
+
+    #[test]
+    fn order_escalates_then_descends_with_tier_effort() {
+        let r = route();
+        assert_eq!(
+            models(&order_legs(&r.tiers, 1, EffortPolicy::Tier { bump: false })),
+            vec![
+                ("gemini-2.5-flash", 1, Some(Effort::Low)),
+                ("gemini-2.5-pro", 2, Some(Effort::Medium)),
+                ("gemini-3.1-pro-preview", 3, Some(Effort::Max)),
+                ("qwen-flash", 0, Some(Effort::None)),
+            ]
+        );
+    }
+
+    #[test]
+    fn order_from_last_tier_only_descends_and_bump_saturates() {
+        let r = route();
+        assert_eq!(
+            models(&order_legs(&r.tiers, 3, EffortPolicy::Tier { bump: true })),
+            vec![
+                ("gemini-3.1-pro-preview", 3, Some(Effort::Max)),
+                ("gemini-2.5-pro", 2, Some(Effort::High)),
+                ("gemini-2.5-flash", 1, Some(Effort::Medium)),
+                ("qwen-flash", 0, Some(Effort::Minimal)),
+            ]
+        );
+    }
+
+    #[test]
+    fn client_policy_stamps_no_effort() {
+        assert!(order_legs(&route().tiers, 0, EffortPolicy::Client)
+            .iter()
+            .all(|p| p.leg.effort.is_none()));
+    }
+
+    #[test]
+    fn vertex_only_eligibility_empties_other_tiers_and_keeps_indices() {
+        let tiers = eligible_tiers(&route().tiers, true);
+        assert_eq!(tiers.len(), 4);
+        assert!(tiers[0].legs.is_empty());
+        assert_eq!(nearest_serving(&tiers, 0), Some(1));
+        assert_eq!(nearest_serving(&tiers, 2), Some(2));
+        assert_eq!(
+            models(&order_legs(&tiers, 1, EffortPolicy::Tier { bump: false }))
+                .iter()
+                .map(|(m, _, _)| *m)
+                .collect::<Vec<_>>(),
+            vec![
+                "gemini-2.5-flash",
+                "gemini-2.5-pro",
+                "gemini-3.1-pro-preview"
+            ]
+        );
+        assert_eq!(eligible_tiers(&route().tiers, false), route().tiers);
+    }
+
+    #[test]
+    fn nearest_serving_prefers_harder_then_easier_and_none_when_empty() {
+        let mut tiers = route().tiers;
+        tiers[2].legs.clear();
+        tiers[3].legs.clear();
+        assert_eq!(nearest_serving(&tiers, 2), Some(1));
+        tiers.iter_mut().for_each(|t| t.legs.clear());
+        assert_eq!(nearest_serving(&tiers, 1), None);
+    }
+
+    fn tiered_plan(outcome: DecisionOutcome, client_effort: bool) -> RoutePlan {
+        let r = route();
+        let policy = match client_effort {
+            true => EffortPolicy::Client,
+            false => EffortPolicy::Tier { bump: false },
+        };
+        RoutePlan {
+            mode: RoutingMode::Jev,
+            legs: order_legs(&r.tiers, 2, policy),
+            tier_names: r.tiers.iter().map(|t| t.name.clone()).collect(),
+            decided: Some(2),
+            outcome: Some(outcome),
+            client_effort,
+        }
+    }
+
+    #[test]
+    fn report_names_served_tier_and_effort() {
+        let report = tiered_plan(DecisionOutcome::Decided, false)
+            .report_for(Some(("vertex", "gemini-2.5-pro")));
+        assert_eq!(
+            report,
+            RoutingReport {
+                mode: RoutingMode::Jev,
+                tier: Some("hard".into()),
+                tier_decided: None,
+                effort: Some("medium".into()),
+                degraded: None,
+            }
+        );
+        assert_eq!(
+            report.headers(),
+            vec![
+                ("x-synapse-routing", "jev".to_string()),
+                ("x-synapse-tier", "hard".to_string()),
+                ("x-synapse-reasoning-effort", "medium".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn report_flags_fallback_tier_client_effort_and_degradation() {
+        let report = tiered_plan(DecisionOutcome::Timeout, true)
+            .report_for(Some(("vertex", "gemini-3.1-pro-preview")));
+        assert_eq!(report.tier.as_deref(), Some("expert"));
+        assert_eq!(report.tier_decided.as_deref(), Some("hard"));
+        assert_eq!(report.effort.as_deref(), Some("client"));
+        assert_eq!(report.degraded, Some("timeout"));
+        assert!(report
+            .headers()
+            .contains(&("x-synapse-routing-degraded", "timeout".to_string())));
+    }
+
+    #[test]
+    fn static_plan_reports_only_the_mode_and_keeps_legs() {
+        let legs = vec![ChainLeg {
+            provider: "qwen".into(),
+            model: "qwen-max".into(),
+            ..Default::default()
+        }];
+        let plan = RoutePlan::static_legs(&legs);
+        assert_eq!(plan.chain(), legs);
+        assert_eq!(
+            plan.report_for(Some(("qwen", "qwen-max"))).headers(),
+            vec![("x-synapse-routing", "static".to_string())]
+        );
+        assert_eq!(plan.report_for(None).tier, None);
     }
 }
