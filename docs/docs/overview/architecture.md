@@ -1,0 +1,114 @@
+---
+sidebar_position: 2
+title: Architecture
+description: How Synapse moves a chat completion request through guardrails, route planning, one of three lanes and a fallback chain of providers.
+---
+
+Synapse accepts OpenAI-compatible chat completion requests and serves each one through one
+of three backend lanes: the **standard** lane, the **native Vertex** lane or the **Jev**
+lane. The request body alone decides the lane, so a client opts into Vertex-only features
+or Jev decisions by adding an extension block, with no separate endpoint.
+
+## Request flow
+
+```text
+client
+  │  POST /v1/chat/completions   (model = route alias, x-synapse-tenant header)
+  ▼
+route lookup ─────────────► 404 model_not_found (unknown alias)
+  │
+  ▼
+guardrails (route policy) ─► 400 content_blocked
+  │
+  ▼
+route planning             static route: its legs
+  │                        strategy = "jev": the Jev router picks a tier
+  ▼
+lane detection
+  ├─► standard lane        (genai: OpenAI, Qwen, oai_compat, Vertex)
+  ├─► native Vertex lane   (Vertex REST: :generateContent / :streamGenerateContent)
+  └─► Jev lane             (TypeSafe System One)
+  │
+  ▼
+fallback chain             leg 1 → leg 2 → … until one succeeds
+  │
+  ▼
+provider ──► response to the client (JSON or server-sent events)
+  │
+  ├─► cost ledger          tokens and cost per tenant, written asynchronously
+  └─► metrics and traces   OpenTelemetry metrics, gen_ai.* spans
+```
+
+Each route alias in `routes.toml` maps to an ordered list of legs (provider plus model).
+Synapse tries the legs in order until one succeeds. On the standard lane, any failure moves
+to the next leg: an error response, a first-chunk timeout or a broken stream. On the native
+Vertex lane, only a `5xx`, `429` or `408` response or a timeout moves on; any other `4xx`
+stops the chain. A streaming response can fall back only until its first chunk reaches the
+client.
+
+The ledger write never blocks the response: if the ledger's queue is full, the event is
+dropped and counted in `synapse_ledger_dropped_total`.
+
+## Lanes
+
+### Standard lane
+
+Requests without lane triggers use the standard lane, which calls providers through the
+[`genai`](https://crates.io/crates/genai) crate. Any provider with an OpenAI-compatible API
+can appear in the chain: OpenAI, Qwen (DashScope) and self-hosted vLLM, Ollama or TGI
+through the `oai_compat` provider. Vertex legs work here too, without the native-only
+features.
+
+### Native Vertex lane
+
+Requests that use Vertex-only features go to the native Vertex lane, which calls the Vertex
+AI `:generateContent` and `:streamGenerateContent` REST endpoints directly. The OpenAI
+message format is translated to Vertex's, and these fields of the request's `vertex` block
+are preserved:
+
+- **`cached_content`**: a `cachedContents` resource name, for context caching.
+- **`media_uris`**: Cloud Storage (`gs://`) URIs, attached as file parts.
+- **`response_schema`**: a JSON schema sent as `generationConfig.responseSchema` for
+  constrained decoding.
+- **`thinking_config`**: passed through verbatim as `generationConfig.thinkingConfig`.
+
+Only the route's `vertex` legs take part; other providers cannot serve these features. If
+the route has no `vertex` leg, Synapse returns `400 Bad Request` with error code
+`native_feature_unsupported` rather than silently dropping the features.
+
+### Jev lane
+
+Requests with a `jev` block carrying typed questions go to the route's `typesafe` legs.
+TypeSafe System One (Jev) evaluates the questions against a state, which defaults to the
+request's `messages`, and returns structured decisions as the message content. If every
+`typesafe` leg fails with a retryable error, the route's remaining legs answer as a normal
+chat completion, so clients must handle both response shapes. A route with `typesafe` legs
+returns `400 Bad Request` to requests without a `jev` block.
+
+## Lane detection
+
+Synapse checks the request body in this order:
+
+1. A `jev` block with a non-empty `questions` map selects the **Jev** lane. A `vertex` block
+   on the same request still applies if the chain falls back to a native Vertex leg.
+2. A `vertex` block with any of `cached_content`, `response_schema`, `thinking_config`, or a
+   `media_uris` entry that starts with `gs://`, selects the **native Vertex** lane.
+3. Anything else uses the **standard** lane.
+
+For example, this request uses the native Vertex lane:
+
+```json
+{
+  "model": "gemini-flash",
+  "messages": [{ "role": "user", "content": "Summarise the video." }],
+  "vertex": {
+    "cached_content": "projects/my-gcp-project/locations/us-central1/cachedContents/abc123",
+    "media_uris": ["gs://my-bucket/video.mp4"],
+    "response_schema": { "type": "object", "properties": { "summary": { "type": "string" } } }
+  }
+}
+```
+
+Lane detection and routing strategy are independent. On a `strategy = "jev"` route, the Jev
+router chooses which tier's legs form the chain, and the lane still follows the request
+body: a native Vertex request is served by the nearest tier that has a `vertex` leg.
