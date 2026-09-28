@@ -3,6 +3,7 @@
 @import '@fontsource/inter/700.css';
 @import '@fontsource/inter/800.css';
 @import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/700.css';
 
 /* Light theme uses a darker teal so links meet WCAG AA on white. */
 :root {
@@ -34,7 +35,6 @@
   --ifm-background-color: #0b1020;
   --ifm-background-surface-color: #111827;
   --ifm-navbar-background-color: rgba(11, 16, 32, 0.85);
-  --ifm-footer-background-color: #070b16;
   --ifm-font-color-base: #e5e7eb;
   --docusaurus-highlighted-code-line-bg: rgba(20, 184, 166, 0.18);
   --sy-surface: #111827;
@@ -42,12 +42,16 @@
   --sy-muted: #9ca3af;
 }
 
-.navbar {
+[data-theme='dark'] .navbar:not(.navbar-sidebar--show) {
   backdrop-filter: blur(8px);
 }
 
-.button--primary {
+[data-theme='dark'] .button--primary {
   --ifm-button-color: #0b1020;
+}
+
+.footer--dark {
+  --ifm-footer-background-color: #070b16;
 }
 
 /* Shared landing-page section styles. */
@@ -99,7 +103,12 @@
   border-color: var(--ifm-color-primary);
   color: inherit;
   text-decoration: none;
-  transform: translateY(-2px);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sy-card:hover {
+    transform: translateY(-2px);
+  }
 }
 
 .sy-card h3 {
