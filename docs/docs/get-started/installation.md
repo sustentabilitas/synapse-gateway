@@ -40,8 +40,8 @@ docker run --rm -p 8080:8080 -p 9090:9090 \
 Vertex AI legs authenticate with Google Application Default Credentials. The container user
 has no home directory, so credentials from `gcloud auth application-default login` are not
 available inside it. Mount a service-account key and set `GOOGLE_APPLICATION_CREDENTIALS`,
-or run on Google Cloud, where the metadata server provides credentials. The quickstart shows
-the full command.
+or run on Google Cloud, where the metadata server provides credentials. The
+[quickstart](quickstart.md) shows the full command.
 
 To build the image yourself from the repository root:
 
