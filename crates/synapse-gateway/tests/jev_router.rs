@@ -497,3 +497,256 @@ async fn streaming_response_carries_routing_headers() {
     assert_eq!(header(&headers, "x-synapse-routing"), Some("jev"));
     assert_eq!(header(&headers, "x-synapse-tier"), Some("hard"));
 }
+
+/// Rows once `n` have landed and any stragglers have had time to follow.
+async fn settled_rows(store: &InMemoryLedger, n: usize) -> Vec<UsageEntry> {
+    wait_rows(store, n).await;
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    store.entries.lock().clone()
+}
+
+#[tokio::test]
+async fn jev_timeout_routes_to_default_tier_and_writes_no_decision_row() {
+    let jev = jev_mock(
+        ResponseTemplate::new(200)
+            .set_body_json(jev_answers(2.0, 1.0, 0.0))
+            .set_delay(Duration::from_millis(1_000)),
+        1,
+    )
+    .await;
+    let qwen = MockServer::start().await;
+    qwen_serves(&qwen, "qwen-plus", "\"reasoning_effort\":\"low\"", "ok", 1).await;
+
+    let (gw, store, _) = harness(ROUTES, Some(jev.uri()), &qwen.uri(), None);
+    let (status, headers, body) = send(gw, ask("auto", "hi")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(header(&headers, "x-synapse-tier"), Some("moderate"));
+    assert_eq!(
+        header(&headers, "x-synapse-routing-degraded"),
+        Some("timeout")
+    );
+    let rows = settled_rows(&store, 1).await;
+    assert!(rows.iter().all(|r| r.op != "route_decision"), "{rows:?}");
+}
+
+#[tokio::test]
+async fn low_confidence_routes_to_default_tier_but_still_records_the_decision() {
+    let jev = jev_mock(
+        ResponseTemplate::new(200).set_body_json(jev_answers(2.0, 0.2, 0.0)),
+        1,
+    )
+    .await;
+    let qwen = MockServer::start().await;
+    qwen_serves(&qwen, "qwen-plus", "\"model\"", "ok", 1).await;
+
+    let (gw, store, _) = harness(ROUTES, Some(jev.uri()), &qwen.uri(), None);
+    let (_, headers, _) = send(gw, ask("auto", "hmm")).await;
+    assert_eq!(header(&headers, "x-synapse-tier"), Some("moderate"));
+    assert_eq!(
+        header(&headers, "x-synapse-routing-degraded"),
+        Some("low_confidence")
+    );
+    let rows = wait_rows(&store, 2).await;
+    assert!(rows.iter().any(|r| r.op == "route_decision"), "{rows:?}");
+}
+
+#[tokio::test]
+async fn jev_error_and_missing_provider_degrade_to_default_tier() {
+    let jev = jev_mock(ResponseTemplate::new(500).set_body_string("boom"), 1).await;
+    let qwen = MockServer::start().await;
+    qwen_serves(&qwen, "qwen-plus", "\"model\"", "ok", 2).await;
+
+    let (gw, _, _) = harness(ROUTES, Some(jev.uri()), &qwen.uri(), None);
+    let (_, errored, _) = send(gw, ask("auto", "x")).await;
+    assert_eq!(
+        header(&errored, "x-synapse-routing-degraded"),
+        Some("error")
+    );
+
+    let (gw, _, _) = harness(ROUTES, None, &qwen.uri(), None);
+    let (_, missing, _) = send(gw, ask("auto", "x")).await;
+    assert_eq!(
+        header(&missing, "x-synapse-routing-degraded"),
+        Some("jev_unavailable")
+    );
+    assert_eq!(header(&missing, "x-synapse-tier"), Some("moderate"));
+}
+
+#[tokio::test]
+async fn failed_tier_escalates_to_the_next_harder_tier() {
+    let jev = jev_mock(
+        ResponseTemplate::new(200).set_body_json(jev_answers(1.0, 0.9, 0.0)),
+        1,
+    )
+    .await;
+    let qwen = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(body_string_contains("\"model\":\"qwen-plus\""))
+        .respond_with(ResponseTemplate::new(503).set_body_string("overloaded"))
+        .expect(1)
+        .mount(&qwen)
+        .await;
+    qwen_serves(
+        &qwen,
+        "qwen-max",
+        "\"reasoning_effort\":\"medium\"",
+        "escalated",
+        1,
+    )
+    .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(body_string_contains("\"model\":\"qwen-flash\""))
+        .respond_with(qwen_sse("must not run"))
+        .expect(0)
+        .mount(&qwen)
+        .await;
+
+    let (gw, _, _) = harness(ROUTES, Some(jev.uri()), &qwen.uri(), None);
+    let (status, headers, body) = send(gw, ask("auto", "x")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("escalated"), "{body}");
+    assert_eq!(header(&headers, "x-synapse-tier"), Some("hard"));
+    assert_eq!(header(&headers, "x-synapse-tier-decided"), Some("moderate"));
+    assert_eq!(
+        header(&headers, "x-synapse-reasoning-effort"),
+        Some("medium")
+    );
+}
+
+const VERTEX_ROUTES: &str = r#"
+[routes."auto"]
+strategy = "jev"
+[routes."auto".jev_router]
+default_tier = "moderate"
+[[routes."auto".tiers]]
+name = "trivial"
+description = "Greetings"
+effort = "none"
+legs = [{ provider = "qwen", model = "qwen-flash" }]
+[[routes."auto".tiers]]
+name = "moderate"
+description = "Everyday questions"
+effort = "low"
+legs = [{ provider = "vertex", model = "gemini-2.5-flash" }]
+[[routes."auto".tiers]]
+name = "hard"
+description = "Multi-step analysis"
+effort = "medium"
+legs = [{ provider = "vertex", model = "gemini-2.5-pro" }]
+"#;
+
+#[tokio::test]
+async fn native_vertex_request_gets_a_thinking_budget_on_the_chosen_vertex_tier() {
+    let jev = jev_mock(
+        ResponseTemplate::new(200).set_body_json(jev_answers(2.0, 0.9, 0.0)),
+        1,
+    )
+    .await;
+    let vertex = MockServer::start().await;
+    let sse = "data: {\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"{}\"}]}}],\"usageMetadata\":{\"promptTokenCount\":4,\"candidatesTokenCount\":6}}\n\n";
+    Mock::given(method("POST"))
+        .and(path(
+            "/v1/projects/p/locations/global/publishers/google/models/gemini-2.5-pro:streamGenerateContent",
+        ))
+        .and(body_string_contains("\"thinkingBudget\":4096"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(sse),
+        )
+        .expect(1)
+        .mount(&vertex)
+        .await;
+    let qwen = MockServer::start().await;
+
+    let (gw, _, _) = harness(
+        VERTEX_ROUTES,
+        Some(jev.uri()),
+        &qwen.uri(),
+        Some(vertex.uri()),
+    );
+    let (status, headers, body) = send(
+        gw,
+        with(
+            ask("auto", "extract"),
+            json!({"vertex": {"response_schema": {"type": "object"}}}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(header(&headers, "x-synapse-tier"), Some("hard"));
+    assert_eq!(
+        header(&headers, "x-synapse-reasoning-effort"),
+        Some("medium")
+    );
+}
+
+#[tokio::test]
+async fn routing_metrics_record_outcome_tier_and_latency() {
+    let jev = jev_mock(
+        ResponseTemplate::new(200).set_body_json(jev_answers(2.0, 0.9, 0.0)),
+        1,
+    )
+    .await;
+    let qwen = MockServer::start().await;
+    qwen_serves(&qwen, "qwen-max", "\"model\"", "ok", 1).await;
+    qwen_serves(&qwen, "qwen-plus", "\"model\"", "ok", 1).await;
+
+    let (gw, _, metrics) = harness(ROUTES, Some(jev.uri()), &qwen.uri(), None);
+    send(gw.clone(), ask("auto", "decide")).await;
+    send(
+        gw,
+        with(ask("auto", "skip"), json!({"routing_strategy": "static"})),
+    )
+    .await;
+    let text = metrics();
+    let decided = text
+        .lines()
+        .find(|l| {
+            l.starts_with("synapse_routing_decisions_total") && l.contains("outcome=\"decided\"")
+        })
+        .unwrap_or_else(|| panic!("no decided series in {text}"));
+    assert!(
+        decided.contains("tier=\"hard\"")
+            && decided.contains("route=\"auto\"")
+            && decided.ends_with(" 1"),
+        "{decided}"
+    );
+    let skipped = text
+        .lines()
+        .find(|l| {
+            l.starts_with("synapse_routing_decisions_total")
+                && l.contains("outcome=\"static_override\"")
+        })
+        .unwrap_or_else(|| panic!("no static_override series in {text}"));
+    assert!(skipped.contains("tier=\"moderate\""), "{skipped}");
+    let count = text
+        .lines()
+        .find(|l| l.starts_with("synapse_routing_decision_duration_seconds_count"))
+        .unwrap_or_else(|| panic!("no latency series in {text}"));
+    assert!(
+        count.ends_with(" 1"),
+        "one Jev call, none for the override: {count}"
+    );
+}
+
+#[tokio::test]
+async fn static_override_alone_records_no_latency_sample() {
+    let jev = jev_mock(
+        ResponseTemplate::new(200).set_body_json(jev_answers(2.0, 0.9, 0.0)),
+        0,
+    )
+    .await;
+    let qwen = MockServer::start().await;
+    qwen_serves(&qwen, "qwen-plus", "\"model\"", "ok", 1).await;
+
+    let (gw, _, metrics) = harness(ROUTES, Some(jev.uri()), &qwen.uri(), None);
+    send(
+        gw,
+        with(ask("auto", "skip"), json!({"routing_strategy": "static"})),
+    )
+    .await;
+    assert!(!metrics().contains("synapse_routing_decision_duration_seconds"));
+}
