@@ -203,14 +203,17 @@ async fn call_jev(provider: &JevNativeProvider, body: Value) -> Result<Decision,
     }
 }
 
-/// The client chose its own effort: a parseable OpenAI `reasoning_effort` or a
-/// Vertex `thinking_config`.
+/// The client chose its own effort on the lane that will serve it: a Vertex
+/// `thinking_config` on the native lane (which never forwards
+/// `reasoning_effort`), a parseable OpenAI `reasoning_effort` otherwise.
 fn client_sets_effort(req: &ChatRequest) -> bool {
-    crate::routing::executor::client_effort(req).is_some()
-        || req
+    match vertex_triggers(req) {
+        true => req
             .vertex
             .as_ref()
-            .is_some_and(|v| v.thinking_config.is_some())
+            .is_some_and(|v| v.thinking_config.is_some()),
+        false => crate::routing::executor::client_effort(req).is_some(),
+    }
 }
 
 fn reject_jev_block(req: &ChatRequest) -> Result<(), GatewayError> {

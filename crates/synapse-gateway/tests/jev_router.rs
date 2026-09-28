@@ -728,6 +728,55 @@ async fn native_vertex_request_gets_a_thinking_budget_on_the_chosen_vertex_tier(
 }
 
 #[tokio::test]
+async fn native_vertex_request_ignores_client_reasoning_effort_and_keeps_the_tier_budget() {
+    let jev = jev_mock(
+        ResponseTemplate::new(200).set_body_json(jev_answers(2.0, 0.9, 0.0)),
+        1,
+    )
+    .await;
+    let vertex = MockServer::start().await;
+    let sse = "data: {\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"{}\"}]}}],\"usageMetadata\":{\"promptTokenCount\":4,\"candidatesTokenCount\":6}}\n\n";
+    Mock::given(method("POST"))
+        .and(path(
+            "/v1/projects/p/locations/global/publishers/google/models/gemini-2.5-pro:streamGenerateContent",
+        ))
+        .and(body_string_contains("\"thinkingBudget\":4096"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(sse),
+        )
+        .expect(1)
+        .mount(&vertex)
+        .await;
+    let qwen = MockServer::start().await;
+
+    let (gw, _, _) = harness(
+        VERTEX_ROUTES,
+        Some(jev.uri()),
+        &qwen.uri(),
+        Some(vertex.uri()),
+    );
+    let (status, headers, body) = send(
+        gw,
+        with(
+            ask("auto", "extract"),
+            json!({
+                "reasoning_effort": "high",
+                "vertex": {"response_schema": {"type": "object"}}
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(header(&headers, "x-synapse-tier"), Some("hard"));
+    assert_eq!(
+        header(&headers, "x-synapse-reasoning-effort"),
+        Some("medium")
+    );
+}
+
+#[tokio::test]
 async fn routing_metrics_record_outcome_tier_and_latency() {
     let jev = jev_mock(
         ResponseTemplate::new(200).set_body_json(jev_answers(2.0, 0.9, 0.0)),
