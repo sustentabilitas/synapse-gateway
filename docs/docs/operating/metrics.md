@@ -51,6 +51,9 @@ produce:
 
 ## What the metrics cover
 
+The [metrics catalogue](../reference/metrics-catalogue.md) lists every metric with its type,
+unit, labels and label values.
+
 | Area | Metrics |
 |---|---|
 | Chat requests | `synapse_requests_total`, `synapse_request_duration_seconds`, `synapse_input_tokens_total`, `synapse_output_tokens_total`, labelled by `route`, `model`, `system` and `lane`. |
