@@ -74,6 +74,10 @@ if [[ "$CRATE" == "synapse-gateway" ]]; then
   sed -i "/^## \[Unreleased\]/a\\
 \\
 ## [${NEW_VERSION}] - ${TODAY}" "$CHANGELOG"
+elif grep -q '^## Unreleased$' "$CHANGELOG"; then
+  sed -i "/^## Unreleased$/a\\
+\\
+## ${NEW_VERSION}" "$CHANGELOG"
 else
   sed -i "2a\\
 \\
