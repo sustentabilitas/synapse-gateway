@@ -38,7 +38,8 @@ Choose `patch`, `minor` or `major`; the workflow always works on `main`. It:
 1. works out the next version from the crate's `Cargo.toml` or its latest tag, whichever is
    higher;
 2. updates the `version` in `crates/<crate>/Cargo.toml`, refreshes `Cargo.lock` and adds a
-   heading for the new version to `crates/<crate>/CHANGELOG.md`;
+   heading for the new version to `crates/<crate>/CHANGELOG.md`, just below `Unreleased`, so
+   the pending entries become the new version's notes;
 3. commits `chore(<crate>): release vX.Y.Z` on `main`, tags it `<crate>-vX.Y.Z` and pushes both;
 4. starts the release workflow for that tag.
 

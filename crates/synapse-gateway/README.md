@@ -63,6 +63,7 @@ Start the gateway with Application Default Credentials for Vertex AI, then send 
 gcloud auth application-default login
 VERTEX_PROJECT_ID=my-gcp-project synapse-gateway   # API on :8080, metrics on :9090
 
+# In a second terminal:
 curl -s http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "x-synapse-tenant: my-team" \

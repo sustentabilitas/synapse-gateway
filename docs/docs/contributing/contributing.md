@@ -74,12 +74,11 @@ cargo build -p synapse-gateway --no-default-features --lib
 
 Also:
 
-- **Update the changelog.** Each crate has its own `crates/<crate>/CHANGELOG.md`. For the
-  gateway, add a line under `## [Unreleased]`, in the `Added`, `Changed`, `Fixed`, `Removed` or
-  `Security` group ([Keep a Changelog](https://keepachangelog.com/en/1.1.0/)); the release
-  workflow turns that section into the new version. For the other crates, the release workflow
-  adds the new version's heading at the top of the file, so add your line there when you release
-  (see [Releasing](releasing.md)).
+- **Update the changelog.** Each crate has its own `crates/<crate>/CHANGELOG.md`. Add a line
+  under its `Unreleased` section (create the section below the title if it's missing); the
+  gateway's changelog follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), so put
+  the line under `Added`, `Changed`, `Fixed`, `Removed` or `Security`. The Bump & release
+  workflow turns the `Unreleased` section into the new version (see [Releasing](releasing.md)).
 - **Update the documentation.** If your change affects the public API, configuration, HTTP
   endpoints, metrics or behaviour, update the pages on this site (see
   [Working on the docs](#working-on-the-docs)) and the rustdoc comments.

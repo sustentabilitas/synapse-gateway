@@ -12,6 +12,7 @@ const QUICKSTART = `docker run --rm -p 8080:8080 -p 9090:9090 \\
   -v "$(pwd)/config:/app/config" \\
   sustentabilitas/synapse-gateway
 
+# In a second terminal:
 curl -s http://localhost:8080/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -d '{

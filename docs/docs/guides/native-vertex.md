@@ -79,7 +79,8 @@ last user message as a file part with MIME type `video/mp4`:
 ```
 
 Because every URI is labelled `video/mp4`, use `media_uris` for video. Send images inline
-instead, as `image_url` content parts with a base64 `data:` URL, which both lanes support.
+instead, as `image_url` content parts with a base64 `data:` URL, which the standard and native
+Vertex lanes both support.
 
 ## Structured output
 

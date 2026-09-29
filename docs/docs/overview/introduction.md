@@ -72,7 +72,8 @@ Native capabilities:
   `thinking_config`, sent directly to Vertex AI's `:streamGenerateContent` endpoint. See
   [Native Vertex lane](architecture.md#native-vertex-lane) and the
   [native Vertex guide](../guides/native-vertex.md).
-- **Native tool calling**: tools work on both lanes; on the native Vertex lane,
+- **Native tool calling**: tools work on the standard and native Vertex lanes; on the native
+  Vertex lane,
   `tool_choice` is honoured through Vertex `toolConfig`. See
   [Streaming and tool calling](../guides/streaming-and-tools.md#tool-calling).
 - **Jev lane**: typed decisions from Jev, plus hybrid judge-then-extract in one call. See
