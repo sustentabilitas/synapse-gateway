@@ -101,10 +101,16 @@ fn parse(snippet: &Snippet) -> Option<anyhow::Result<()>> {
 #[test]
 fn every_titled_config_example_in_the_docs_parses() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let all: Vec<Snippet> = DOCS_ROOTS
+    let roots: Vec<PathBuf> = DOCS_ROOTS.iter().map(|root| manifest.join(root)).collect();
+    let missing: Vec<String> = roots
         .iter()
-        .map(|root| manifest.join(root))
-        .flat_map(|dir| markdown_files(&dir))
+        .filter(|dir| !dir.is_dir())
+        .map(|dir| dir.display().to_string())
+        .collect();
+    assert!(missing.is_empty(), "docs roots not found: {missing:?}");
+    let all: Vec<Snippet> = roots
+        .iter()
+        .flat_map(|dir| markdown_files(dir))
         .flat_map(|file| snippets(&file))
         .collect();
     let checked: Vec<(&Snippet, anyhow::Result<()>)> = all
