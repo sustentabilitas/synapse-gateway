@@ -1,0 +1,514 @@
+{
+  "home.meta.title": {
+    "message": "El gateway de LLM que conserva la potencia nativa"
+  },
+  "home.meta.description": {
+    "message": "Synapse es un gateway de LLM de código abierto escrito en Rust: compatible con OpenAI por fuera, con Vertex AI nativo y enrutamiento con Jev por dentro."
+  },
+  "home.community.eyebrow": {
+    "message": "Código abierto"
+  },
+  "home.community.title": {
+    "message": "Abierto, gratuito y desarrollado en abierto"
+  },
+  "home.community.lead": {
+    "message": "Synapse se distribuye con licencia AGPL-3.0. Todas las funcionalidades de esta página están en el código abierto, sin ningún nivel de pago. Las contribuciones son bienvenidas."
+  },
+  "home.community.contribute": {
+    "message": "Contribuir"
+  },
+  "home.community.blog": {
+    "message": "Blog"
+  },
+  "home.arch.lane.standard": {
+    "message": "Carril estándar"
+  },
+  "home.arch.lane.vertex": {
+    "message": "Carril Vertex nativo"
+  },
+  "home.arch.lane.jev": {
+    "message": "Carril Jev"
+  },
+  "home.arch.eyebrow": {
+    "message": "Arquitectura"
+  },
+  "home.arch.title": {
+    "message": "Tres carriles, una única puerta de entrada compatible con OpenAI"
+  },
+  "home.arch.lead": {
+    "message": "Cada petición de chat pasa por los guardrails y, a continuación, la detección de carril elige el carril estándar, el Vertex nativo o el Jev. Cada ruta es una cadena de fallback ordenada, y cada llamada llega al registro de costes y al pipeline de métricas."
+  },
+  "home.arch.more": {
+    "message": "Lee la guía de arquitectura"
+  },
+  "home.arch.aria": {
+    "message": "Flujo de peticiones de Synapse a través de tres carriles"
+  },
+  "home.arch.client": {
+    "message": "Cliente"
+  },
+  "home.arch.guardrails": {
+    "message": "Guardrails"
+  },
+  "home.arch.detect": {
+    "message": "Detectar carril"
+  },
+  "home.arch.bar": {
+    "message": "Cadenas de fallback · Registro de costes · Métricas de OpenTelemetry"
+  },
+  "home.family.proxy": {
+    "message": "Un sidecar de proxy inverso guiado por configuración: enrutamiento por prefijo de path, inyección de contexto, transformaciones de petición y respuesta, y streaming en modo passthrough."
+  },
+  "home.family.a2a": {
+    "message": "Un registro de agentes A2A en memoria, en el puerto de la API del gateway: registra agentes y deja que los clientes los descubran, obtengan sus agent cards y resuelvan sus URL."
+  },
+  "home.family.mcp": {
+    "message": "Un gateway MCP que enruta las llamadas a herramientas hacia servidores registrados bajo demanda e inyecta la identidad de tenant de quien llama, para que las herramientas sepan quién las invoca."
+  },
+  "home.family.eyebrow": {
+    "message": "La familia Synapse"
+  },
+  "home.family.title": {
+    "message": "Más que un gateway"
+  },
+  "home.compat.openai": {
+    "message": "Los SDK de OpenAI funcionan sin cambios"
+  },
+  "home.compat.fallback": {
+    "message": "Fallback entre OpenAI, Qwen, vLLM, Ollama y TGI"
+  },
+  "home.compat.ledger": {
+    "message": "Registro de costes por tenant"
+  },
+  "home.compat.otel": {
+    "message": "Métricas de OpenTelemetry y un panel de Grafana"
+  },
+  "home.compat.guardrails": {
+    "message": "Guardrails de entrada"
+  },
+  "home.compat.eyebrow": {
+    "message": "Y todo lo que esperas"
+  },
+  "home.hero.title.lead": {
+    "message": "El gateway de LLM que conserva"
+  },
+  "home.hero.title.accent": {
+    "message": "la potencia nativa."
+  },
+  "home.hero.subtitle": {
+    "message": "Un solo binario de Rust. Compatible con OpenAI por fuera, con Vertex AI nativo y enrutamiento con Jev por dentro. Sin adaptadores de mínimo común denominador."
+  },
+  "home.hero.cta.start": {
+    "message": "Empezar"
+  },
+  "home.hero.cta.github": {
+    "message": "Danos una estrella en GitHub"
+  },
+  "home.native.vertex.title": {
+    "message": "Carril Vertex AI nativo"
+  },
+  "home.native.vertex.description": {
+    "message": "El almacenamiento en caché de contexto, las URI de medios gs://, la decodificación estricta con responseSchema y la configuración de thinking van directamente a streamGenerateContent de Vertex AI. Nada se aplana a través de un adaptador con forma de OpenAI."
+  },
+  "home.native.tools.title": {
+    "message": "Llamadas a herramientas nativas"
+  },
+  "home.native.tools.description": {
+    "message": "Las herramientas funcionan en los carriles estándar y Vertex nativo, y en el carril nativo tool_choice se traduce a un modo de toolConfig de Vertex en lugar de descartarse."
+  },
+  "home.native.jevlane.title": {
+    "message": "Carril Jev"
+  },
+  "home.native.jevlane.description": {
+    "message": "Hazle preguntas tipadas a TypeSafe System One y recibe decisiones estructuradas, o evalúa candidatos y extrae solo los que pasan el filtro, todo en una sola llamada."
+  },
+  "home.native.jevrouter.title": {
+    "message": "Router Jev"
+  },
+  "home.native.jevrouter.description": {
+    "message": "Jev evalúa la dificultad de cada petición y la sirve con el nivel de modelo y el esfuerzo de razonamiento que le corresponden. El esfuerzo se convierte en el control propio de cada proveedor, como el thinking budget de Vertex, y cada respuesta informa de la decisión en cabeceras x-synapse-*."
+  },
+  "home.native.streaming.title": {
+    "message": "Streaming real, fallback completo"
+  },
+  "home.native.streaming.description": {
+    "message": "Synapse siempre hace streaming desde el proveedor. Los clientes con streaming reciben SSE token a token; los clientes del carril estándar que esperan la respuesta completa conservan toda la cadena de fallback, incluso tras un fallo a mitad del stream."
+  },
+  "home.native.embed.title": {
+    "message": "Embebible"
+  },
+  "home.native.embed.description": {
+    "message": "Ejecuta un único binario de Rust ligero, o añade el crate de biblioteca a tu servicio y llama a Gateway::chat() en el mismo proceso."
+  },
+  "home.native.eyebrow": {
+    "message": "Lo nativo, primero"
+  },
+  "home.native.title": {
+    "message": "Conserva las capacidades que otros gateways descartan"
+  },
+  "home.native.lead": {
+    "message": "La mayoría de los gateways llegan a todos los proveedores a través de un único adaptador genérico. Synapse mantiene carriles nativos dedicados, así que las funcionalidades propias de cada proveedor sobreviven al viaje."
+  },
+  "theme.ErrorPageContent.title": {
+    "message": "Esta página ha fallado.",
+    "description": "The title of the fallback page when the page crashed"
+  },
+  "theme.BackToTopButton.buttonAriaLabel": {
+    "message": "Volver al principio",
+    "description": "The ARIA label for the back to top button"
+  },
+  "theme.blog.archive.title": {
+    "message": "Archivo",
+    "description": "The page & hero title of the blog archive page"
+  },
+  "theme.blog.archive.description": {
+    "message": "Archivo",
+    "description": "The page & hero description of the blog archive page"
+  },
+  "theme.blog.paginator.navAriaLabel": {
+    "message": "Navegación de la lista de entradas del blog",
+    "description": "The ARIA label for the blog pagination"
+  },
+  "theme.blog.paginator.newerEntries": {
+    "message": "Entradas más recientes",
+    "description": "The label used to navigate to the newer blog posts page (previous page)"
+  },
+  "theme.blog.paginator.olderEntries": {
+    "message": "Entradas más antiguas",
+    "description": "The label used to navigate to the older blog posts page (next page)"
+  },
+  "theme.blog.post.paginator.navAriaLabel": {
+    "message": "Navegación entre entradas del blog",
+    "description": "The ARIA label for the blog posts pagination"
+  },
+  "theme.blog.post.paginator.newerPost": {
+    "message": "Entrada más reciente",
+    "description": "The blog post button label to navigate to the newer/previous post"
+  },
+  "theme.blog.post.paginator.olderPost": {
+    "message": "Entrada más antigua",
+    "description": "The blog post button label to navigate to the older/next post"
+  },
+  "theme.tags.tagsPageLink": {
+    "message": "Ver todas las etiquetas",
+    "description": "The label of the link targeting the tag list page"
+  },
+  "theme.colorToggle.ariaLabel.mode.system": {
+    "message": "modo del sistema",
+    "description": "The name for the system color mode"
+  },
+  "theme.colorToggle.ariaLabel.mode.light": {
+    "message": "modo claro",
+    "description": "The name for the light color mode"
+  },
+  "theme.colorToggle.ariaLabel.mode.dark": {
+    "message": "modo oscuro",
+    "description": "The name for the dark color mode"
+  },
+  "theme.colorToggle.ariaLabel": {
+    "message": "Cambiar entre modo oscuro y claro (actualmente {mode})",
+    "description": "The ARIA label for the color mode toggle"
+  },
+  "theme.docs.breadcrumbs.navAriaLabel": {
+    "message": "Rastro de navegación",
+    "description": "The ARIA label for the breadcrumbs"
+  },
+  "theme.docs.paginator.navAriaLabel": {
+    "message": "Páginas de la documentación",
+    "description": "The ARIA label for the docs pagination"
+  },
+  "theme.docs.paginator.previous": {
+    "message": "Anterior",
+    "description": "The label used to navigate to the previous doc"
+  },
+  "theme.docs.paginator.next": {
+    "message": "Siguiente",
+    "description": "The label used to navigate to the next doc"
+  },
+  "theme.docs.tagDocListPageTitle.nDocsTagged": {
+    "message": "Un documento etiquetado|{count} documentos etiquetados",
+    "description": "Pluralized label for \"{count} docs tagged\". Use as much plural forms (separated by \"|\") as your language support (see https://www.unicode.org/cldr/cldr-aux/charts/34/supplemental/language_plural_rules.html)"
+  },
+  "theme.docs.tagDocListPageTitle": {
+    "message": "{nDocsTagged} con \"{tagName}\"",
+    "description": "The title of the page for a docs tag"
+  },
+  "theme.docs.versionBadge.label": {
+    "message": "Versión: {versionLabel}"
+  },
+  "theme.docs.versions.unreleasedVersionLabel": {
+    "message": "Esta es la documentación sin publicar para {siteTitle}, versión {versionLabel}.",
+    "description": "The label used to tell the user that he's browsing an unreleased doc version"
+  },
+  "theme.docs.versions.unmaintainedVersionLabel": {
+    "message": "Esta es la documentación para {siteTitle} {versionLabel}, que ya no se mantiene activamente.",
+    "description": "The label used to tell the user that he's browsing an unmaintained doc version"
+  },
+  "theme.docs.versions.latestVersionSuggestionLabel": {
+    "message": "Para ver la documentación actualizada, consulta {latestVersionLink} ({versionLabel}).",
+    "description": "The label used to tell the user to check the latest version"
+  },
+  "theme.docs.versions.latestVersionLinkLabel": {
+    "message": "última versión",
+    "description": "The label used for the latest version suggestion link label"
+  },
+  "theme.common.editThisPage": {
+    "message": "Editar esta página",
+    "description": "The link label to edit the current page"
+  },
+  "theme.lastUpdated.atDate": {
+    "message": " el {date}",
+    "description": "The words used to describe on which date a page has been last updated"
+  },
+  "theme.lastUpdated.byUser": {
+    "message": " por {user}",
+    "description": "The words used to describe by who the page has been last updated"
+  },
+  "theme.lastUpdated.lastUpdatedAtBy": {
+    "message": "Última actualización{atDate}{byUser}",
+    "description": "The sentence used to display when a page has been last updated, and by who"
+  },
+  "theme.common.headingLinkTitle": {
+    "message": "Enlace directo a {heading}",
+    "description": "Title for link to heading"
+  },
+  "theme.navbar.mobileVersionsDropdown.label": {
+    "message": "Versiones",
+    "description": "The label for the navbar versions dropdown on mobile view"
+  },
+  "theme.NotFound.title": {
+    "message": "Página no encontrada",
+    "description": "The title of the 404 page"
+  },
+  "theme.tags.tagsListLabel": {
+    "message": "Etiquetas:",
+    "description": "The label alongside a tag list"
+  },
+  "theme.AnnouncementBar.closeButtonAriaLabel": {
+    "message": "Cerrar",
+    "description": "The ARIA label for close button of announcement bar"
+  },
+  "theme.admonition.caution": {
+    "message": "precaución",
+    "description": "The default label used for the Caution admonition (:::caution)"
+  },
+  "theme.admonition.danger": {
+    "message": "peligro",
+    "description": "The default label used for the Danger admonition (:::danger)"
+  },
+  "theme.admonition.info": {
+    "message": "información",
+    "description": "The default label used for the Info admonition (:::info)"
+  },
+  "theme.admonition.note": {
+    "message": "nota",
+    "description": "The default label used for the Note admonition (:::note)"
+  },
+  "theme.admonition.tip": {
+    "message": "consejo",
+    "description": "The default label used for the Tip admonition (:::tip)"
+  },
+  "theme.admonition.warning": {
+    "message": "aviso",
+    "description": "The default label used for the Warning admonition (:::warning)"
+  },
+  "theme.blog.sidebar.navAriaLabel": {
+    "message": "Navegación de entradas recientes",
+    "description": "The ARIA label for recent posts in the blog sidebar"
+  },
+  "theme.DocSidebarItem.expandCategoryAriaLabel": {
+    "message": "Expandir la categoría '{label}' de la barra lateral",
+    "description": "The ARIA label to expand the sidebar category"
+  },
+  "theme.DocSidebarItem.collapseCategoryAriaLabel": {
+    "message": "Contraer la categoría '{label}' de la barra lateral",
+    "description": "The ARIA label to collapse the sidebar category"
+  },
+  "theme.IconExternalLink.ariaLabel": {
+    "message": "(se abre en una nueva pestaña)",
+    "description": "The ARIA label for the external link icon"
+  },
+  "theme.NavBar.navAriaLabel": {
+    "message": "Principal",
+    "description": "The ARIA label for the main navigation"
+  },
+  "theme.navbar.mobileLanguageDropdown.label": {
+    "message": "Idiomas",
+    "description": "The label for the mobile language switcher dropdown"
+  },
+  "theme.NotFound.p1": {
+    "message": "No hemos encontrado lo que buscabas.",
+    "description": "The first paragraph of the 404 page"
+  },
+  "theme.NotFound.p2": {
+    "message": "Ponte en contacto con quien te facilitó la URL original y avísale de que el enlace está roto.",
+    "description": "The 2nd paragraph of the 404 page"
+  },
+  "theme.TOCCollapsible.toggleButtonLabel": {
+    "message": "En esta página",
+    "description": "The label used by the button on the collapsible TOC component"
+  },
+  "theme.blog.post.readingTime.plurals": {
+    "message": "Un minuto de lectura|{readingTime} min de lectura",
+    "description": "Pluralized label for \"{readingTime} min read\". Use as much plural forms (separated by \"|\") as your language support (see https://www.unicode.org/cldr/cldr-aux/charts/34/supplemental/language_plural_rules.html)"
+  },
+  "theme.blog.post.readMore": {
+    "message": "Leer más",
+    "description": "The label used in blog post item excerpts to link to full blog posts"
+  },
+  "theme.blog.post.readMoreLabel": {
+    "message": "Leer más sobre {title}",
+    "description": "The ARIA label for the link to full blog posts from excerpts"
+  },
+  "theme.CodeBlock.copy": {
+    "message": "Copiar",
+    "description": "The copy button label on code blocks"
+  },
+  "theme.CodeBlock.copied": {
+    "message": "Copiado",
+    "description": "The copied button label on code blocks"
+  },
+  "theme.CodeBlock.copyButtonAriaLabel": {
+    "message": "Copiar código",
+    "description": "The ARIA label for copy code blocks button"
+  },
+  "theme.CodeBlock.wordWrapToggle": {
+    "message": "Alternar ajuste de línea",
+    "description": "The title attribute for toggle word wrapping button of code block lines"
+  },
+  "theme.docs.breadcrumbs.home": {
+    "message": "Página de inicio",
+    "description": "The ARIA label for the home page in the breadcrumbs"
+  },
+  "theme.docs.sidebar.collapseButtonTitle": {
+    "message": "Contraer barra lateral",
+    "description": "The title attribute for collapse button of doc sidebar"
+  },
+  "theme.docs.sidebar.collapseButtonAriaLabel": {
+    "message": "Contraer barra lateral",
+    "description": "The title attribute for collapse button of doc sidebar"
+  },
+  "theme.docs.sidebar.navAriaLabel": {
+    "message": "Barra lateral de la documentación",
+    "description": "The ARIA label for the sidebar navigation"
+  },
+  "theme.docs.sidebar.closeSidebarButtonAriaLabel": {
+    "message": "Cerrar barra lateral",
+    "description": "The ARIA label for close button of mobile sidebar"
+  },
+  "theme.navbar.mobileSidebarSecondaryMenu.backButtonLabel": {
+    "message": "← Volver al menú principal",
+    "description": "The label of the back button to return to main menu, inside the mobile navbar sidebar secondary menu (notably used to display the docs sidebar)"
+  },
+  "theme.docs.sidebar.toggleSidebarButtonAriaLabel": {
+    "message": "Alternar barra lateral",
+    "description": "The ARIA label for hamburger menu button of mobile navigation"
+  },
+  "theme.docs.sidebar.expandButtonTitle": {
+    "message": "Expandir barra lateral",
+    "description": "The ARIA label and title attribute for expand button of doc sidebar"
+  },
+  "theme.docs.sidebar.expandButtonAriaLabel": {
+    "message": "Expandir barra lateral",
+    "description": "The ARIA label and title attribute for expand button of doc sidebar"
+  },
+  "theme.navbar.mobileDropdown.collapseButton.expandAriaLabel": {
+    "message": "Expandir el menú desplegable",
+    "description": "The ARIA label of the button to expand the mobile dropdown navbar item"
+  },
+  "theme.navbar.mobileDropdown.collapseButton.collapseAriaLabel": {
+    "message": "Contraer el menú desplegable",
+    "description": "The ARIA label of the button to collapse the mobile dropdown navbar item"
+  },
+  "theme.SearchBar.noResultsText": {
+    "message": "Sin resultados"
+  },
+  "theme.SearchBar.seeAllOutsideContext": {
+    "message": "Ver todos los resultados fuera de \"{context}\""
+  },
+  "theme.SearchBar.searchInContext": {
+    "message": "Ver todos los resultados dentro de \"{context}\""
+  },
+  "theme.SearchBar.seeAll": {
+    "message": "Ver todos los resultados"
+  },
+  "theme.SearchBar.label": {
+    "message": "Buscar",
+    "description": "The ARIA label and placeholder for search button"
+  },
+  "theme.SearchPage.existingResultsTitle": {
+    "message": "Resultados de búsqueda para \"{query}\"",
+    "description": "The search page title for non-empty query"
+  },
+  "theme.SearchPage.emptyResultsTitle": {
+    "message": "Buscar en la documentación",
+    "description": "The search page title for empty query"
+  },
+  "theme.SearchPage.searchContext.everywhere": {
+    "message": "En todas partes"
+  },
+  "theme.SearchPage.documentsFound.plurals": {
+    "message": "1 documento encontrado|{count} documentos encontrados",
+    "description": "Pluralized label for \"{count} documents found\". Use as much plural forms (separated by \"|\") as your language support (see https://www.unicode.org/cldr/cldr-aux/charts/34/supplemental/language_plural_rules.html)"
+  },
+  "theme.SearchPage.noResultsText": {
+    "message": "No se ha encontrado ningún documento",
+    "description": "The paragraph for empty search result"
+  },
+  "theme.blog.post.plurals": {
+    "message": "Una entrada|{count} entradas",
+    "description": "Pluralized label for \"{count} posts\". Use as much plural forms (separated by \"|\") as your language support (see https://www.unicode.org/cldr/cldr-aux/charts/34/supplemental/language_plural_rules.html)"
+  },
+  "theme.blog.tagTitle": {
+    "message": "{nPosts} etiquetadas con \"{tagName}\"",
+    "description": "The title of the page for a blog tag"
+  },
+  "theme.blog.author.pageTitle": {
+    "message": "{authorName} - {nPosts}",
+    "description": "The title of the page for a blog author"
+  },
+  "theme.blog.authorsList.pageTitle": {
+    "message": "Autores",
+    "description": "The title of the authors page"
+  },
+  "theme.blog.authorsList.viewAll": {
+    "message": "Ver todos los autores",
+    "description": "The label of the link targeting the blog authors page"
+  },
+  "theme.blog.author.noPosts": {
+    "message": "Este autor aún no ha escrito ninguna entrada.",
+    "description": "The text for authors with 0 blog post"
+  },
+  "theme.contentVisibility.unlistedBanner.title": {
+    "message": "Página no listada",
+    "description": "The unlisted content banner title"
+  },
+  "theme.contentVisibility.unlistedBanner.message": {
+    "message": "Esta página no está listada. Los buscadores no la indexarán y solo podrán acceder a ella quienes tengan el enlace directo.",
+    "description": "The unlisted content banner message"
+  },
+  "theme.contentVisibility.draftBanner.title": {
+    "message": "Página en borrador",
+    "description": "The draft content banner title"
+  },
+  "theme.contentVisibility.draftBanner.message": {
+    "message": "Esta página es un borrador. Solo es visible en desarrollo y se excluirá de la compilación de producción.",
+    "description": "The draft content banner message"
+  },
+  "theme.docs.DocCard.categoryDescription.plurals": {
+    "message": "1 artículo|{count} artículos",
+    "description": "The default description for a category card in the generated index about how many items this category includes"
+  },
+  "theme.ErrorPageContent.tryAgain": {
+    "message": "Inténtalo de nuevo",
+    "description": "The label of the button to try again rendering when the React error boundary captures an error"
+  },
+  "theme.common.skipToMainContent": {
+    "message": "Saltar al contenido principal",
+    "description": "The skip to content label used for accessibility, allowing to rapidly navigate to main content with keyboard tab/enter navigation"
+  },
+  "theme.tags.tagsPageTitle": {
+    "message": "Etiquetas",
+    "description": "The title of the tag list page"
+  }
+}
