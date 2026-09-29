@@ -21,7 +21,7 @@ function features(): Feature[] {
       description: translate({
         id: 'home.native.tools.description',
         message:
-          'Tools work on the standard and native Vertex lanes, and on the native lane tool_choice is honoured through Vertex toolConfig instead of being dropped.',
+          'Tools work on the standard and native Vertex lanes, and on the native lane tool_choice maps to a Vertex toolConfig mode instead of being dropped.',
       }),
       to: '/docs/guides/streaming-and-tools/',
     },
@@ -39,7 +39,7 @@ function features(): Feature[] {
       description: translate({
         id: 'home.native.jevrouter.description',
         message:
-          'Pick the model tier and reasoning effort per request. Effort becomes each provider’s own control, such as a Vertex thinking budget, and every response reports the decision in x-synapse-* headers.',
+          'Jev rates each request’s difficulty and serves it from the matching model tier and reasoning effort. Effort becomes each provider’s own control, such as a Vertex thinking budget, and every response reports the decision in x-synapse-* headers.',
       }),
       to: '/docs/guides/jev-router/',
     },

@@ -16,7 +16,8 @@
   font-weight: 500;
 }
 
-.strip a:hover {
+.strip a:hover,
+.strip a:focus-visible {
   border-color: var(--ifm-color-primary);
   color: var(--ifm-color-primary);
   text-decoration: none;

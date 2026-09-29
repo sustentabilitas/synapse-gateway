@@ -3,14 +3,20 @@ import Link from '@docusaurus/Link';
 import Translate, {translate} from '@docusaurus/Translate';
 import styles from './styles.module.css';
 
-type Box = {x: number; y: number; w: number; label: string; accent?: boolean};
+type Box = {x: number; y: number; w: number; label: string | string[]; accent?: boolean};
 
-function Node({x, y, w, label, accent}: Box): ReactNode {
+function DiagramNode({x, y, w, label, accent}: Box): ReactNode {
+  const lines = Array.isArray(label) ? label : [label];
+  const firstLineY = y + 33 - (lines.length - 1) * 9;
   return (
     <g>
       <rect x={x} y={y} width={w} height={56} rx={10} className={accent ? styles.nodeAccent : styles.node} />
-      <text x={x + w / 2} y={y + 33} textAnchor="middle" className={styles.label}>
-        {label}
+      <text x={x + w / 2} y={firstLineY} textAnchor="middle" className={styles.label}>
+        {lines.map((line, i) => (
+          <tspan key={line} x={x + w / 2} dy={i === 0 ? 0 : 18}>
+            {line}
+          </tspan>
+        ))}
       </text>
     </g>
   );
@@ -22,7 +28,7 @@ function Arrow({d}: {d: string}): ReactNode {
 
 export default function Architecture(): ReactNode {
   const lanes = [
-    {y: 40, label: translate({id: 'home.arch.lane.standard', message: 'Standard lane'}), provider: 'OpenAI · Qwen · vLLM'},
+    {y: 40, label: translate({id: 'home.arch.lane.standard', message: 'Standard lane'}), provider: ['OpenAI · Qwen', 'Vertex · vLLM']},
     {y: 152, label: translate({id: 'home.arch.lane.vertex', message: 'Native Vertex lane'}), provider: 'Vertex AI', accent: true},
     {y: 264, label: translate({id: 'home.arch.lane.jev', message: 'Jev lane'}), provider: 'TypeSafe', accent: true},
   ];
@@ -37,7 +43,7 @@ export default function Architecture(): ReactNode {
         </h2>
         <p className="sy-section-lead">
           <Translate id="home.arch.lead">
-            Every request passes guardrails, then lane detection picks the standard, native Vertex or Jev lane. Each route is an ordered fallback chain, and every call lands in the cost ledger and the metrics pipeline.
+            Every chat request passes guardrails, then lane detection picks the standard, native Vertex or Jev lane. Each route is an ordered fallback chain, and every call lands in the cost ledger and the metrics pipeline.
           </Translate>{' '}
           <Link to="/docs/overview/architecture/">
             <Translate id="home.arch.more">Read the architecture guide</Translate>
@@ -50,17 +56,17 @@ export default function Architecture(): ReactNode {
                 <path d="M0 0 L10 5 L0 10 z" className={styles.arrowHead} />
               </marker>
             </defs>
-            <Node x={10} y={152} w={90} label={translate({id: 'home.arch.client', message: 'Client'})} />
-            <Node x={130} y={152} w={110} label={translate({id: 'home.arch.guardrails', message: 'Guardrails'})} />
-            <Node x={270} y={152} w={140} label={translate({id: 'home.arch.detect', message: 'Lane detection'})} />
+            <DiagramNode x={10} y={152} w={90} label={translate({id: 'home.arch.client', message: 'Client'})} />
+            <DiagramNode x={130} y={152} w={110} label={translate({id: 'home.arch.guardrails', message: 'Guardrails'})} />
+            <DiagramNode x={270} y={152} w={140} label={translate({id: 'home.arch.detect', message: 'Lane detection'})} />
             <Arrow d="M100 180 H128" />
             <Arrow d="M240 180 H268" />
             {lanes.map((lane) => (
               <g key={lane.y}>
                 <Arrow d={`M410 180 C425 180 425 ${lane.y + 28} 438 ${lane.y + 28}`} />
-                <Node x={440} y={lane.y} w={160} label={lane.label} accent={lane.accent} />
+                <DiagramNode x={440} y={lane.y} w={160} label={lane.label} accent={lane.accent} />
                 <Arrow d={`M600 ${lane.y + 28} H628`} />
-                <Node x={630} y={lane.y} w={160} label={lane.provider} />
+                <DiagramNode x={630} y={lane.y} w={160} label={lane.provider} />
               </g>
             ))}
             <rect x={10} y={344} width={780} height={40} rx={8} className={styles.bar} />
