@@ -11,8 +11,8 @@ que explica el ajuste en detalle.
 
 - [ ] **Fija la etiqueta de la imagen.** Ejecuta una etiqueta de versión como
   `sustentabilitas/synapse-gateway:0.5.38`, no `latest` ni `edge`, para que un reinicio nunca
-  cambie la versión que ejecutas. Lee el changelog antes de cambiar de etiqueta. Consulta
-  [Docker](docker.md#images).
+  cambie la versión que ejecutas. Lee el registro de cambios antes de cambiar de etiqueta.
+  Consulta [Docker](docker.md#images).
 - [ ] **Monta tu propio `/app/config`.** La configuración integrada en la imagen es un
   ejemplo. Guarda tus `routes.toml`, `pricing.toml` y archivos opcionales en control de
   versiones y móntalos en solo lectura. El gateway los lee una sola vez al arrancar y no tiene

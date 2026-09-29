@@ -53,7 +53,7 @@ La escritura en el registro nunca bloquea la respuesta: si la cola del registro 
 el evento se descarta y se cuenta en `synapse_ledger_dropped_total`. Consulta la
 [guía del registro de costes](../guides/cost-ledger.md) y el
 [catálogo de métricas](../reference/metrics-catalogue.md). Para un recorrido paso a paso por
-el código fuente, consulta [Pipeline de peticiones](../internals/request-pipeline.md).
+el código fuente, consulta [Pipeline de una petición](../internals/request-pipeline.md).
 
 ## Carriles {#lanes}
 

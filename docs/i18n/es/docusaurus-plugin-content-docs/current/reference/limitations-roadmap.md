@@ -65,7 +65,7 @@ resto sin error:
 - **Sin trazas.** El gateway solo registra métricas de OpenTelemetry; no emite spans de
   OpenTelemetry ni propaga el contexto de traza a los proveedores. Consulta
   [Logs](../operating/logging.md#tracing).
-- **Sin métrica para los completados de chat fallidos.** Las métricas de peticiones solo cuentan
+- **Sin métrica para los chat completions fallidos.** Las métricas de peticiones solo cuentan
   las peticiones que produjeron una respuesta. Mide las tasas de error delante del gateway;
   consulta
   [Qué cuentan las métricas de peticiones](../operating/metrics.md#what-the-request-metrics-count).
@@ -78,7 +78,7 @@ resto sin error:
 ## Precisión del registro de costes {#cost-ledger-accuracy}
 
 Los costes del registro son estimaciones calculadas a partir de los recuentos de tokens de los
-proveedores y de tu `pricing.toml`. La entrada en caché de Vertex nativo se cobra a la tarifa
+proveedores y de tu `pricing.toml`. La entrada en caché de Vertex nativo se valora a la tarifa
 completa, los tokens de razonamiento de Vertex nativo no se cuentan, los intentos fallidos y los
 streams abandonados no registran tokens, los modelos de chat sin precio cuestan 0, y se pueden
 descartar filas cuando la cola está llena. [Precisión](../guides/cost-ledger.md#accuracy)
@@ -86,8 +86,9 @@ explica cada carencia.
 
 ## Operación {#operations}
 
-- **Sin apagado ordenado.** El gateway no drena las peticiones al recibir `SIGTERM`: las
-  peticiones en curso se cortan y las filas del registro que siguen en la cola se pierden.
+- **Sin apagado ordenado.** El gateway no espera a que terminen las peticiones al recibir
+  `SIGTERM`: las peticiones en curso se cortan y las filas del registro de costes que siguen en
+  la cola se pierden.
   Consulta [Detención](../deployment/docker.md#stopping).
 - **El registro A2A está en memoria, por instancia.** Los agentes registrados mediante la API de
   administración solo existen en la instancia que recibió la llamada, y se pierden al reiniciar.

@@ -108,7 +108,7 @@
     "message": "Carril Vertex AI nativo"
   },
   "home.native.vertex.description": {
-    "message": "El almacenamiento en caché de contexto, las URI de medios gs://, la decodificación estricta con responseSchema y la configuración de thinking van directamente a streamGenerateContent de Vertex AI. Nada se aplana a través de un adaptador con forma de OpenAI."
+    "message": "La caché de contexto, las URI de medios gs://, la decodificación estricta con responseSchema y la configuración de razonamiento van directamente a streamGenerateContent de Vertex AI. Nada se aplana a través de un adaptador con forma de OpenAI."
   },
   "home.native.tools.title": {
     "message": "Llamadas a herramientas nativas"
@@ -126,7 +126,7 @@
     "message": "Router Jev"
   },
   "home.native.jevrouter.description": {
-    "message": "Jev evalúa la dificultad de cada petición y la sirve con el nivel de modelo y el esfuerzo de razonamiento que le corresponden. El esfuerzo se convierte en el control propio de cada proveedor, como el thinking budget de Vertex, y cada respuesta informa de la decisión en cabeceras x-synapse-*."
+    "message": "Jev evalúa la dificultad de cada petición y la sirve con el nivel de modelo y el esfuerzo de razonamiento que le corresponden. El esfuerzo se convierte en el control propio de cada proveedor, como el presupuesto de razonamiento (thinkingBudget) de Vertex, y cada respuesta indica la decisión en los encabezados x-synapse-*."
   },
   "home.native.streaming.title": {
     "message": "Streaming real, fallback completo"
@@ -460,7 +460,7 @@
     "description": "Pluralized label for \"{count} posts\". Use as much plural forms (separated by \"|\") as your language support (see https://www.unicode.org/cldr/cldr-aux/charts/34/supplemental/language_plural_rules.html)"
   },
   "theme.blog.tagTitle": {
-    "message": "{nPosts} etiquetadas con \"{tagName}\"",
+    "message": "{nPosts} con la etiqueta \"{tagName}\"",
     "description": "The title of the page for a blog tag"
   },
   "theme.blog.author.pageTitle": {

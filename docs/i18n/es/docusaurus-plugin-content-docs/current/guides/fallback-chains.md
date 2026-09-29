@@ -62,7 +62,7 @@ Las peticiones con [funcionalidades nativas de Vertex](native-vertex.md) solo us
   abrir el stream pasa al siguiente tramo `vertex`.
 - Cualquier otro `4xx` detiene la cadena y devuelve `400` con el mensaje de Vertex. Estos
   errores, como un esquema no válido o una caché caducada, fallarían en todos los tramos.
-- Una vez que Vertex AI acepta la petición, Synapse queda comprometido con ese tramo, tanto
+- Una vez que Vertex AI acepta la petición, Synapse queda fijado a ese tramo, tanto
   para clientes con streaming como sin él. Un fallo a partir de ese momento hace fallar la
   petición con `502` y el código de error `upstream_error`.
 
@@ -110,7 +110,7 @@ fallidos no se registran, así que los tokens que un proveedor consumió en un t
 cortó a mitad de camino no aparecen en el registro. Consulta
 [Registro de costes](cost-ledger.md#accuracy).
 
-## Diseña una cadena {#design-a-chain}
+## Diseñar una cadena {#design-a-chain}
 
 - **Combina proveedores o regiones.** Dos tramos en el mismo proveedor y la misma región
   suelen fallar a la vez. Pon detrás del primer tramo un proveedor distinto, o el mismo modelo

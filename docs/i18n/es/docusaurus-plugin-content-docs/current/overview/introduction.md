@@ -78,8 +78,8 @@ Capacidades nativas:
   estricto y `thinking_config`, enviados directamente al endpoint `:streamGenerateContent`
   de Vertex AI. Consulta [Carril Vertex nativo](architecture.md#native-vertex-lane) y la
   [guía de Vertex nativo](../guides/native-vertex.md).
-- **Llamadas a herramientas nativas**: las herramientas funcionan en ambos carriles; en el
-  carril Vertex nativo, `tool_choice` se respeta mediante `toolConfig` de Vertex. Consulta
+- **Llamadas a herramientas nativas**: las herramientas funcionan en los carriles estándar y
+  Vertex nativo; en el carril Vertex nativo, `tool_choice` se respeta mediante `toolConfig` de Vertex. Consulta
   [Streaming y llamadas a herramientas](../guides/streaming-and-tools.md#tool-calling).
 - **Carril Jev**: decisiones tipadas de Jev, además de un modo híbrido que juzga y luego
   extrae en una sola llamada. Consulta [Carril Jev](architecture.md#jev-lane) y la
@@ -111,7 +111,7 @@ Compatibilidad y operación:
 - **Registro de costes por tenant**: uso de tokens y coste por petición, escritos en SQLite
   o Postgres y, opcionalmente, distribuidos a Google Cloud Pub/Sub y AWS SNS. Consulta la
   [guía del registro de costes](../guides/cost-ledger.md) y
-  [Atribución de tenants](../guides/tenant-attribution.md).
+  [Atribución por tenant](../guides/tenant-attribution.md).
 - **Observabilidad**: métricas `synapse_*` de OpenTelemetry, servidas en formato Prometheus
   y, opcionalmente, enviadas por OTLP. Consulta [Métricas](../operating/metrics.md), el
   [catálogo de métricas](../reference/metrics-catalogue.md) y el

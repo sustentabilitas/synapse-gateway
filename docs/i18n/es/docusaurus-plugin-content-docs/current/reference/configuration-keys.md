@@ -37,11 +37,11 @@ embeddings. Un archivo con solo tablas `[embeddings.*]` no se carga.
 
 | Clave | Tipo | Obligatoria | Por defecto | Descripción |
 |---|---|---|---|---|
-| `legs` | array of leg tables | Yes, on static routes | — | La cadena de fallback. Debe estar ausente o vacía en una ruta `jev`. |
+| `legs` | array of leg tables | Sí, en rutas estáticas | — | La cadena de fallback. Debe estar ausente o vacía en una ruta `jev`. |
 | `strategy` | string | No | `"static"` | `"static"` o `"jev"`. |
-| `policy` | string | No | the `default` policy | Nombre de la política de guardrails de `guardrails.toml`. |
-| `jev_router` | table | Yes, on `jev` routes | — | Ajustes de la decisión. Consulta [más abajo](#routesaliasjev_router). |
-| `tiers` | array of tier tables | Yes, on `jev` routes | — | De 2 a 10 niveles, del más fácil al más difícil. Consulta [más abajo](#routesaliastiers). |
+| `policy` | string | No | la política `default` | Nombre de la política de guardrails de `guardrails.toml`. |
+| `jev_router` | table | Sí, en rutas `jev` | — | Ajustes de la decisión. Consulta [más abajo](#routesaliasjev_router). |
+| `tiers` | array of tier tables | Sí, en rutas `jev` | — | De 2 a 10 niveles, del más fácil al más difícil. Consulta [más abajo](#routesaliastiers). |
 
 ### Tabla de tramo {#leg-table}
 
@@ -49,15 +49,15 @@ Se usa en `legs`, en los `legs` de cada nivel y en los alias de embeddings.
 
 | Clave | Tipo | Obligatoria | Por defecto | Descripción |
 |---|---|---|---|---|
-| `provider` | string | Yes | — | `vertex`, `openai`, `qwen`, `oai_compat` o `typesafe`. Los tramos de embeddings admiten `vertex` y `openai`. Consulta [Proveedores](../configuration/providers.md). |
-| `model` | string | Yes | — | El nombre del modelo del proveedor, enviado tal cual. |
+| `provider` | string | Sí | — | `vertex`, `openai`, `qwen`, `oai_compat` o `typesafe`. Los tramos de embeddings admiten `vertex` y `openai`. Consulta [Proveedores](../configuration/providers.md). |
+| `model` | string | Sí | — | El nombre del modelo del proveedor, enviado tal cual. |
 | `region` | string | No | `VERTEX_LOCATION` | Ubicación de Vertex para este tramo en el carril Vertex nativo. Se ignora en los demás casos. |
 
 ### `[routes."<alias>".jev_router]` {#routesaliasjev_router}
 
 | Clave | Tipo | Obligatoria | Por defecto | Descripción |
 |---|---|---|---|---|
-| `default_tier` | string | Yes | — | Nivel que se usa cuando Jev no puede decidir. Debe nombrar un nivel. |
+| `default_tier` | string | Sí | — | Nivel que se usa cuando Jev no puede decidir. Debe nombrar un nivel. |
 | `model` | string | No | `"jev-latest"` | Modelo de Jev que toma la decisión. |
 | `timeout_ms` | integer | No | `400` | Tiempo límite de la decisión en milisegundos. Mayor que 0. |
 | `min_confidence` | float | No | `0.5` | Por debajo de esta confianza, sirve `default_tier`. De 0 a 1. |
@@ -69,10 +69,10 @@ Consulta [Claves de `jev_router`](../configuration/routes.md#jev_router-keys).
 
 | Clave | Tipo | Obligatoria | Por defecto | Descripción |
 |---|---|---|---|---|
-| `name` | string | Yes | — | Único, no vacío, ASCII imprimible. |
-| `description` | string | Yes | — | El trabajo para el que sirve este nivel. No vacío. |
-| `effort` | string | Yes | — | `none`, `minimal`, `low`, `medium`, `high`, `xhigh` o `max`. |
-| `legs` | array of leg tables | Yes | — | Al menos un tramo; sin tramos `typesafe`. |
+| `name` | string | Sí | — | Único, no vacío, ASCII imprimible. |
+| `description` | string | Sí | — | El trabajo para el que sirve este nivel. No vacío. |
+| `effort` | string | Sí | — | `none`, `minimal`, `low`, `medium`, `high`, `xhigh` o `max`. |
+| `legs` | array of leg tables | Sí | — | Al menos un tramo; sin tramos `typesafe`. |
 
 Consulta [Claves de nivel](../configuration/routes.md#tier-keys).
 
@@ -80,8 +80,8 @@ Consulta [Claves de nivel](../configuration/routes.md#tier-keys).
 
 | Clave | Tipo | Obligatoria | Por defecto | Descripción |
 |---|---|---|---|---|
-| `dimensions` | integer | Yes | — | Tamaño del vector de salida. Mayor que 0. |
-| `legs` | array of leg tables | Yes | — | Al menos un tramo. |
+| `dimensions` | integer | Sí | — | Tamaño del vector de salida. Mayor que 0. |
+| `legs` | array of leg tables | Sí | — | Al menos un tramo. |
 
 Consulta [Alias de embeddings](../configuration/routes.md#embedding-aliases).
 
@@ -93,8 +93,8 @@ Cada clave de nivel superior es una cadena `"<provider>:<model>"`, y su valor es
 
 | Clave | Tipo | Obligatoria | Descripción |
 |---|---|---|---|
-| `input` | float | Yes | USD por 1,000,000 de tokens de entrada. |
-| `output` | float | Yes | USD por 1,000,000 de tokens de salida. |
+| `input` | float | Sí | USD por 1,000,000 de tokens de entrada. |
+| `output` | float | Sí | USD por 1,000,000 de tokens de salida. |
 
 ```toml
 "openai:gpt-4o-mini" = { input = 0.15, output = 0.60 }
@@ -112,7 +112,7 @@ Políticas de guardrails con nombre. Consulta
 
 | Clave | Tipo | Obligatoria | Por defecto | Descripción |
 |---|---|---|---|---|
-| `scanners` | array | Yes | — | Nombres de escáneres, o tablas de escáner. |
+| `scanners` | array | Sí | — | Nombres de escáneres, o tablas de escáner. |
 | `mode` | string | No | `"block"` | `"block"` o `"observe"`. |
 
 ### Tabla de escáner {#scanner-table}
@@ -121,7 +121,7 @@ Un escáner es un nombre sin más, como `"secrets"`, o una tabla:
 
 | Clave | Tipo | Usada por | Descripción |
 |---|---|---|---|
-| `type` | string | every scanner | Obligatoria. El nombre del escáner: `prompt_injection`, `secrets`, `pii`, `invisible_text`, `role_override`, `token_limit`, `ban_substrings` o `script_mix`. |
+| `type` | string | todos los escáneres | Obligatoria. El nombre del escáner: `prompt_injection`, `secrets`, `pii`, `invisible_text`, `role_override`, `token_limit`, `ban_substrings` o `script_mix`. |
 | `max_chars` | integer | `token_limit` | Obligatoria para `token_limit`. Longitud máxima de la entrada en caracteres. |
 | `substrings` | array of strings | `ban_substrings` | Obligatoria para `ban_substrings`, no vacía. |
 | `severity` | string | `ban_substrings` | `block` (por defecto), `warn` o `info`. |
@@ -152,13 +152,13 @@ Agentes que se registran en el registro A2A del gateway al arrancar. Cada agente
 
 | Clave | Tipo | Obligatoria | Por defecto | Descripción |
 |---|---|---|---|---|
-| `id` | string | Yes | — | Id en el registro, usado en los paths `/a2a/agents/{id}/...`. |
-| `name` | string | Yes | — | Nombre visible en el catálogo. |
-| `description` | string | Yes | — | Descripción en el catálogo. |
-| `endpoint_url` | string | Yes | — | URL absoluta donde el agente sirve A2A. |
-| `card_url` | string | Yes | — | URL absoluta de la agent card. El gateway la descarga al arrancar. |
+| `id` | string | Sí | — | Id en el registro, usado en los paths `/a2a/agents/{id}/...`. |
+| `name` | string | Sí | — | Nombre visible en el catálogo. |
+| `description` | string | Sí | — | Descripción en el catálogo. |
+| `endpoint_url` | string | Sí | — | URL absoluta donde el agente sirve A2A. |
+| `card_url` | string | Sí | — | URL absoluta de la agent card. El gateway la descarga al arrancar. |
 | `tags` | array of strings | No | `[]` | Etiquetas del catálogo. |
-| `ttl_seconds` | integer | No | no expiry | Segundos tras el arranque al cabo de los cuales el agente sale del catálogo. |
+| `ttl_seconds` | integer | No | sin caducidad | Segundos tras el arranque al cabo de los cuales el agente sale del catálogo. |
 
 ```toml
 [[a2a_agents]]

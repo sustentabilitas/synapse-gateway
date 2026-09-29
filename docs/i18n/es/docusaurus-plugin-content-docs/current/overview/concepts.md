@@ -42,7 +42,7 @@ valor por defecto, usa los `legs` de la ruta en orden. `jev` declara niveles en 
 tramos, y el router Jev elige un nivel para cada petición. Un cliente puede enviar
 `"routing_strategy": "static"` para omitir la decisión en una petición concreta a una ruta
 `jev`. Consulta [Rutas](../configuration/routes.md) y
-[Anular la decisión en una petición](../guides/jev-router.md#override-the-decision-per-request).
+[Anular la decisión por petición](../guides/jev-router.md#override-the-decision-per-request).
 
 ## Nivel {#tier}
 
@@ -68,8 +68,8 @@ El cliente, equipo o aplicación al que se atribuye una petición, tomado del en
 `x-synapse-tenant`. Sin ese encabezado, Synapse usa `SYNAPSE_DEFAULT_TENANT` (por defecto,
 `unattributed`). El tenant se guarda en las filas del registro, pero nunca es una etiqueta
 de métrica, porque su valor lo controlan los clientes. Consulta
-[Atribución de tenants](../guides/tenant-attribution.md) y
-[Los encabezados de tenant son de confianza](../operating/security.md#tenant-headers-are-trusted).
+[Atribución por tenant](../guides/tenant-attribution.md) y
+[Los encabezados de tenant se aceptan sin comprobar](../operating/security.md#tenant-headers-are-trusted).
 
 ## Tipo de tarea de IA {#ai-task-type}
 

@@ -40,7 +40,8 @@ etc. Elige `patch`, `minor` o `major`; el workflow siempre trabaja sobre `main`.
 1. calcula la siguiente versión a partir del `Cargo.toml` del crate o de su última etiqueta, la
    que sea mayor;
 2. actualiza la `version` en `crates/<crate>/Cargo.toml`, regenera `Cargo.lock` y añade un
-   encabezado para la nueva versión en `crates/<crate>/CHANGELOG.md`;
+   encabezado para la nueva versión en `crates/<crate>/CHANGELOG.md`, justo debajo de
+   `Unreleased`, de modo que las entradas pendientes pasan a ser las notas de la nueva versión;
 3. hace el commit `chore(<crate>): release vX.Y.Z` en `main`, lo etiqueta como `<crate>-vX.Y.Z`
    y sube ambos;
 4. lanza el workflow de publicación para esa etiqueta.

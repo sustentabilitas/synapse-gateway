@@ -5,7 +5,7 @@ description: Cómo una ruta strategy = "jev" elige un nivel de modelo y un esfue
 ---
 
 Usa el router Jev cuando una ruta sirva peticiones de dificultad muy distinta, como un
-asistente de chat que recibe tanto saludos como sesiones de depuración, y no quieras pagar tu
+asistente de chat que recibe tanto saludos como sesiones de depuración, y no quieras pagar por tu
 modelo más potente en todas ellas. En lugar de una cadena fija de tramos, una ruta
 `strategy = "jev"` declara niveles de dificultad. Para cada petición, Synapse pregunta a
 TypeSafe Jev lo exigente que es y la sirve desde el nivel correspondiente con el esfuerzo de
@@ -38,9 +38,9 @@ Jev responde a dos preguntas sobre él:
 Si la confianza de Jev en la puntuación de dificultad está por debajo de `min_confidence`
 (por defecto 0.5), la petición va a `default_tier`; la respuesta sobre razonamiento puede
 seguir subiendo el esfuerzo. La llamada de decisión está limitada por `timeout_ms` (por
-defecto 400 ms), lo que añade hasta esa latencia a cada petición de la ruta.
+defecto 400 ms), lo que puede añadir hasta ese tiempo de latencia a cada petición de la ruta.
 
-## Escribe buenos niveles {#write-good-tiers}
+## Escribir buenos niveles {#write-good-tiers}
 
 - **Describe el trabajo, nunca el modelo.** Jev puntúa la petición frente a las descripciones,
   así que "Multi-step analysis, maths or proofs, non-trivial code or debugging" funciona;
@@ -85,7 +85,7 @@ El esfuerzo propio del cliente siempre gana en su carril:
   nivel. El carril nativo ignora `reasoning_effort`, así que enviar solo `reasoning_effort` en
   una petición nativa mantiene el presupuesto del nivel.
 
-Cuando se aplica el esfuerzo del cliente, Jev sigue eligiendo el nivel y la respuesta informa
+Cuando se aplica el esfuerzo del cliente, Jev sigue eligiendo el nivel y la respuesta indica
 `x-synapse-reasoning-effort: client`.
 
 ## Fallback entre niveles {#tier-fallback}
@@ -103,7 +103,7 @@ petición falla con `400`.
 Lo que cuenta como fallo de un tramo depende del carril; consulta
 [Cadenas de fallback](fallback-chains.md).
 
-## Anula la decisión por petición {#override-the-decision-per-request}
+## Anular la decisión por petición {#override-the-decision-per-request}
 
 - `"routing_strategy": "static"` omite Jev en una petición. Se sirve desde `default_tier` con
   el esfuerzo configurado de cada nivel, sin subirlo nunca, y hace fallback en el mismo orden.
@@ -167,7 +167,7 @@ esfuerzo de su nivel, así que las respuestas llevan `x-synapse-routing: static`
 
 Cada decisión que responde Jev escribe su propia fila en el registro, con el proveedor
 `typesafe`, el `jev_router.model` como modelo, el carril `jev` y el mismo `request_id` que la
-fila del chat que enrutó. Se cobra como `typesafe:<model>` en `pricing.toml`. Las decisiones
+fila del chat que enrutó. Se valora como `typesafe:<model>` en `pricing.toml`. Las decisiones
 con tiempo de espera agotado, fallidas o anuladas no escriben fila. En los eventos publicados
 en Pub/Sub o SNS, las filas de decisión tienen `op = "route_decision"`; las tablas de SQLite y
 Postgres no tienen columna `op`, así que identifica ahí las decisiones por proveedor y carril.
@@ -194,4 +194,4 @@ disponibilidad de Jev.
 Las aplicaciones que embeben el gateway leen la misma información de `Gateway::chat_routed`,
 que devuelve un `RoutingReport` junto a la respuesta, o de `GuardedStream::routing()` en los
 streams. Consulta
-[Synapse como biblioteca embebida](embedding-as-library.md#read-the-routing-report).
+[Leer el informe de enrutamiento](embedding-as-library.md#read-the-routing-report).

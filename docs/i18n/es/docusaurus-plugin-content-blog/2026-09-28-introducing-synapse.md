@@ -58,7 +58,7 @@ una petición.
   estructuradas en lugar de texto libre. También puede evaluar y después extraer en una sola
   llamada. Consulta la [guía del carril Jev](/docs/guides/jev-lane/).
 
-Una petición nativa es como cualquier otra chat completion, más un bloque `vertex`:
+Una petición nativa es como cualquier otro chat completion, más un bloque `vertex`:
 
 ```json
 {
@@ -82,7 +82,7 @@ prueba. Una ruta estática es una lista ordenada de tramos que se prueban hasta 
 tipo de trabajo para el que sirven. Para cada petición, el router Jev pregunta a Jev lo exigente
 que es la conversación y si necesita razonamiento paso a paso, y después la sirve desde el nivel
 correspondiente con el esfuerzo de razonamiento adecuado. La respuesta indica qué ha ocurrido en
-`x-synapse-routing`, `x-synapse-tier` y cabeceras relacionadas.
+`x-synapse-routing`, `x-synapse-tier` y encabezados relacionados.
 
 Una entrada complementaria, [El enrutamiento con Jev, explicado](/blog/jev-routing-explained/),
 cubre la decisión en detalle, y la [guía del router Jev](/docs/guides/jev-router/) es la
@@ -100,8 +100,8 @@ Algunas cosas que consideramos imprescindibles vienen con cada despliegue:
 - **Llamadas a herramientas en los carriles estándar y Vertex nativo.** El carril nativo también
   respeta `tool_choice` mediante `toolConfig` de Vertex; el carril estándar reenvía las
   herramientas pero descarta `tool_choice`.
-- **Un registro de costes que es tuyo.** Cada petición se atribuye a un tenant a partir de la
-  cabecera `x-synapse-tenant` y se tarifica según tu `pricing.toml` en SQLite o Postgres, con
+- **Un registro de costes que es tuyo.** Cada petición se atribuye a un tenant a partir del
+  encabezado `x-synapse-tenant` y se valora según tu `pricing.toml` en SQLite o Postgres, con
   distribución opcional a Google Cloud Pub/Sub y AWS SNS. Consulta la
   [guía del registro de costes](/docs/guides/cost-ledger/).
 - **Métricas.** Métricas `synapse_*` de OpenTelemetry, servidas en formato Prometheus en el
@@ -133,7 +133,7 @@ Synapse es un workspace de Cargo, y el gateway tiene hermanos que surgieron de l
 necesidades:
 
 - **[`synapse-proxy`](/docs/synapse-family/proxy/overview/)** es un sidecar de proxy inverso
-  guiado por configuración. Enruta por prefijo de path y estampa una identidad vinculada, como un
+  guiado por configuración. Enruta por prefijo de path y estampa una identidad fijada, como un
   tenant, en cada petición reenviada, para que una carga de trabajo aislada no pueda elegir la
   suya.
 - **[`synapse-a2a`](/docs/synapse-family/a2a/overview/)** es un registro de agentes

@@ -55,7 +55,7 @@ El gateway crea la tabla `usage_events` al arrancar, en SQLite y en Postgres:
 
 El registro escribe en uno o más destinos, seleccionados con `SYNAPSE_LEDGER_BACKENDS`:
 
-- **`sqlite`**, el valor por defecto, escribe en un fichero local. Adecuado para una sola
+- **`sqlite`**, el valor por defecto, escribe en un archivo local. Adecuado para una sola
   instancia y para probar Synapse.
 - **`postgres`** escribe en una base de datos compartida. Úsalo cuando varias instancias del
   gateway deban compartir un mismo registro.
@@ -128,14 +128,14 @@ mensajes de Pub/Sub usan `requestId` como clave de ordenación.
 El registro solo es tan preciso como los recuentos de tokens y los precios en que se basa.
 Carencias conocidas:
 
-- **La entrada en caché en el carril Vertex nativo se cobra a precio completo.**
+- **La entrada en caché en el carril Vertex nativo se valora a precio completo.**
   `input_tokens` es el `promptTokenCount` de Vertex AI, que incluye los tokens leídos de una
-  caché de contexto, y Synapse los cobra todos al precio `input`. Vertex AI factura los tokens
+  caché de contexto, y Synapse los valora todos al precio `input`. Vertex AI factura los tokens
   en caché con descuento y cobra aparte el almacenamiento de la caché, así que las peticiones
-  con caché aparecen sobrevaloradas.
+  con caché aparecen sobrestimadas.
 - **Los tokens de razonamiento en el carril Vertex nativo no se cuentan.** `output_tokens` es
   el `candidatesTokenCount` de Vertex AI, que excluye los tokens de razonamiento, y Vertex AI
-  factura el razonamiento como salida. Las peticiones que razonan aparecen infravaloradas. En
+  factura el razonamiento como salida. Las peticiones que razonan aparecen subestimadas. En
   el carril estándar, los tokens de razonamiento de Gemini sí se incluyen en `output_tokens`.
 - **Los intentos fallidos no se registran.** No aparecen los tokens que un proveedor consumió
   en un tramo que falló antes de que otro tramo sirviera la petición.
@@ -150,7 +150,7 @@ Carencias conocidas:
 Las filas guardan los recuentos de tokens en bruto junto al coste, así que puedes recalcular
 el coste con tus propias tarifas.
 
-## Consulta el registro {#query-the-ledger}
+## Consultar el registro {#query-the-ledger}
 
 Estas consultas usan la sintaxis de SQLite. Gasto por tenant y por día:
 

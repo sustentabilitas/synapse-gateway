@@ -11,7 +11,7 @@ conversación con respuestas estructuradas y puntuadas. Usa la extracción híbr
 quieras que Jev evalúe un conjunto de candidatos y que un modelo de chat extraiga datos solo
 de los que lo superan, en una sola petición.
 
-## Configura una ruta {#set-up-a-route}
+## Configurar una ruta {#set-up-a-route}
 
 Una ruta sirve el carril Jev a través de sus tramos `typesafe`. Añade tramos de chat después
 de ellos si quieres que la ruta siga respondiendo cuando Jev no esté disponible:
@@ -29,7 +29,7 @@ Los tramos `typesafe` necesitan `TYPESAFE_API_KEY`; consulta
 acepta peticiones que lleven un bloque `jev` con preguntas, y devuelve `400` a cualquier otra
 petición.
 
-## Haz preguntas tipadas {#ask-typed-questions}
+## Hacer preguntas tipadas {#ask-typed-questions}
 
 Añade un bloque `jev` con un mapa `questions` no vacío a una petición de chat completion. Cada
 entrada asocia el nombre de una pregunta con su definición: un `type` (`choice`, `score` o
@@ -64,7 +64,7 @@ entrada de Jev, así que mantén ambos centrados.
 Los guardrails de entrada se aplican a las peticiones del carril Jev como a cualquier petición
 de chat; consulta [Política de guardrails](../configuration/guardrails-policy.md).
 
-## Lee las respuestas {#read-the-answers}
+## Leer las respuestas {#read-the-answers}
 
 Una respuesta correcta es un `chat.completion` normal:
 

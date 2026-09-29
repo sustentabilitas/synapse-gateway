@@ -15,7 +15,7 @@ encabezados de respuesta, el registro de costes y las métricas.
 
 - Completa el [Inicio rápido](../quickstart.md). Este tutorial reutiliza su directorio
   `synapse-quickstart` y sus credenciales.
-- Consigue una API key de TypeSafe. Jev toma la decisión de enrutamiento, así que una ruta
+- Consigue una clave de API de TypeSafe. Jev toma la decisión de enrutamiento, así que una ruta
   `jev` necesita `TYPESAFE_API_KEY`.
 
 ## Añadir una ruta con niveles {#add-a-tiered-route}

@@ -11,7 +11,7 @@ Synapse lo sirve desde un modelo de embeddings de Vertex AI o compatible con Ope
 garantiza que todos los tramos devuelven vectores de la misma longitud, de modo que una
 conmutación nunca escribe vectores incompatibles en tu índice.
 
-## Define un alias {#define-an-alias}
+## Definir un alias {#define-an-alias}
 
 Los alias de embeddings viven en `routes.toml`, junto a tus rutas de chat, en una tabla
 `embeddings` aparte. Cada alias declara el tamaño de su vector en `dimensions` y una lista
@@ -57,7 +57,7 @@ La falta de una credencial para un proveedor referenciado detiene el gateway al 
 la validación estricta; la validación permisiva descarta esos tramos. Consulta
 [Proveedores](../configuration/providers.md#embedding-aliases).
 
-## Envía una petición {#send-a-request}
+## Enviar una petición {#send-a-request}
 
 ```bash
 curl -s http://localhost:8080/v1/embeddings \
@@ -102,7 +102,7 @@ por `SYNAPSE_REQUEST_TIMEOUT_SECS`.
 
 ## Coste {#cost}
 
-El uso de embeddings solo cuenta tokens de entrada. Synapse lo cobra con el precio `input` de
+El uso de embeddings solo cuenta tokens de entrada. Synapse lo valora con el precio `input` de
 la entrada `provider:model` del tramo en `pricing.toml`:
 
 ```toml
@@ -110,7 +110,7 @@ la entrada `provider:model` del tramo en `pricing.toml`:
 "openai:text-embedding-3-small" = { input = 0.02, output = 0.0 }
 ```
 
-A diferencia del chat, un modelo de embeddings sin entrada no es gratuito: se cobra a
+A diferencia del chat, un modelo de embeddings sin entrada no es gratuito: se valora a
 `SYNAPSE_EMBED_DEFAULT_INPUT_PRICE_PER_MTOK` (por defecto `0.10` USD por 1,000,000 de
 tokens), de modo que el uso nunca se registra en silencio con coste cero. Consulta
 [Precios](../configuration/pricing.md#how-cost-is-computed).
@@ -139,4 +139,4 @@ Los guardrails no analizan las peticiones de embeddings.
 ## Embeddings en el mismo proceso {#in-process-embeddings}
 
 Las aplicaciones que embeben el gateway llaman directamente a `Gateway::embed`; consulta
-[Synapse como biblioteca embebida](embedding-as-library.md#embeddings).
+[Embeber Synapse como biblioteca](embedding-as-library.md#embeddings).

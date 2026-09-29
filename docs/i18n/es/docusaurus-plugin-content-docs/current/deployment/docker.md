@@ -157,8 +157,8 @@ entrega `SIGTERM` al proceso 1 de un contenedor a menos que este gestione la se�
 gateway. Añade `--init` a `docker run`, o `init: true` en Compose, para que el gateway termine
 en cuanto reciba la señal.
 
-En cualquier caso, el gateway no drena: las peticiones en curso se cortan, y las filas del
-registro de costes que aún están en cola en memoria se pierden. Deja de enviar tráfico a una
+En cualquier caso, el gateway no hace un cierre ordenado: las peticiones en curso se cortan, y
+las filas del registro de costes que aún están en cola en memoria se pierden. Deja de enviar tráfico a una
 instancia antes de pararla.
 
 ## Construir la imagen {#build-the-image}
@@ -193,6 +193,7 @@ El proxy escucha en las direcciones de su archivo de configuración: `addr` (`0.
 el ejemplo) para el tráfico, `admin_addr` (`127.0.0.1:8788`) para su API de administración y
 `metrics_addr` (`0.0.0.0:9090`) para las métricas. `SYNAPSE_PROXY_ADDR` sobrescribe `addr`.
 Con la API de administración en `127.0.0.1`, solo pueden alcanzarla los procesos dentro del
-contenedor, o del mismo pod. A diferencia del gateway, el proxy drena al recibir `SIGTERM`: su
-sonda de disponibilidad, `GET /healthz/readiness`, empieza a devolver `503`, y alrededor de un
-segundo después deja de aceptar conexiones y espera a que terminen las peticiones en curso.
+contenedor, o del mismo pod. A diferencia del gateway, el proxy hace un cierre ordenado al
+recibir `SIGTERM`: su sonda de disponibilidad, `GET /healthz/readiness`, empieza a devolver
+`503`, y alrededor de un segundo después deja de aceptar conexiones y espera a que terminen las
+peticiones en curso.

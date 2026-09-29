@@ -34,8 +34,8 @@ están en el [registro de costes](cost-ledger.md) y en las métricas
 `synapse_input_tokens_total` y `synapse_output_tokens_total`.
 
 Synapse siempre hace streaming desde el proveedor, pida lo que pida el cliente. Para un
-cliente sin streaming, almacena el stream en búfer en una única respuesta antes de enviar
-nada, y por eso las peticiones sin streaming conservan la cadena de fallback completa.
+cliente sin streaming, consolida el stream en una única respuesta antes de enviar nada,
+y por eso las peticiones sin streaming conservan la cadena de fallback completa.
 
 ### Fallback durante el streaming {#fallback-while-streaming}
 

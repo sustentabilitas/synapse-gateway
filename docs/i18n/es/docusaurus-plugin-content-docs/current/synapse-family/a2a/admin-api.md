@@ -46,13 +46,13 @@ curl -s -X POST localhost:8080/internal/a2a/agents \
 
 | Campo | Tipo | Obligatorio | Descripción |
 |---|---|---|---|
-| `id` | string | Yes | Clave en el registro, usada en los paths `/a2a/agents/{id}/...`. |
-| `name` | string | Yes | Nombre visible en el catálogo. |
-| `description` | string | Yes | Resumen breve en el catálogo. |
-| `endpoint_url` | string | Yes | URL absoluta en la que el agente sirve A2A JSON-RPC. |
-| `card_url` | string | Yes | URL absoluta de la agent card del agente, que aparece en el catálogo. |
-| `tags` | array of strings | Yes | Etiquetas libres; envía `[]` si no hay ninguna. |
-| `card` | any JSON | Yes | La agent card, que se guarda y se devuelve sin cambios. |
+| `id` | string | Sí | Clave en el registro, usada en los paths `/a2a/agents/{id}/...`. |
+| `name` | string | Sí | Nombre visible en el catálogo. |
+| `description` | string | Sí | Resumen breve en el catálogo. |
+| `endpoint_url` | string | Sí | URL absoluta en la que el agente sirve A2A JSON-RPC. |
+| `card_url` | string | Sí | URL absoluta de la agent card del agente, que aparece en el catálogo. |
+| `tags` | array of strings | Sí | Etiquetas libres; envía `[]` si no hay ninguna. |
+| `card` | any JSON | Sí | La agent card, que se guarda y se devuelve sin cambios. |
 | `ttl_seconds` | integer | No | Segundos hasta que el agente caduca. Omítelo para que no caduque. |
 
 El gateway guarda la petición tal cual: no obtiene `card_url` ni comprueba que la agent card

@@ -84,6 +84,6 @@ por proceso. Ejecuta un proceso por cada tenant concurrente; consulta
 ## Elegir las reglas {#choosing-rules}
 
 Marca como `required` todos los encabezados de los que depende el upstream para la autorización
-o el aislamiento de tenants. Una regla opcional sirve para encabezados que el upstream puede
-pasar sin ellos, como un id de usuario para logs de auditoría que recurre a una identidad de
+o el aislamiento de tenants. Una regla opcional sirve para encabezados de los que el upstream
+puede prescindir, como un id de usuario para logs de auditoría que recurre a una identidad de
 servicio.

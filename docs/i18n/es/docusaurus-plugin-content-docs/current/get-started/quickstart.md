@@ -15,7 +15,7 @@ cada petición.
 - Un proyecto de Google Cloud con la API de Vertex AI habilitada y credenciales que puedan
   llamarla: una clave de cuenta de servicio con el rol Vertex AI User para Docker, o
   `gcloud auth application-default login` para un binario local.
-- Opcionalmente, una API key de OpenAI para el segundo tramo de la ruta `chat`. Si no la
+- Opcionalmente, una clave de API de OpenAI para el segundo tramo de la ruta `chat`. Si no la
   tienes, consulta el consejo de [Arrancar el gateway](#start-the-gateway).
 - La herramienta de línea de comandos `sqlite3` en tu máquina, para el último paso,
   [Ver lo que ha costado](#see-what-it-cost).
@@ -134,7 +134,7 @@ En ambos casos, la API escucha en el puerto `8080`, las métricas de Prometheus 
 `9090`, y el registro de costes se escribe en `data/synapse.db`.
 
 :::tip
-¿No tienes API key de OpenAI? Define `SYNAPSE_PROVIDER_VALIDATION=lenient` en lugar de
+¿No tienes clave de API de OpenAI? Define `SYNAPSE_PROVIDER_VALIDATION=lenient` en lugar de
 `OPENAI_API_KEY`. Synapse descarta entonces el tramo `openai` y arranca con `chat` servida
 solo por Vertex. El valor por defecto, `strict`, se niega a arrancar cuando una ruta hace
 referencia a un proveedor sin credenciales.
@@ -176,7 +176,7 @@ registro; sin él, las peticiones se atribuyen a `unattributed`.
 
 Como la petición es OpenAI puro, cualquier SDK de OpenAI también funciona: apunta su URL
 base a `http://localhost:8080/v1` y usa `gemini-flash` como modelo. Synapse no tiene
-autenticación de entrada, pero la mayoría de los SDKs exigen una API key, así que pasa
+autenticación de entrada, pero la mayoría de los SDKs exigen una clave de API, así que pasa
 cualquier cadena no vacía. Consulta
 [Seguridad](../operating/security.md#callers-arent-authenticated) y
 [Limitaciones y hoja de ruta](../reference/limitations-roadmap.md).
@@ -288,7 +288,7 @@ Cada petición que has enviado aparece como una fila atribuida a `my-team`, con 
   [carril Vertex nativo](../guides/native-vertex.md), el
   [router Jev](../guides/jev-router.md), las [cadenas de fallback](../guides/fallback-chains.md),
   el [streaming y las llamadas a herramientas](../guides/streaming-and-tools.md), la
-  [atribución de tenants](../guides/tenant-attribution.md) y el
+  [atribución por tenant](../guides/tenant-attribution.md) y el
   [registro de costes](../guides/cost-ledger.md).
 - Despliégalo con [Docker](../deployment/docker.md) o
   [Docker Compose](../deployment/docker-compose.md) y después repasa la

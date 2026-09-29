@@ -18,7 +18,7 @@ tipo de trabajo sin cambiar el cuerpo de la petición.
 | `x-synapse-workspace` | `workspace` | Una agrupación dentro del tenant, como un proyecto o un equipo. |
 | `x-synapse-user` | `user_id` | El usuario final dentro del tenant. |
 | `x-synapse-thread` | `thread_id` | Una conversación o un hilo de agente. |
-| `x-synapse-message` | `message_id` | Un mensaje o unidad de trabajo dentro del hilo. También se convierte en el id de la petición; consulta [Correlaciona peticiones](#correlate-requests). |
+| `x-synapse-message` | `message_id` | Un mensaje o unidad de trabajo dentro del hilo. También se convierte en el id de la petición; consulta [Correlacionar peticiones](#correlate-requests). |
 | `x-synapse-user-task-type` | `user_task_type` | Tu propia etiqueta para el trabajo al que sirve la petición, como `summarisation`. Se registra tal cual se envía y nunca se interpreta. |
 | `x-synapse-ai-task-type` | `ai_task_type` | Sustituye el [tipo de tarea de IA](#ai-task-types) para esta petición. |
 
@@ -65,7 +65,7 @@ Da a `SYNAPSE_DEFAULT_TENANT` un valor reconocible, como el nombre del despliegu
 uso sin atribuir destaque. Consulta
 [Variables de entorno](../configuration/environment-variables.md#tenancy).
 
-## Correlaciona peticiones {#correlate-requests}
+## Correlacionar peticiones {#correlate-requests}
 
 Cada petición recibe un id de petición, que se registra como `request_id` en el registro. En
 los chat completions es también el `id` de la respuesta, como `chatcmpl-<request id>`. Cuando
@@ -98,7 +98,7 @@ vision = ["receipt-ocr"]
 ```
 
 - El gateway lo lee de `SYNAPSE_AI_TASK_TYPES_PATH` (por defecto
-  `config/ai_task_types.toml`) al arrancar. El fichero es opcional: sin él, todas las
+  `config/ai_task_types.toml`) al arrancar. El archivo es opcional: sin él, todas las
   peticiones se resuelven a `simple` salvo que el encabezado diga otra cosa.
 - Los alias no listados se resuelven a `simple`, así que enumera solo las rutas cuyo trabajo
   no es simple.
@@ -117,4 +117,4 @@ envíen nada.
 Las aplicaciones que embeben el gateway pasan los mismos campos en un `RequestCtx`, cuyos
 campos `tenant`, `workspace`, `user`, `thread`, `message`, `user_task_type` y `ai_task_type`
 corresponden a los encabezados, más un `request_id` opcional. Consulta
-[Synapse como biblioteca embebida](embedding-as-library.md).
+[Embeber Synapse como biblioteca](embedding-as-library.md).

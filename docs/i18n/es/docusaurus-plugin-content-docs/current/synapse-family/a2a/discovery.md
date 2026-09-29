@@ -77,6 +77,6 @@ endpoint, así que no hay limpieza en segundo plano ni retraso: la primera petic
 ya no ve el agente.
 
 Para mantener listado un agente con un tiempo de vida, haz que su host lo vuelva a registrar
-antes del plazo. Como el registro sigue la regla gana el primero que escribe, el host debe hacer
-`DELETE` del agente y después `POST`, y el agente falta del catálogo entre las dos llamadas;
-consulta [Ids duplicados](./admin-api.md#duplicate-ids).
+antes del plazo. Como el registro de agentes sigue la regla «gana el primero que escribe», el
+host debe hacer `DELETE` del agente y después `POST`, y el agente no aparece en el catálogo entre
+las dos llamadas; consulta [Ids duplicados](./admin-api.md#duplicate-ids).

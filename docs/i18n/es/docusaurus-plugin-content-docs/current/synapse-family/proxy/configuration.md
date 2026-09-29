@@ -19,11 +19,11 @@ encima. Si el archivo falta o no se puede leer, el proxy se detiene al arrancar.
 | `addr` | string | `0.0.0.0:8787` | Dirección de escucha del plano de datos. `SYNAPSE_PROXY_ADDR` la sobrescribe. |
 | `admin_addr` | string | `127.0.0.1:8788` | Dirección de escucha de administración, para `/internal/bind`. |
 | `metrics_addr` | string | `0.0.0.0:9090` | Dirección de escucha de métricas, para `/metrics`. |
-| `[context]` | table | empty | De dónde sale el contexto; consulta [Fuentes de contexto](./context-and-transforms.md#context-sources). |
-| `[[routes]]` | array of tables | none | Las rutas, descritas más abajo. Sin rutas, todas las peticiones reciben `404`. |
+| `[context]` | table | vacía | De dónde sale el contexto; consulta [Fuentes de contexto](./context-and-transforms.md#context-sources). |
+| `[[routes]]` | array of tables | ninguna | Las rutas, descritas más abajo. Sin rutas, todas las peticiones reciben `404`. |
 
 Las claves desconocidas se ignoran, así que una clave mal escrita no tiene ningún efecto y no
-avisa. Revisa cada archivo nuevo contra las tablas de esta página.
+avisa. Comprueba cada archivo nuevo con las tablas de esta página.
 
 ### Rutas {#routes}
 
@@ -31,15 +31,15 @@ Cada tabla `[[routes]]` reenvía un prefijo de path a un upstream:
 
 | Clave | Tipo | Obligatoria | Por defecto | Descripción |
 |---|---|---|---|---|
-| `path_prefix` | string | Yes | — | Las peticiones cuyo path empieza por esta cadena coinciden con la ruta. Gana la coincidencia más larga. |
-| `upstream` | string | Yes | — | URL base a la que reenviar: esquema, host y un prefijo de path opcional. |
+| `path_prefix` | string | Sí | — | Las peticiones cuyo path empieza por esta cadena coinciden con la ruta. Gana la coincidencia más larga. |
+| `upstream` | string | Sí | — | URL base a la que reenviar: esquema, host y un prefijo de path opcional. |
 | `name` | string | No | `path_prefix` | Etiqueta usada en métricas y logs. |
 | `strip_prefix` | bool | No | `false` | Elimina `path_prefix` del path antes de añadirlo a `upstream`. |
-| `methods` | array of strings | No | any | Solo coincide con estos métodos HTTP, por ejemplo `["POST"]`. No distingue mayúsculas de minúsculas. |
-| `headers` | table | No | none | Encabezados estáticos que se fijan en cada petición reenviada, antes de ejecutar `request_steps`. |
-| `require_context` | array of strings | No | none | Claves de contexto que deben estar fijadas; si no, la petición recibe `503`. |
-| `request_steps` | array | No | none | Transformaciones aplicadas a la petición, en orden. |
-| `response_steps` | array | No | none | Transformaciones aplicadas a la respuesta del upstream, en orden. |
+| `methods` | array of strings | No | cualquiera | Solo coincide con estos métodos HTTP, por ejemplo `["POST"]`. No distingue mayúsculas de minúsculas. |
+| `headers` | table | No | ninguno | Encabezados estáticos que se fijan en cada petición reenviada, antes de ejecutar `request_steps`. |
+| `require_context` | array of strings | No | ninguno | Claves de contexto que deben estar fijadas; si no, la petición recibe `503`. |
+| `request_steps` | array | No | ninguno | Transformaciones aplicadas a la petición, en orden. |
+| `response_steps` | array | No | ninguno | Transformaciones aplicadas a la respuesta del upstream, en orden. |
 
 Los pasos se describen en [Contexto y transformaciones](./context-and-transforms.md). Un paso
 no válido, como un `inject` con `header` y `body` a la vez, o un nombre de `transform` que no
@@ -99,7 +99,7 @@ versión de API fijados. `POST /v1/integrations/call` se reenvía a
 | Variable | Por defecto | Descripción |
 |---|---|---|
 | `SYNAPSE_PROXY_CONFIG_PATH` | `synapse-proxy.toml` | Ruta al archivo de configuración. |
-| `SYNAPSE_PROXY_ADDR` | `addr` from the file | Sobrescribe la dirección de escucha del plano de datos. Se ignora si está vacía. |
+| `SYNAPSE_PROXY_ADDR` | `addr` del archivo | Sobrescribe la dirección de escucha del plano de datos. Se ignora si está vacía. |
 | `SYNAPSE_PROXY_UPSTREAM_CONNECT_TIMEOUT_SECS` | `10` | Tiempo permitido para conectar con un upstream. |
 | `SYNAPSE_PROXY_UPSTREAM_TIMEOUT_SECS` | `120` | Tiempo permitido para una petición completa al upstream, incluida la lectura de un cuerpo de respuesta en streaming. |
 | `SYNAPSE_PROXY_UPSTREAM_SEND_RETRIES` | `2` | Reintentos tras un envío fallido; `0` desactiva los reintentos. |
@@ -108,7 +108,7 @@ versión de API fijados. `POST /v1/integrations/call` se reenvía a
 
 Las variables de entorno que nombra la tabla `[context]` también se leen al arrancar; consulta
 [Fuentes de contexto](./context-and-transforms.md#context-sources). Un valor que no es un
-número válido vuelve al valor por defecto.
+número válido se sustituye por el valor por defecto.
 
 ## Tiempos de espera y reintentos {#timeouts-and-retries}
 

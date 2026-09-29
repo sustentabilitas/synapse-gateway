@@ -23,8 +23,8 @@ curl -s -X POST localhost:8788/internal/mcp/servers \
 
 | Campo | Tipo | Obligatorio | Descripción |
 |---|---|---|---|
-| `name` | string | Yes | El nombre que usan los clientes en `/mcp/{name}`. |
-| `url` | string | Yes | El endpoint MCP Streamable HTTP del servidor upstream. |
+| `name` | string | Sí | El nombre que usan los clientes en `/mcp/{name}`. |
+| `url` | string | Sí | El endpoint MCP Streamable HTTP del servidor upstream. |
 | `ttl_seconds` | integer | No | Segundos hasta que caduca el registro. Omítelo para que no caduque. |
 
 Devuelve `204 No Content`. Registrar un nombre que ya existe sustituye su URL y su caducidad. Es

@@ -94,8 +94,8 @@ Faltan dos cosas a propósito. Los tenants no son etiquetas, porque sus valores 
 clientes y no están acotados; el uso y el coste por tenant viven en el
 [registro de costes](/docs/guides/cost-ledger/), que puedes consultar directamente. Y no hay
 ninguna métrica de chat completions fallidas: las métricas de peticiones cuentan las peticiones
-que produjeron una respuesta, así que mide las tasas de error en el balanceador de carga o en la
-malla que haya delante del gateway.
+que produjeron una respuesta, así que mide las tasas de error en el balanceador de carga o en el
+service mesh que haya delante del gateway.
 [Qué cuentan las métricas de peticiones](/docs/operating/metrics/#what-the-request-metrics-count)
 detalla los casos límite, como los streams abandonados.
 

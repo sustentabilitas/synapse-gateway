@@ -70,7 +70,7 @@ costes para las cifras por tenant.
 
 ### Qué cuentan las métricas de peticiones {#what-the-request-metrics-count}
 
-`synapse_requests_total` y sus métricas compañeras cuentan los completados de chat que
+`synapse_requests_total` y sus métricas compañeras cuentan los chat completions que
 produjeron una respuesta:
 
 - Una petición sin streaming se cuenta cuando tiene éxito, con la latencia de toda la petición
@@ -85,7 +85,7 @@ produjeron una respuesta:
 - Una petición de extracción híbrida se cuenta una vez por su respuesta de Jev y una vez por
   cada extracción.
 
-No hay ninguna métrica para los completados de chat fallidos. Mide las tasas de error en el
+No hay ninguna métrica para los chat completions fallidos. Mide las tasas de error en el
 balanceador de carga, el ingress o el service mesh que tengas delante del gateway.
 
 ## Consultas {#queries}

@@ -39,8 +39,8 @@ Features de Cargo:
 
 | Feature | Por defecto | Añade |
 |---|---|---|
-| `server` | Yes | El servidor HTTP de axum, los exportadores de Prometheus y OTLP, y `synapse-a2a`. |
-| `ledger-sqlite` | Yes | El destino SQLite del registro de costes. |
+| `server` | Sí | El servidor HTTP de axum, los exportadores de Prometheus y OTLP, y `synapse-a2a`. |
+| `ledger-sqlite` | Sí | El destino SQLite del registro de costes. |
 | `ledger-postgres` | No | El destino Postgres del registro de costes. |
 | `ledger-pubsub` | No | El destino Google Cloud Pub/Sub del registro de costes. |
 | `ledger-sns` | No | El destino AWS SNS del registro de costes. |

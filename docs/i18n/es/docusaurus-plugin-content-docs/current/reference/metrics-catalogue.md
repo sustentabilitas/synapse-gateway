@@ -23,8 +23,8 @@ lentas solo caen en el bucket `+Inf`.
 
 | Métrica | Tipo | Unidad | Etiquetas |
 |---|---|---|---|
-| `synapse_requests_total` | Counter | requests | `route`, `model`, `system`, `lane` |
-| `synapse_request_duration_seconds` | Histogram | seconds | `route`, `model`, `system`, `lane` |
+| `synapse_requests_total` | Counter | peticiones | `route`, `model`, `system`, `lane` |
+| `synapse_request_duration_seconds` | Histogram | segundos | `route`, `model`, `system`, `lane` |
 | `synapse_input_tokens_total` | Counter | tokens | `route`, `model`, `system`, `lane` |
 | `synapse_output_tokens_total` | Counter | tokens | `route`, `model`, `system`, `lane` |
 
@@ -41,8 +41,8 @@ Solo se cuentan las peticiones que produjeron una respuesta; consulta
 
 | Métrica | Tipo | Unidad | Etiquetas |
 |---|---|---|---|
-| `synapse_embeddings_total` | Counter | requests | `route`, `model`, `provider` |
-| `synapse_embedding_duration_seconds` | Histogram | seconds | `route`, `model`, `provider` |
+| `synapse_embeddings_total` | Counter | peticiones | `route`, `model`, `provider` |
+| `synapse_embedding_duration_seconds` | Histogram | segundos | `route`, `model`, `provider` |
 
 `route` es el alias de embeddings; `model` y `provider` indican el tramo que la sirvió. Solo se
 cuentan las peticiones con éxito, y la duración cubre únicamente el tramo que sirvió. Consulta
@@ -52,7 +52,7 @@ cuentan las peticiones con éxito, y la duración cubre únicamente el tramo que
 
 | Métrica | Tipo | Unidad | Etiquetas |
 |---|---|---|---|
-| `synapse_passthrough_total` | Counter | calls | `provider`, `model`, `action`, `status` |
+| `synapse_passthrough_total` | Counter | llamadas | `provider`, `model`, `action`, `status` |
 | `synapse_passthrough_fallback_total` | Counter | fallbacks | `from_model`, `to_model` |
 
 - `synapse_passthrough_total` cuenta cada intento de los passthroughs de Gemini y Jev.
@@ -65,9 +65,9 @@ cuentan las peticiones con éxito, y la duración cubre únicamente el tramo que
 
 | Métrica | Tipo | Unidad | Etiquetas |
 |---|---|---|---|
-| `synapse_routing_decisions_total` | Counter | requests | `route`, `tier`, `outcome` |
-| `synapse_routing_decision_duration_seconds` | Histogram | seconds | `route` |
-| `synapse_jev_extraction_total` | Counter | responses | `route`, `degraded` |
+| `synapse_routing_decisions_total` | Counter | peticiones | `route`, `tier`, `outcome` |
+| `synapse_routing_decision_duration_seconds` | Histogram | segundos | `route` |
+| `synapse_jev_extraction_total` | Counter | respuestas | `route`, `degraded` |
 
 - `synapse_routing_decisions_total` cuenta las peticiones a rutas `strategy = "jev"`. `tier` es
   el nivel que seleccionó la decisión; `outcome` es `decided`, `low_confidence`, `timeout`,
@@ -81,9 +81,9 @@ cuentan las peticiones con éxito, y la duración cubre únicamente el tramo que
 
 | Métrica | Tipo | Unidad | Etiquetas |
 |---|---|---|---|
-| `synapse_guard_scans_total` | Counter | scans | `policy`, `outcome` |
-| `synapse_guard_matches_total` | Counter | matches | `policy`, `scanner`, `severity` |
-| `synapse_guard_scan_duration_seconds` | Histogram | seconds | `policy` |
+| `synapse_guard_scans_total` | Counter | escaneos | `policy`, `outcome` |
+| `synapse_guard_matches_total` | Counter | coincidencias | `policy`, `scanner`, `severity` |
+| `synapse_guard_scan_duration_seconds` | Histogram | segundos | `policy` |
 
 `outcome` es `pass`, `flag`, `block` u `observe`; `severity` es `block`, `warn` o `info`.
 Consulta [Política de guardrails](../configuration/guardrails-policy.md#metrics).
@@ -92,8 +92,8 @@ Consulta [Política de guardrails](../configuration/guardrails-policy.md#metrics
 
 | Métrica | Tipo | Unidad | Etiquetas |
 |---|---|---|---|
-| `synapse_ledger_dropped_total` | Counter | rows | none |
-| `synapse_ledger_errors_total` | Counter | failed writes | `backend` |
+| `synapse_ledger_dropped_total` | Counter | filas | ninguna |
+| `synapse_ledger_errors_total` | Counter | escrituras fallidas | `backend` |
 
 - `synapse_ledger_dropped_total` cuenta las filas descartadas porque la cola del registro estaba
   llena.
@@ -107,11 +107,11 @@ Consulta [Entrega](../guides/cost-ledger.md#delivery).
 
 | Métrica | Tipo | Unidad | Etiquetas |
 |---|---|---|---|
-| `synapse_resilience_calls_total` | Counter | calls | `label`, `outcome` |
-| `synapse_resilience_call_duration_seconds` | Histogram | seconds | `label`, `outcome` |
-| `synapse_resilience_retry_attempts_total` | Counter | retries | `label` |
-| `synapse_resilience_breaker_transitions_total` | Counter | transitions | `name`, `transition` |
-| `synapse_resilience_breaker_state` | Gauge | state | `name`: 0 closed, 1 open, 2 half-open |
+| `synapse_resilience_calls_total` | Counter | llamadas | `label`, `outcome` |
+| `synapse_resilience_call_duration_seconds` | Histogram | segundos | `label`, `outcome` |
+| `synapse_resilience_retry_attempts_total` | Counter | reintentos | `label` |
+| `synapse_resilience_breaker_transitions_total` | Counter | transiciones | `name`, `transition` |
+| `synapse_resilience_breaker_state` | Gauge | estado | `name`: 0 cerrado, 1 abierto, 2 semiabierto |
 
 :::note
 Estos instrumentos están definidos, pero el gateway actual nunca los registra: las peticiones de
@@ -131,11 +131,11 @@ son los que ve Prometheus:
 
 | Métrica | Tipo | Unidad | Etiquetas |
 |---|---|---|---|
-| `synapse_proxy_requests_total_total` | Counter | requests | `route`, `method`, `status`, `outcome` |
-| `synapse_proxy_request_duration_seconds` | Histogram | seconds | `route`, `method` |
-| `synapse_proxy_upstream_retries_total_total` | Counter | retries | `route`, `reason` |
-| `synapse_proxy_upstream_errors_total_total` | Counter | errors | `route`, `reason` |
-| `synapse_proxy_transform_errors_total_total` | Counter | errors | `route`, `transform` |
+| `synapse_proxy_requests_total_total` | Counter | peticiones | `route`, `method`, `status`, `outcome` |
+| `synapse_proxy_request_duration_seconds` | Histogram | segundos | `route`, `method` |
+| `synapse_proxy_upstream_retries_total_total` | Counter | reintentos | `route`, `reason` |
+| `synapse_proxy_upstream_errors_total_total` | Counter | errores | `route`, `reason` |
+| `synapse_proxy_transform_errors_total_total` | Counter | errores | `route`, `transform` |
 
 - `route` es el `name` de la ruta del proxy, o `none` cuando no coincidió ninguna ruta. `status`
   es el estado HTTP devuelto al cliente.
@@ -154,8 +154,9 @@ son los que ve Prometheus:
 `synapse_proxy_request_duration_seconds` usa los buckets por defecto de OpenTelemetry, que están
 dimensionados para milisegundos (0, 5, 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000,
 7500 y 10000), mientras que los valores están en segundos. Toda petición de menos de 5 segundos
-cae entre los límites `le="0"` y `le="5"`, así que los cuantiles calculados a partir de él no
-tienen sentido por debajo de 5 segundos. Usa `_sum / _count` para la latencia media.
+cae entre los límites `le="0"` y `le="5"`, así que los cuantiles calculados a partir de este
+histograma no tienen sentido por debajo de 5 segundos. Usa `_sum / _count` para la latencia
+media.
 :::
 
 ## synapse-mcp {#synapse-mcp}
@@ -165,9 +166,9 @@ el crate no exporta nada por sí mismo.
 
 | Instrumento | Tipo | Unidad | Etiquetas |
 |---|---|---|---|
-| `broker_mcp_requests_total` | Counter | tool calls | `tool`, `upstream`, `outcome` |
-| `broker_mcp_request_duration_seconds` | Histogram | seconds | `tool`, `upstream` |
-| `broker_identity_injection_failures_total` | Counter | failures | `reason` |
+| `broker_mcp_requests_total` | Counter | llamadas a herramientas | `tool`, `upstream`, `outcome` |
+| `broker_mcp_request_duration_seconds` | Histogram | segundos | `tool`, `upstream` |
+| `broker_identity_injection_failures_total` | Counter | fallos | `reason` |
 
 - `tool` es el nombre de la herramienta MCP y `upstream` es el servidor MCP al que se enrutó la
   llamada. `outcome` es `ok` o `error`.

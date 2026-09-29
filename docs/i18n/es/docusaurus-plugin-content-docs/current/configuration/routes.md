@@ -75,8 +75,8 @@ Una caché de contexto de Vertex debe estar en la misma ubicación que el tramo 
 ## Rutas Jev {#jev-routes}
 
 Una ruta con `strategy = "jev"` declara niveles de dificultad en lugar de tramos. En cada
-petición, Synapse pregunta a TypeSafe Jev lo exigente que es la conversación, puntuada contra
-las descripciones de los niveles, y si necesita razonamiento paso a paso. El nivel más cercano
+petición, Synapse pregunta a TypeSafe Jev lo exigente que es la conversación, puntuada frente
+a las descripciones de los niveles, y si necesita razonamiento paso a paso. El nivel más cercano
 sirve la petición con su `effort` de razonamiento, subido un paso cuando es probable que haga
 falta razonar.
 
@@ -124,7 +124,7 @@ difícil.
 | Clave | Descripción |
 |---|---|
 | `name` | Único, no vacío, ASCII imprimible (se permiten espacios). Se devuelve en el encabezado de respuesta `x-synapse-tier`. |
-| `description` | El tipo de trabajo al que se adapta el nivel. Jev puntúa las peticiones contra ella, así que describe el trabajo, nunca el modelo. |
+| `description` | El tipo de trabajo al que se adapta el nivel. Jev puntúa las peticiones frente a ella, así que describe el trabajo, nunca el modelo. |
 | `effort` | Esfuerzo de razonamiento de los tramos del nivel: `none`, `minimal`, `low`, `medium`, `high`, `xhigh` o `max`. |
 | `legs` | Los tramos del nivel, con la misma forma que los de una ruta estática. Cualquier proveedor excepto `typesafe`. |
 

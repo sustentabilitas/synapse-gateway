@@ -29,7 +29,7 @@ En el carril nativo:
   la que se le han quitado las funcionalidades en silencio.
 - Una ruta sin ningún tramo `vertex` devuelve `400` con el código de error
   `native_feature_unsupported`.
-- Synapse siempre llama a `:streamGenerateContent`, y almacena el stream en búfer en una única
+- Synapse siempre llama a `:streamGenerateContent`, y consolida el stream en una única
   respuesta para los clientes sin streaming.
 - Cada tramo llama a Vertex AI en su `region`, o en `VERTEX_LOCATION` si no tiene. Consulta
   [Regiones](../configuration/routes.md#regions).
@@ -65,7 +65,7 @@ El [tutorial de caché](../get-started/tutorials/native-vertex-caching.md) expli
 cómo crear una caché y consultarla.
 
 :::warning
-El registro de costes cobra los tokens de entrada en caché al precio `input` completo,
+El registro de costes valora los tokens de entrada en caché al precio `input` completo,
 mientras que Vertex AI los factura con descuento. Consulta
 [Registro de costes](cost-ledger.md#accuracy).
 :::
@@ -73,7 +73,7 @@ mientras que Vertex AI los factura con descuento. Consulta
 ## Medios en Cloud Storage {#cloud-storage-media}
 
 `media_uris` enumera objetos de Cloud Storage para que Gemini los lea. Synapse adjunta cada
-URI al último mensaje de usuario como una parte de fichero con tipo MIME `video/mp4`:
+URI al último mensaje de usuario como una parte de archivo con tipo MIME `video/mp4`:
 
 ```json
 {
@@ -84,13 +84,13 @@ URI al último mensaje de usuario como una parte de fichero con tipo MIME `video
 ```
 
 Como cada URI se etiqueta como `video/mp4`, usa `media_uris` para vídeo. Envía las imágenes
-inline, como partes de contenido `image_url` con una URL `data:` en base64, que ambos carriles
-admiten.
+inline, como partes de contenido `image_url` con una URL `data:` en base64, que los carriles
+estándar y Vertex nativo admiten.
 
 ## Salida estructurada {#structured-output}
 
 `response_schema` es un esquema JSON que restringe la salida de Gemini. Synapse lo envía como
-`generationConfig.responseSchema` con `responseMimeType` establecido a `application/json`, de
+`generationConfig.responseSchema` con `responseMimeType` igual a `application/json`, de
 modo que Vertex AI usa decodificación restringida y el contenido del mensaje es una cadena
 JSON que cumple el esquema:
 
@@ -144,7 +144,7 @@ no lo restringe a la que has nombrado.
 
 Las llamadas a herramientas de la respuesta reciben los ids `call_0`, `call_1`, etc. Cuando
 devuelves el resultado de una herramienta, Synapse usa el `name` del mensaje `role: "tool"`
-como nombre de función de Vertex, así que establece `name` al nombre de la función además de
+como nombre de función de Vertex, así que asigna a `name` el nombre de la función, además de
 `tool_call_id`. Consulta
 [Streaming y llamadas a herramientas](streaming-and-tools.md#tool-calling) para el ciclo
 completo.

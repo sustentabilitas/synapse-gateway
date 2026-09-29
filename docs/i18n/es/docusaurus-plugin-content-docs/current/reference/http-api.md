@@ -19,7 +19,7 @@ Ambos hablan HTTP sin cifrar y ninguno autentica a los clientes; consulta
 |---|---|---|
 | `GET` | `/health` | Comprobación de actividad (liveness). |
 | `GET` | `/v1/models` | Lista los alias de las rutas de chat. |
-| `POST` | `/v1/chat/completions` | Completados de chat compatibles con OpenAI, con o sin streaming. |
+| `POST` | `/v1/chat/completions` | Chat completions compatibles con OpenAI, con o sin streaming. |
 | `POST` | `/v1/embeddings` | Embeddings compatibles con OpenAI. |
 | `POST` | `/v1beta/models/{model}:{action}` | Passthrough nativo de Gemini a Vertex AI. |
 | `POST` | `/v1/models/{model}:{action}` | Passthrough nativo de Gemini a Vertex AI. |
@@ -30,7 +30,7 @@ Ambos hablan HTTP sin cifrar y ninguno autentica a los clientes; consulta
 | `GET` | `/.well-known/a2a-agent-catalog.json` | Lista los agentes A2A registrados. |
 | `GET` | `/a2a/agents/{id}/.well-known/agent-card.json` | La agent card A2A de un agente. |
 | `GET` | `/a2a/agents/{id}/resolve` | El endpoint y la agent card de un agente. |
-| `GET` | `/metrics` and `/` (metrics port) | Métricas de Prometheus. |
+| `GET` | `/metrics` y `/` (puerto de métricas) | Métricas de Prometheus. |
 
 Cualquier otro path devuelve `404` con el cuerpo vacío, y un path conocido con el método
 equivocado devuelve `405`.
@@ -48,18 +48,18 @@ explica cada uno.
 | `x-synapse-workspace` | Workspace dentro del tenant. |
 | `x-synapse-user` | Usuario final. |
 | `x-synapse-thread` | Conversación o hilo de agente. |
-| `x-synapse-message` | Id de mensaje. En los completados de chat y en los passthroughs también se convierte en el id de la petición. |
+| `x-synapse-message` | Id de mensaje. En los chat completions y en los passthroughs también se convierte en el id de la petición. |
 | `x-synapse-user-task-type` | Tu propia etiqueta para el trabajo, registrada tal como se envía. |
 | `x-synapse-ai-task-type` | Sustituye el [tipo de tarea de IA](../guides/tenant-attribution.md#ai-task-types). |
 
 ## Encabezados de respuesta {#response-headers}
 
-Las respuestas de los completados de chat llevan el informe de enrutamiento.
+Las respuestas de los chat completions llevan el informe de enrutamiento.
 [Router Jev](../guides/jev-router.md#response-headers) describe cuándo aparece cada encabezado.
 
 | Encabezado | Valores |
 |---|---|
-| `x-synapse-routing` | `static`, `jev` o `static-override`. Siempre presente en los completados de chat. |
+| `x-synapse-routing` | `static`, `jev` o `static-override`. Siempre presente en los chat completions. |
 | `x-synapse-tier` | El nivel cuyo tramo sirvió la petición. |
 | `x-synapse-tier-decided` | El nivel que eligió Jev, cuando sirvió otro nivel. |
 | `x-synapse-reasoning-effort` | El esfuerzo del tramo que sirvió, o `client` cuando la petición fijó el suyo. |
@@ -220,7 +220,7 @@ que se reenvía tal cual a Vertex AI con las credenciales del gateway.
   carril `passthrough`. Ante una respuesta `5xx`, `429` o `408` o un error de conexión, prueban
   los siguientes tramos `vertex` de la ruta que lista el modelo; consulta
   [Clientes del SDK de Gemini](../guides/native-vertex.md#gemini-sdk-clients).
-- Las demás acciones se reenvían una sola vez, sin fila en el registro.
+- Las demás acciones se reenvían una sola vez, sin fila en el registro de costes.
 - Un modelo que ninguna ruta lista se reenvía igualmente, en un único intento.
 - Las llamadas con streaming (`?alt=sse`) pueden durar hasta una hora. Todas las demás están
   acotadas por `SYNAPSE_REQUEST_TIMEOUT_SECS`.

@@ -56,8 +56,8 @@ Una ruta `jev` necesita `TYPESAFE_API_KEY`; sin ella, la validación estricta de
 se aplica por defecto impide que el gateway arranque.
 
 Las descripciones importan más que cualquier otra cosa del archivo, porque son aquello con lo
-que Jev compara la petición. «Análisis en varios pasos, matemáticas o demostraciones» le da a
-Jev algo que juzgar; «Gemini Pro», no. El orden también importa: es lo que indexa la
+que Jev compara la petición. `"Multi-step analysis, maths or proofs"` (análisis en varios
+pasos, matemáticas o demostraciones) le da a Jev algo que juzgar; `"Gemini Pro"`, no. El orden también importa: es lo que indexa la
 puntuación de dificultad y determina el fallback entre niveles. El
 [tutorial de niveles de Jev](/docs/get-started/tutorials/jev-tiers/) construye esta ruta paso a
 paso.
@@ -79,8 +79,8 @@ cuidadoso paso a paso, como en matemáticas, lógica, planificación o depuraci�
 supera `reasoning_threshold` (0.7 por defecto), el esfuerzo del nivel sube un escalón, incluso
 cuando la puntuación de dificultad era demasiado incierta para usarla.
 
-La llamada de decisión está acotada por `timeout_ms`, 400 ms por defecto, así que añade hasta
-esa latencia a cada petición de la ruta. Ese es el precio de la decisión, y la razón por la que
+La llamada de decisión está acotada por `timeout_ms`, 400 ms por defecto, así que puede añadir
+hasta ese tiempo de latencia a cada petición de la ruta. Ese es el precio de la decisión, y la razón por la que
 una ruta estática sigue siendo mejor opción cuando ya sabes qué modelo necesita cada caso de
 uso.
 
@@ -96,11 +96,11 @@ traduce el esfuerzo para cada tramo:
   (`thinkingBudget`): 512 tokens para `minimal`, 1,024 para `low`, 4,096 para `medium`, 8,192
   para `high`, 16,384 para `xhigh` y 24,576 para `max`.
 - `none` no envía nada, así que se aplica el valor por defecto del propio modelo. En algunos
-  modelos Gemini ese valor por defecto es thinking dinámico, así que usa `minimal` cuando quieras
-  que el thinking se mantenga reducido.
+  modelos Gemini ese valor por defecto es el razonamiento dinámico, así que usa `minimal` cuando
+  quieras que el razonamiento se mantenga reducido.
 
 La tabla de [Esfuerzo](/docs/configuration/routes/#effort) de la referencia de rutas tiene todas
-las correspondencias. Los tokens de thinking se facturan como salida, por eso los niveles fáciles
+las correspondencias. Los tokens de razonamiento se facturan como salida, por eso los niveles fáciles
 suelen ir con `none` o `minimal` y solo los difíciles reciben `medium` o más.
 
 El esfuerzo que indica el propio cliente siempre gana en su carril. Un `reasoning_effort` en el
@@ -115,9 +115,9 @@ el cliente envió `"routing_strategy": "static"` para saltarse la decisión, y `
 rutas normales. Cuando corresponde, `x-synapse-tier` nombra el nivel que sirvió la petición,
 `x-synapse-tier-decided` el nivel que eligió la decisión (la elección de Jev, o `default_tier`
 cuando el enrutamiento está degradado) si sirvió otro distinto, y `x-synapse-reasoning-effort`
-el esfuerzo con el que se ejecutó el tramo que la sirvió. En los streams, las cabeceras
+el esfuerzo con el que se ejecutó el tramo que la sirvió. En los streams, los encabezados
 describen el tramo que produjo el primer fragmento. La sección de
-[cabeceras de respuesta](/docs/guides/jev-router/#response-headers) enumera todos los valores.
+[encabezados de respuesta](/docs/guides/jev-router/#response-headers) enumera todos los valores.
 
 ## Un problema con Jev nunca hace fallar la petición {#a-jev-problem-never-fails-the-request}
 
@@ -138,7 +138,7 @@ detalles.
 
 Cada decisión que responde Jev escribe su propia fila en el
 [registro de costes](/docs/guides/cost-ledger/), con proveedor `typesafe`, carril `jev` y el
-mismo `request_id` que la petición de chat que enrutó, tarificada como `typesafe:<model>` según
+mismo `request_id` que la petición de chat que enrutó, valorada como `typesafe:<model>` según
 tu `pricing.toml`. Ves el coste de decidir junto al coste de responder.
 
 Dos métricas siguen al router: `synapse_routing_decisions_total`, etiquetada por ruta, nivel y

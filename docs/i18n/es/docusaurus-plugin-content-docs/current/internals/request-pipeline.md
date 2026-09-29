@@ -135,7 +135,7 @@ se descartan.
   tiempos de espera de primer fragmento y de inactividad, y pasa al siguiente tramo ante
   cualquier fallo.
 - `execute_streaming_with_timeouts` abre cada tramo y espera su primer fragmento. El primer tramo
-  que produce uno queda comprometido; los fallos posteriores llegan al cliente como un evento de
+  que produce uno queda fijado; los fallos posteriores llegan al cliente como un evento de
   error.
 - Ambos devuelven `502 all_legs_failed` con el fallo de cada tramo cuando se agota la cadena.
 
@@ -145,8 +145,8 @@ llama a `stream_generate` en
 [`vertex_native.rs`](https://github.com/sustentabilitas/synapse-gateway/blob/main/crates/synapse-gateway/src/vertex_native.rs),
 que traduce la petición al formato de Vertex y llama a la región del tramo. Un `5xx`, un `429`,
 un `408` o un error de conexión pasa al siguiente tramo; cualquier otro `4xx` detiene la cadena.
-En una petición con búfer, `collect_committed` vacía el stream comprometido en un único
-completado. Las credenciales de Google vienen de
+En una petición con búfer, `collect_committed` vacía el stream fijado en una única
+respuesta completa. Las credenciales de Google vienen de
 [`providers/vertex_auth.rs`](https://github.com/sustentabilitas/synapse-gateway/blob/main/crates/synapse-gateway/src/providers/vertex_auth.rs).
 
 **Carril Jev.** `Gateway::jev_attempt` envía las preguntas a cada tramo `typesafe` a través de
@@ -182,7 +182,7 @@ El uso solo se registra para las peticiones que produjeron una respuesta.
   `GenAiSpan::emit_metrics` en
   [`observability.rs`](https://github.com/sustentabilitas/synapse-gateway/blob/main/crates/synapse-gateway/src/observability.rs),
   antes de devolver la respuesta.
-- **Streaming:** el `GuardedStream` que devuelve `chat_stream` envuelve el stream comprometido en
+- **Streaming:** el `GuardedStream` que devuelve `chat_stream` envuelve el stream fijado en
   un guard `StreamSideEffects`. El guard lee los recuentos de tokens del último elemento del
   stream y hace el mismo trabajo en su `Drop`, así que se ejecuta una sola vez termine como
   termine el stream: completado, error o desconexión del cliente. Un stream que falló a mitad se

@@ -1,6 +1,6 @@
 ---
 sidebar_position: 9
-title: Synapse como biblioteca embebida
+title: Embeber Synapse como biblioteca
 description: Depende del crate synapse-gateway sin su servidor HTTP y llama a Gateway::chat, chat_stream y embed en el mismo proceso desde tu servicio en Rust.
 ---
 
@@ -13,7 +13,7 @@ cuando quieras las métricas y el registro de costes del gateway en un solo siti
 
 La referencia de la API está en [docs.rs](https://docs.rs/synapse-gateway).
 
-## Añade la dependencia {#add-the-dependency}
+## Añadir la dependencia {#add-the-dependency}
 
 Desactiva las features por defecto, que añaden el servidor HTTP y el registro en SQLite:
 
@@ -30,7 +30,7 @@ El crate de biblioteca se llama `synapse`, así que lo importas como `synapse::�
 `ledger-sqlite`, `ledger-postgres`, `ledger-pubsub` o `ledger-sns` a `features` para tener un
 backend de registro; consulta [Instalación](../get-started/installation.md#cargo).
 
-## Construye un gateway {#build-a-gateway}
+## Construir un gateway {#build-a-gateway}
 
 `Gateway::builder()` recibe la tabla de rutas, el catálogo de proveedores, la tabla de precios
 y un handle del registro, todos obligatorios, además de partes opcionales. Este ejemplo sirve
@@ -122,7 +122,7 @@ async fn main() -> anyhow::Result<()> {
 Lo que conviene saber sobre cada pieza:
 
 - **`RouteTable` y `PricingTable`** analizan el mismo TOML que `routes.toml` y
-  `pricing.toml`. En un servicio real, léelos de ficheros con `std::fs::read_to_string`.
+  `pricing.toml`. En un servicio real, léelos de archivos con `std::fs::read_to_string`.
 - **`Catalog::build`** crea un cliente para cada proveedor que referencian las rutas, leyendo
   las credenciales del mapa que le pasas, y falla si falta alguno, como la validación estricta
   del binario. No lee por sí solo el entorno del proceso.
@@ -156,7 +156,7 @@ Los errores son `synapse::error::GatewayError`: `UnknownModel`, `BadRequest`,
 `Upstream`, los mismos casos que la API HTTP asigna a códigos de estado. El enum también
 declara `UpstreamTimeout` y `AllCircuitsOpen`, que el gateway no devuelve actualmente.
 
-## Lee el informe de enrutamiento {#read-the-routing-report}
+## Leer el informe de enrutamiento {#read-the-routing-report}
 
 `Gateway::chat_routed(req, &ctx)` devuelve `(ChatOutcome, RoutingReport)`. El informe indica
 cómo se enrutó la petición, lo que importa en las rutas con [router Jev](jev-router.md):

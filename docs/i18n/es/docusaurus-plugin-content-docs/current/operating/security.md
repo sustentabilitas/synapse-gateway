@@ -64,9 +64,9 @@ tienen autenticación:
 - `POST /internal/a2a/agents` registra un agente;
 - `DELETE /internal/a2a/agents/{id}` elimina uno.
 
-El registro nunca sobrescribe un id existente, pero un cliente puede eliminar un agente y
-registrar otro con el mismo id y su propio endpoint. Los clientes que resuelven agentes a través
-del catálogo se enviarían entonces a ese endpoint. Bloquea `/internal/` en tu proxy para todo
+Registrar un agente nunca sobrescribe un id existente, pero un cliente puede eliminar un agente
+y registrar otro con el mismo id y su propio endpoint. Las peticiones de los clientes que
+resuelven agentes a través del catálogo acabarían entonces en ese endpoint. Bloquea `/internal/` en tu proxy para todo
 salvo los servicios que registran agentes, o carga el catálogo desde `a2a.toml` al arrancar y
 bloquea por completo los endpoints de administración.
 
@@ -83,7 +83,7 @@ cuenta de servicio al que apunta `GOOGLE_APPLICATION_CREDENTIALS`.
 [Variables de entorno](../configuration/environment-variables.md#providers) las lista todas.
 
 - Inyéctalas desde un almacén de secretos, no desde archivos incluidos en una imagen o
-  confirmados en un repositorio.
+  subidos a un repositorio.
 - Para Vertex AI, prefiere una workload identity a un archivo de clave de cuenta de servicio:
   Application Default Credentials la detecta sin ninguna clave que se pueda filtrar.
 - Da a cada credencial solo el acceso que necesita el gateway. El passthrough de Gemini puede
@@ -97,7 +97,7 @@ proveedores a los clientes.
 
 ## Contenido {#content}
 
-El gateway no registra prompts ni completados, y el registro de costes no almacena contenido:
+El gateway no registra prompts ni respuestas generadas, y el registro de costes no almacena contenido:
 cada fila contiene identificadores, la ruta, el proveedor y el modelo, los recuentos de tokens,
 el coste y el estado. Consulta [Qué se registra](./logging.md#what-is-logged) y el
 [formato de fila](../guides/cost-ledger.md#row-format).
@@ -109,8 +109,8 @@ parte de la petición.
 ## Guardrails {#guardrails}
 
 Las [políticas de guardrails](../configuration/guardrails-policy.md) escanean los mensajes de una
-petición de chat antes de que ningún proveedor los vea. Una política en modo `block` detiene una
-petición que coincide con un `400` que nombra la política y los escáneres que coincidieron;
+petición de chat antes de que ningún proveedor los vea. Una política en modo `block` rechaza con
+un `400` la petición que coincide, indicando la política y los escáneres que coincidieron;
 consulta [Respuesta de bloqueo](../configuration/guardrails-policy.md#block-response). Las
 políticas son una primera línea de defensa basada en patrones, no un filtro completo:
 
