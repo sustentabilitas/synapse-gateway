@@ -132,7 +132,7 @@
     "message": "Streaming real, fallback completo"
   },
   "home.native.streaming.description": {
-    "message": "Synapse siempre hace streaming desde el proveedor. Los clientes con streaming reciben SSE token a token; los clientes del carril estándar que esperan la respuesta completa conservan toda la cadena de fallback, incluso tras un fallo a mitad del stream."
+    "message": "En los carriles estándar y Vertex nativo, Synapse siempre hace streaming desde el proveedor. Los clientes con streaming reciben SSE token a token; los clientes del carril estándar que esperan la respuesta completa conservan toda la cadena de fallback, incluso tras un fallo a mitad del stream."
   },
   "home.native.embed.title": {
     "message": "Embebible"

@@ -48,7 +48,7 @@ function features(): Feature[] {
       description: translate({
         id: 'home.native.streaming.description',
         message:
-          'Synapse always streams from upstream. Streaming clients get token-by-token SSE; buffered standard-lane clients keep the whole fallback chain, even after a mid-stream failure.',
+          'On the standard and native Vertex lanes, Synapse always streams from upstream. Streaming clients get token-by-token SSE; buffered standard-lane clients keep the whole fallback chain, even after a mid-stream failure.',
       }),
       to: '/docs/guides/fallback-chains/',
     },
