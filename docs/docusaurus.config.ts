@@ -86,12 +86,51 @@ const config: Config = {
       logo: {alt: 'Synapse', src: 'img/logo.svg', srcDark: 'img/logo-dark.svg'},
       items: [
         {type: 'docSidebar', sidebarId: 'docsSidebar', position: 'left', label: 'Docs'},
+        {
+          type: 'dropdown',
+          label: 'Synapse family',
+          position: 'left',
+          items: [
+            {to: '/docs/overview/introduction/', label: 'Gateway', activeBaseRegex: '/docs/(?!synapse-family/)'},
+            {to: '/docs/synapse-family/proxy/overview/', label: 'Proxy', activeBasePath: 'docs/synapse-family/proxy'},
+            {to: '/docs/synapse-family/a2a/overview/', label: 'A2A', activeBasePath: 'docs/synapse-family/a2a'},
+            {to: '/docs/synapse-family/mcp/overview/', label: 'MCP', activeBasePath: 'docs/synapse-family/mcp'},
+          ],
+        },
         {type: 'localeDropdown', position: 'right'},
         {href: REPO, label: 'GitHub', position: 'right'},
       ],
     },
     footer: {
       style: 'dark',
+      links: [
+        {
+          title: 'Docs',
+          items: [
+            {label: 'Introduction', to: '/docs/overview/introduction/'},
+            {label: 'Quickstart', to: '/docs/get-started/quickstart/'},
+            {label: 'Configuration', to: '/docs/configuration/routes/'},
+            {label: 'HTTP API', to: '/docs/reference/http-api/'},
+          ],
+        },
+        {
+          title: 'Community',
+          items: [
+            {label: 'GitHub', href: REPO},
+            {label: 'Contributing', to: '/docs/contributing/'},
+            {label: 'Security', to: '/docs/operating/security/'},
+            {label: 'Code of Conduct', href: `${REPO}/blob/main/CODE_OF_CONDUCT.md`},
+          ],
+        },
+        {
+          title: 'More',
+          items: [
+            {label: 'crates.io', href: 'https://crates.io/crates/synapse-gateway'},
+            {label: 'Docker Hub', href: 'https://hub.docker.com/r/sustentabilitas/synapse-gateway'},
+            {label: 'docs.rs', href: 'https://docs.rs/synapse-gateway'},
+          ],
+        },
+      ],
       copyright: `AGPL-3.0 licensed · © ${new Date().getFullYear()} Sustentabilitas`,
     },
     prism: {
