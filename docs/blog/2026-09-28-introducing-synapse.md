@@ -3,6 +3,7 @@ slug: introducing-synapse
 title: "Introducing Synapse: an LLM gateway that keeps native power"
 authors: [rajwilkhu]
 tags: [release, vertex, routing]
+date: 2026-09-28T10:00
 description: Synapse is an open-source Rust LLM gateway that speaks the OpenAI API to your clients and keeps Vertex AI's native features, Jev routing and per-tenant cost accounting behind it.
 ---
 
@@ -11,8 +12,8 @@ Synapse is an open-source LLM gateway written in Rust. Your clients send standar
 fallback chain of providers, records what it cost, and hands back an OpenAI-shaped response.
 
 What makes it different is what it refuses to throw away. Vertex AI's context caching,
-Cloud Storage media and strict response schemas survive the trip, and a model can decide how
-much model each request deserves. This post explains why we built it, how it is put together
+Cloud Storage media and strict response schemas survive the trip, and a routing model can
+decide how capable a model, and how much reasoning, each request deserves. This post explains why we built it, how it is put together
 and where it is going.
 
 <!-- truncate -->
@@ -22,8 +23,9 @@ and where it is going.
 We started where most teams start: put a generic OpenAI-compatible proxy in front of every
 provider and move on. That approach reaches Gemini through an OpenAI-shaped adapter, and the
 adapter is where the features we depend on disappear. There is no OpenAI field for a Vertex
-`cachedContents` resource, for a `gs://` video, or for a strict `responseSchema`, so a
-translation layer either drops them or never learns about them.
+`cachedContents` resource or a `gs://` video, and an OpenAI `response_format` schema only
+becomes a strict Vertex `responseSchema` if the adapter translates it, so a translation layer
+either drops these features or never learns about them.
 
 We wanted multi-provider routing and fallback, and we wanted Vertex's native features, not
 one or the other. So Synapse keeps a dedicated native lane for Vertex, alongside the
@@ -84,12 +86,14 @@ decision in detail, and the [Jev router guide](/docs/guides/jev-router/) is the 
 
 A few things we consider table stakes come with every deployment:
 
-- **Real streaming.** Synapse always streams from upstream, so `stream: true` clients get
+- **Real streaming.** On the standard and native Vertex lanes, Synapse always streams from
+  upstream, so `stream: true` clients get
   token-by-token server-sent events. Non-streaming clients get the buffered result and, on
   the standard lane, keep the full fallback chain. See
   [Streaming and tool calling](/docs/guides/streaming-and-tools/).
-- **Tool calling on both lanes.** On the native Vertex lane, `tool_choice` is honoured
-  through Vertex `toolConfig`.
+- **Tool calling on the standard and native Vertex lanes.** The native lane also honours
+  `tool_choice` through Vertex `toolConfig`; the standard lane forwards tools but drops
+  `tool_choice`.
 - **A cost ledger you own.** Every request is attributed to a tenant from the
   `x-synapse-tenant` header and priced from your `pricing.toml` into SQLite or Postgres, with
   optional fan-out to Google Cloud Pub/Sub and AWS SNS. See the

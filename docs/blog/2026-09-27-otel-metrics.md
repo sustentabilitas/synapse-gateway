@@ -3,13 +3,14 @@ slug: opentelemetry-metrics
 title: "OpenTelemetry metrics in Synapse"
 authors: [rajwilkhu]
 tags: [observability]
+date: 2026-09-28T09:30
 description: Synapse 0.5.38 records its synapse_* metrics with opentelemetry-rust, serves them in Prometheus format, can push them over OTLP, and ships a Grafana dashboard to chart them.
 ---
 
 As of release 0.5.38, the Synapse gateway records its metrics with
 [opentelemetry-rust](https://github.com/open-telemetry/opentelemetry-rust) instead of the
 `metrics` crate. Your Prometheus scrape keeps working with the same series names and labels,
-and setting one environment variable now pushes the same metrics to an OpenTelemetry
+apart from two deliberate changes covered below, and setting one environment variable now pushes the same metrics to an OpenTelemetry
 collector.
 
 This post covers why we moved, what the exposition looks like, what the metrics cover and how
@@ -23,7 +24,8 @@ The gateway was the odd one out in its own workspace. `synapse-proxy` and `synap
 already recorded through OpenTelemetry instruments, while the gateway used the `metrics`
 crate and its own exporter. Moving the gateway onto opentelemetry-rust 0.32 puts all three
 crates on one pipeline: instruments created from an OpenTelemetry `Meter`, exported by the
-OpenTelemetry Prometheus exporter, with OTLP available beside it.
+OpenTelemetry Prometheus exporter, with OTLP available beside it. (The proxy keeps the
+exporter's default naming; see the [metrics catalogue](/docs/reference/metrics-catalogue/).)
 
 That matters most when you embed the gateway. A Rust service that builds a `Gateway` in code
 now passes it a `GatewayMetrics` made from a meter of its own `MeterProvider`, and the
@@ -75,8 +77,9 @@ type and labels. In short, the gateway counts:
 - **Chat requests:** requests, latency, and input and output tokens, labelled by `route`,
   serving `model`, `lane` and `system`, the provider family in OpenLLMetry's `gen_ai.system`
   vocabulary (`vertexai`, `openai`, `dashscope`, `oai_compat`).
-- **Embeddings and passthrough:** their own request and latency series, including the Gemini
-  and Jev passthrough endpoints.
+- **Embeddings and passthrough:** embedding requests and latency, and passthrough calls by
+  action and status for the Gemini and Jev passthrough endpoints, plus Gemini passthrough
+  model fallbacks.
 - **Jev:** routing decisions by tier and outcome, decision latency, and hybrid extraction
   responses.
 - **Guardrails:** scans by outcome, matches by scanner and severity, and scan latency.

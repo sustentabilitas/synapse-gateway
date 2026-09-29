@@ -3,6 +3,7 @@ slug: jev-routing-explained
 title: "Jev routing explained: the right model and effort for every request"
 authors: [rajwilkhu]
 tags: [routing]
+date: 2026-09-28T09:00
 description: How a strategy = "jev" route in Synapse asks TypeSafe Jev how demanding each request is, picks a tier and reasoning effort, reports the decision and degrades safely.
 ---
 
@@ -49,6 +50,9 @@ effort = "medium"
 legs = [{ provider = "vertex", model = "gemini-3.1-pro-preview", region = "global" }]
 ```
 
+A `jev` route needs `TYPESAFE_API_KEY`; without it, the default strict provider validation
+refuses to start the gateway.
+
 The descriptions matter more than anything else in the file, because they are what Jev
 scores the request against. "Multi-step analysis, maths or proofs" gives Jev something to
 judge; "Gemini Pro" does not. The order matters too: it is what the difficulty score indexes,
@@ -58,8 +62,8 @@ builds this route step by step.
 ## Two questions per request
 
 Before serving a request, Synapse sends Jev a bounded summary of the conversation: the
-latest user message, the system prompt, as much recent history as fits in a budget of about
-24,000 characters, and whether the request carries tools or media. Jev answers two typed
+latest user message, the system prompt and as much recent history as fits, about 24,000
+characters in all, plus whether the request carries tools or media. Jev answers two typed
 questions about it.
 
 **Difficulty** is a score against your tier descriptions, in order. Synapse rounds it to the
@@ -102,7 +106,8 @@ reports `x-synapse-reasoning-effort: client`.
 Every chat completion carries `x-synapse-routing`: `jev` on a Jev route, `static-override`
 when the client sent `"routing_strategy": "static"` to skip the decision, and `static` on
 ordinary routes. When they apply, `x-synapse-tier` names the tier that served,
-`x-synapse-tier-decided` the tier Jev chose if a different one served, and
+`x-synapse-tier-decided` the tier the decision picked (Jev's choice, or `default_tier` when
+routing is degraded) if a different one served, and
 `x-synapse-reasoning-effort` the effort the serving leg ran with. For streams, the headers
 describe the leg that produced the first chunk. The
 [response headers](/docs/guides/jev-router/#response-headers) section lists every value.
