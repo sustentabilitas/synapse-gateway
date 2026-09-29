@@ -237,3 +237,5 @@ covers each reason and how to monitor it.
   when a leg fails.
 - Look up [tiers and strategies](../../overview/concepts.md#tier) in Concepts.
 - Tune the decision with the [`jev_router` keys](../../configuration/routes.md#jev-routes).
+- Write better tiers and read the failure behaviour in the
+  [Jev router guide](../../guides/jev-router.md).

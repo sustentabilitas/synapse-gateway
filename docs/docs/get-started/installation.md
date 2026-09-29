@@ -116,5 +116,7 @@ The library crate is named `synapse`, so you import it as `synapse::…`, for ex
 
 [Embedding Synapse as a library](../guides/embedding-as-library.md) walks through a complete
 example, including streaming, embeddings and what the builder leaves out.
+[Workspace crates](../internals/workspace-crates.md#synapse-gateway) describes the crate's
+modules and features.
 
 The API reference is on [docs.rs](https://docs.rs/synapse-gateway).

@@ -170,7 +170,9 @@ attributed to `unattributed`.
 
 Because the request is plain OpenAI, any OpenAI SDK works too: point its base URL at
 `http://localhost:8080/v1` and use `gemini-flash` as the model. Synapse has no inbound
-authentication, but most SDKs require an API key, so pass any non-empty string.
+authentication, but most SDKs require an API key, so pass any non-empty string. See
+[Security](../operating/security.md#callers-arent-authenticated) and
+[Limitations and roadmap](../reference/limitations-roadmap.md).
 
 ## Send a streaming request
 
@@ -266,7 +268,21 @@ Each request you sent appears as a row attributed to `my-team`, with its lane (`
 - Follow the tutorials: [cache a video and get structured answers](tutorials/native-vertex-caching.md),
   [route requests by difficulty with Jev](tutorials/jev-tiers.md) and
   [fall back across providers](tutorials/fallback-across-providers.md).
-- Add your own routes, legs and tiers with the [routes reference](../configuration/routes.md).
+- Add your own routes, legs and tiers with the [routes reference](../configuration/routes.md),
+  and set prices with [Pricing](../configuration/pricing.md).
+- Learn each feature from the guides: the [native Vertex lane](../guides/native-vertex.md),
+  the [Jev router](../guides/jev-router.md), [fallback chains](../guides/fallback-chains.md),
+  [streaming and tool calling](../guides/streaming-and-tools.md),
+  [tenant attribution](../guides/tenant-attribution.md) and the
+  [cost ledger](../guides/cost-ledger.md).
+- Deploy it with [Docker](../deployment/docker.md) or
+  [Docker Compose](../deployment/docker-compose.md), then work through the
+  [production checklist](../deployment/production-checklist.md).
+- Watch it with [Metrics](../operating/metrics.md) and the
+  [Grafana dashboard](../operating/grafana-dashboard.md).
+- Look up endpoints and error codes in the [HTTP API reference](../reference/http-api.md),
+  settings in [Environment variables](../configuration/environment-variables.md), and what
+  Synapse does not do yet in [Limitations and roadmap](../reference/limitations-roadmap.md).
 - Read [Architecture](../overview/architecture.md) to see how lanes and fallback chains fit
   together.
 - Look up routes, legs, tiers and tenants in [Concepts](../overview/concepts.md).

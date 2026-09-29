@@ -44,10 +44,13 @@ Synapse tries the legs in order until one succeeds. On the standard lane, any fa
 to the next leg: an error response, a first-chunk timeout or a broken stream. On the native
 Vertex lane, only a `5xx`, `429` or `408` response, a connection error or a timeout moves
 on; any other `4xx` stops the chain. A streaming response can fall back only until its
-first chunk reaches the client.
+first chunk reaches the client. See the [fallback chains guide](../guides/fallback-chains.md).
 
 The ledger write never blocks the response: if the ledger's queue is full, the event is
-dropped and counted in `synapse_ledger_dropped_total`.
+dropped and counted in `synapse_ledger_dropped_total`. See the
+[cost ledger guide](../guides/cost-ledger.md) and the
+[metrics catalogue](../reference/metrics-catalogue.md). For a step-by-step walk through the
+source, see [Request pipeline](../internals/request-pipeline.md).
 
 ## Lanes
 
@@ -57,7 +60,7 @@ Requests without lane triggers use the standard lane, which calls providers thro
 [`genai`](https://crates.io/crates/genai) crate. Any provider with an OpenAI-compatible API
 can appear in the chain: OpenAI, Qwen (DashScope) and self-hosted vLLM, Ollama or TGI
 through the `oai_compat` provider. Vertex legs work here too, without the native-only
-features.
+features. See [Providers](../configuration/providers.md).
 
 ### Native Vertex lane
 
@@ -76,7 +79,8 @@ are preserved:
 
 Only the route's `vertex` legs take part; other providers cannot serve these features. If
 the route has no `vertex` leg, Synapse returns `400 Bad Request` with error code
-`native_feature_unsupported` rather than silently dropping the features.
+`native_feature_unsupported` rather than silently dropping the features. See the
+[native Vertex guide](../guides/native-vertex.md).
 
 ### Jev lane
 
@@ -85,7 +89,8 @@ TypeSafe System One (Jev) evaluates the questions against a state, which default
 request's `messages`, and returns structured decisions as the message content. If every
 `typesafe` leg fails with a retryable error, the route's remaining legs answer as a normal
 chat completion, so clients must handle both response shapes. A route with `typesafe` legs
-returns `400 Bad Request` to requests without a `jev` block.
+returns `400 Bad Request` to requests without a `jev` block. See the
+[Jev lane guide](../guides/jev-lane.md).
 
 ## Lane detection
 
@@ -113,4 +118,5 @@ For example, this request uses the native Vertex lane:
 
 Lane detection and routing strategy are independent. On a `strategy = "jev"` route, the Jev
 router chooses which tier's legs form the chain, and the lane still follows the request
-body: a native Vertex request is served by the nearest tier that has a `vertex` leg.
+body: a native Vertex request is served by the nearest tier that has a `vertex` leg. See the
+[Jev router guide](../guides/jev-router.md).

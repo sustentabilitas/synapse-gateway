@@ -10,19 +10,23 @@ fallback chain of providers and records what it cost. Unlike generic OpenAI-comp
 proxies, it keeps a native Vertex AI lane, so Vertex-only features survive the trip, and a
 lane for TypeSafe System One (Jev), a hosted service that answers typed questions with
 structured decisions. You run Synapse as a single binary or Docker image, or embed it in a
-Rust service as a library.
+Rust service as a library. See [Installation](../get-started/installation.md).
 
 Synapse is a Cargo workspace. The crates are:
 
 - **`synapse-gateway`**: the LLM gateway, and the subject of most of this documentation.
 - **`synapse-proxy`**: a config-driven reverse-proxy sidecar with path-prefix routing,
-  context injection, request and response transforms, and streaming passthrough.
+  context injection, request and response transforms, and streaming passthrough. See
+  [synapse-proxy](../synapse-family/proxy/overview.md).
 - **`synapse-a2a`**: an agent-to-agent (A2A) registry with admin registration and public
-  discovery endpoints, served by the gateway binary.
+  discovery endpoints, served by the gateway binary. See
+  [synapse-a2a](../synapse-family/a2a/overview.md).
 - **`synapse-mcp`**: an on-demand MCP gateway that routes Streamable HTTP traffic per
-  server and injects per-session tenant identity.
+  server and injects per-session tenant identity. See
+  [synapse-mcp](../synapse-family/mcp/overview.md).
 - **`synapse-context`**: the shared context store (a static base plus a TTL overlay) used
-  by `synapse-proxy` and `synapse-mcp`.
+  by `synapse-proxy` and `synapse-mcp`. See
+  [Workspace crates](../internals/workspace-crates.md#synapse-context).
 
 ## Why is Synapse different?
 
@@ -56,6 +60,7 @@ Synapse is not a good fit when:
 
 - You need inbound authentication or rate limiting today. Synapse has neither yet; run it
   behind your own API gateway, ingress or service mesh. See
+  [Security](../operating/security.md#callers-arent-authenticated) and
   [Limitations and roadmap](../reference/limitations-roadmap.md).
 - You want a hosted SaaS. Synapse is self-hosted software.
 
@@ -74,10 +79,12 @@ Native capabilities:
   [Jev lane](architecture.md#jev-lane) and the [Jev lane guide](../guides/jev-lane.md).
 - **Jev router**: per-request tier and reasoning effort, mapped to Vertex `thinkingBudget`
   on native Vertex legs and reported in `x-synapse-routing` and `x-synapse-tier` response
-  headers. See the [Jev router guide](../guides/jev-router.md).
+  headers. See the [Jev router guide](../guides/jev-router.md) and
+  [Jev routes](../configuration/routes.md#jev-routes).
 - **Real streaming**: Synapse always streams from upstream, so `stream: true` clients get
   token-by-token server-sent events; non-streaming clients get the buffered result and, on
-  the standard lane, keep the full fallback chain. See [Streaming and tool calling](../guides/streaming-and-tools.md).
+  the standard lane, keep the full fallback chain. See
+  [Streaming and tool calling](../guides/streaming-and-tools.md).
 - **Embeddable**: run the `synapse-gateway` binary, or depend on the library crate and call
   `Gateway::chat()` in-process. See
   [Embedding Synapse as a library](../guides/embedding-as-library.md).
@@ -85,14 +92,20 @@ Native capabilities:
 Compatibility and operations:
 
 - **OpenAI-compatible API**: existing OpenAI SDKs work unchanged, including
-  `POST /v1/embeddings`. See the [embeddings guide](../guides/embeddings.md).
+  `POST /v1/embeddings`. See the [HTTP API reference](../reference/http-api.md) and the
+  [embeddings guide](../guides/embeddings.md).
 - **Multi-provider fallback**: Vertex AI, OpenAI, Qwen (DashScope), and self-hosted vLLM,
   Ollama or TGI through the `oai_compat` provider. See
+  [Providers](../configuration/providers.md) and
   [Fallback chains](../guides/fallback-chains.md).
 - **Per-tenant cost ledger**: token usage and cost per request, written to SQLite or
   Postgres and optionally fanned out to Google Cloud Pub/Sub and AWS SNS. See the
-  [cost ledger guide](../guides/cost-ledger.md).
+  [cost ledger guide](../guides/cost-ledger.md) and
+  [Tenant attribution](../guides/tenant-attribution.md).
 - **Observability**: OpenTelemetry `synapse_*` metrics, served in Prometheus format and
-  optionally pushed over OTLP.
+  optionally pushed over OTLP. See [Metrics](../operating/metrics.md), the
+  [metrics catalogue](../reference/metrics-catalogue.md) and the
+  [Grafana dashboard](../operating/grafana-dashboard.md).
 - **Input guardrails**: named scanner policies (prompt injection, secrets, PII and more)
-  that block or observe requests before they reach a provider.
+  that block or observe requests before they reach a provider. See
+  [Guardrails policy](../configuration/guardrails-policy.md).
