@@ -17,7 +17,7 @@ export default function Community(): ReactNode {
         </h2>
         <p className="sy-section-lead">
           <Translate id="home.community.lead">
-            Synapse is licensed under AGPL-3.0. Every feature on this page is in the open-source code, with no paid tier. Contributions are welcome.
+            Synapse is licensed under MPL-2.0, so you can build it into commercial products. Every feature on this page is in the open-source code, with no paid tier, and improvements contributed back are welcome.
           </Translate>
         </p>
         <div className={styles.links}>

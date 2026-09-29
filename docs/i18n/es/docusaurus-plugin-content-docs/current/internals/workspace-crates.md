@@ -5,7 +5,7 @@ description: Los cinco crates del workspace de Cargo de Synapse, qué hace cada 
 ---
 
 Synapse es un único workspace de Cargo con cinco crates bajo `crates/`. Los cinco están
-publicados en crates.io, usan la edición 2021 y tienen la licencia AGPL-3.0-only. Las versiones
+publicados en crates.io, usan la edición 2021 y tienen la licencia MPL-2.0. Las versiones
 de esta página son las del `Cargo.toml` de cada crate en `main`.
 
 | Crate | Versión | Nombre de la biblioteca | Binario | Imagen de Docker |

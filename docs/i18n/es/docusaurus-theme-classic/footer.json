@@ -60,7 +60,7 @@
     "description": "The label of footer link with label=docs.rs linking to https://docs.rs/synapse-gateway"
   },
   "copyright": {
-    "message": "Con licencia AGPL-3.0 · © 2026 Sustentabilitas",
+    "message": "Con licencia MPL-2.0 · © 2026 Sustentabilitas",
     "description": "The footer copyright"
   }
 }

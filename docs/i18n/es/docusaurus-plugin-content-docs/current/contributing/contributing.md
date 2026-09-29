@@ -4,7 +4,7 @@ title: Contribuir
 description: Cómo compilar y probar el workspace de Synapse, preparar una pull request, firmar tus commits y trabajar en este sitio de documentación.
 ---
 
-Synapse es un proyecto de código abierto con licencia AGPL-3.0, y las incidencias, los informes
+Synapse es un proyecto de código abierto con licencia MPL-2.0, y las incidencias, los informes
 de errores, las solicitudes de funcionalidades y las pull requests son bienvenidos. Antes de
 empezar, lee el
 [Código de conducta](https://github.com/sustentabilitas/synapse-gateway/blob/main/CODE_OF_CONDUCT.md)
@@ -143,7 +143,7 @@ Signed-off-by: Your Name <your@email.com>
 ## Developer Certificate of Origin {#developer-certificate-of-origin}
 
 **Cada commit debe llevar un trailer `Signed-off-by`.** Al firmarlo, certificas que tienes
-derecho a enviar la contribución bajo la licencia AGPL-3.0 del proyecto, tal como define el
+derecho a enviar la contribución bajo la licencia MPL-2.0 del proyecto, tal como define el
 [Developer Certificate of Origin](https://developercertificate.org/).
 
 Añade la firma con la opción `-s`:
@@ -233,6 +233,12 @@ hagas nunca commit de nada que esté dentro.
 ## Licencia {#license}
 
 Al enviar una contribución, aceptas que tu trabajo se licencie bajo la
-[GNU Affero General Public License v3.0](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)
-(AGPL-3.0), la misma licencia que el resto del proyecto. Si tienes alguna pregunta, abre una
+[Mozilla Public License 2.0](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)
+(MPL-2.0), la misma licencia que el resto del proyecto. Si tienes alguna pregunta, abre una
 discusión en GitHub o usa el contacto de la [política de seguridad](../operating/security.md).
+
+MPL-2.0 permite el uso comercial: puedes integrar Synapse en productos comerciales y de código
+cerrado, y la licencia cubre solo los archivos de Synapse, no el código con el que los combines.
+Si distribuyes un archivo de Synapse modificado, su código fuente debe seguir disponible bajo
+MPL-2.0. Te pedimos que envíes esos cambios con un pull request, para que todos los usuarios se
+beneficien de ellos.

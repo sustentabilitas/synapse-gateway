@@ -4,7 +4,7 @@
 [![synapse-gateway Docker](https://img.shields.io/docker/v/sustentabilitas/synapse-gateway?logo=docker&label=gateway%20docker)](https://hub.docker.com/r/sustentabilitas/synapse-gateway)
 [![synapse-proxy crates.io](https://img.shields.io/crates/v/synapse-proxy.svg?label=proxy)](https://crates.io/crates/synapse-proxy)
 [![synapse-proxy Docker](https://img.shields.io/docker/v/sustentabilitas/synapse-proxy?logo=docker&label=proxy%20docker)](https://hub.docker.com/r/sustentabilitas/synapse-proxy)
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![License: MPL-2.0](https://img.shields.io/badge/License-MPL--2.0-brightgreen.svg)](LICENSE)
 [![CI](https://github.com/sustentabilitas/synapse-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/sustentabilitas/synapse-gateway/actions/workflows/ci.yml)
 
 **The LLM gateway that keeps native power.** Synapse is an open-source Rust workspace: an
@@ -73,7 +73,7 @@ walks through streaming, fallback to OpenAI, native Vertex requests and the cost
 
 ## Contributing
 
-Contributions are welcome. See **[CONTRIBUTING.md](CONTRIBUTING.md)** for how to build, test, and submit changes. Commits must be signed off under the [Developer Certificate of Origin](https://developercertificate.org/) (`git commit -s`); contributions are licensed under AGPL-3.0. Please also read our **[Code of Conduct](CODE_OF_CONDUCT.md)**.
+Contributions are welcome. See **[CONTRIBUTING.md](CONTRIBUTING.md)** for how to build, test, and submit changes. Commits must be signed off under the [Developer Certificate of Origin](https://developercertificate.org/) (`git commit -s`); contributions are licensed under MPL-2.0. Please also read our **[Code of Conduct](CODE_OF_CONDUCT.md)**.
 
 ## Security
 
@@ -81,4 +81,11 @@ Found a vulnerability? **Do not open a public issue.** See **[SECURITY.md](SECUR
 
 ## License
 
-Licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0). See **[LICENSE](LICENSE)**.
+Licensed under the **Mozilla Public License 2.0** (MPL-2.0). See **[LICENSE](LICENSE)**.
+
+> **Commercial use is welcome.** We chose MPL-2.0 to encourage companies to build on Synapse
+> while keeping improvements flowing back to everyone. You can use Synapse in commercial and
+> closed-source products, including hosted services, and your own code stays yours: the
+> licence covers Synapse's files, not the code you combine them with. If you distribute a
+> modified version of a Synapse file, its source must stay available under MPL-2.0, and we
+> ask that you contribute those changes back with a pull request so every user benefits.

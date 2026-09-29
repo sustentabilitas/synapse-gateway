@@ -2,7 +2,7 @@
 
 [![crates.io](https://img.shields.io/crates/v/synapse-proxy.svg)](https://crates.io/crates/synapse-proxy)
 [![Docker Hub](https://img.shields.io/docker/v/sustentabilitas/synapse-proxy?logo=docker&label=docker)](https://hub.docker.com/r/sustentabilitas/synapse-proxy)
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)
+[![License: MPL-2.0](https://img.shields.io/badge/License-MPL--2.0-brightgreen.svg)](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)
 [![CI](https://github.com/sustentabilitas/synapse-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/sustentabilitas/synapse-gateway/actions/workflows/ci.yml)
 
 synapse-proxy is a config-driven reverse-proxy sidecar. It forwards each request to an
@@ -75,4 +75,4 @@ curl -s localhost:8787/httpbin/headers
 
 ## License
 
-Licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0). See **[LICENSE](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)**.
+Licensed under the **Mozilla Public License 2.0** (MPL-2.0), which welcomes commercial use and asks that changes to Synapse's own files are shared back. See **[LICENSE](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)** and the [licence note](https://github.com/sustentabilitas/synapse-gateway#license).

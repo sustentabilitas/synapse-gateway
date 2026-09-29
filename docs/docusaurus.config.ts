@@ -141,7 +141,7 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `AGPL-3.0 licensed · © ${new Date().getFullYear()} Sustentabilitas`,
+      copyright: `MPL-2.0 licensed · © ${new Date().getFullYear()} Sustentabilitas`,
     },
     prism: {
       theme: prismThemes.github,

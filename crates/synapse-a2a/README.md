@@ -1,7 +1,7 @@
 # synapse-a2a
 
 [![crates.io](https://img.shields.io/crates/v/synapse-a2a.svg)](https://crates.io/crates/synapse-a2a)
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)
+[![License: MPL-2.0](https://img.shields.io/badge/License-MPL--2.0-brightgreen.svg)](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)
 [![CI](https://github.com/sustentabilitas/synapse-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/sustentabilitas/synapse-gateway/actions/workflows/ci.yml)
 
 synapse-a2a is an in-memory registry of agent-to-agent ([A2A](https://a2a-protocol.org/))
@@ -68,4 +68,4 @@ them at your ingress.
 
 ## License
 
-Licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0). See **[LICENSE](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)**.
+Licensed under the **Mozilla Public License 2.0** (MPL-2.0), which welcomes commercial use and asks that changes to Synapse's own files are shared back. See **[LICENSE](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)** and the [licence note](https://github.com/sustentabilitas/synapse-gateway#license).

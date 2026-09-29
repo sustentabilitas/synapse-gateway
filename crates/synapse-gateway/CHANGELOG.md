@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Relicensed from AGPL-3.0-only to MPL-2.0 (Mozilla Public License 2.0).
+
 ## [2.0.0] - 2026-09-29
 
 ## [0.5.38] - 2026-09-28

@@ -112,7 +112,7 @@ Algunas cosas que consideramos imprescindibles vienen con cada despliegue:
   peticiones antes de que lleguen a un proveedor. Consulta
   [Política de guardrails](/docs/configuration/guardrails-policy/).
 
-Synapse se distribuye con licencia AGPL-3.0, y nada de esto está detrás de un nivel de pago.
+Synapse se distribuye con licencia MPL-2.0, así que puedes integrarlo en productos comerciales, y nada de esto está detrás de un nivel de pago.
 
 ## Ejecútalo o embébelo {#run-it-or-embed-it}
 

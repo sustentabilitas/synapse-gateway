@@ -4,7 +4,7 @@ title: Contributing
 description: How to build and test the Synapse workspace, prepare a pull request, sign off your commits and work on this documentation site.
 ---
 
-Synapse is an open-source, AGPL-3.0-licensed project, and issues, bug reports, feature requests
+Synapse is an open-source, MPL-2.0-licensed project, and issues, bug reports, feature requests
 and pull requests are welcome. Before you begin, read the
 [Code of Conduct](https://github.com/sustentabilitas/synapse-gateway/blob/main/CODE_OF_CONDUCT.md)
 and the [security policy](../operating/security.md). By taking part you agree to abide by the
@@ -136,7 +136,7 @@ Signed-off-by: Your Name <your@email.com>
 ## Developer Certificate of Origin
 
 **Every commit must carry a `Signed-off-by` trailer.** By signing off, you certify that you
-have the right to submit the contribution under the project's AGPL-3.0 licence, as defined by
+have the right to submit the contribution under the project's MPL-2.0 licence, as defined by
 the [Developer Certificate of Origin](https://developercertificate.org/).
 
 Add the sign-off with the `-s` flag:
@@ -223,6 +223,11 @@ anything under it.
 ## License
 
 By submitting a contribution you agree that your work is licensed under the
-[GNU Affero General Public License v3.0](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)
-(AGPL-3.0), the same licence as the rest of the project. If you have a question, open a
+[Mozilla Public License 2.0](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)
+(MPL-2.0), the same licence as the rest of the project. If you have a question, open a
 discussion on GitHub or use the contact in the [security policy](../operating/security.md).
+
+MPL-2.0 welcomes commercial use: you can build Synapse into commercial and closed-source
+products, and the licence covers only Synapse's own files, not the code you combine them with.
+If you distribute a modified Synapse file, its source must stay available under MPL-2.0. We
+ask that you send those changes back as a pull request, so every user benefits from them.

@@ -2,7 +2,7 @@
 
 [![crates.io](https://img.shields.io/crates/v/synapse-gateway.svg)](https://crates.io/crates/synapse-gateway)
 [![Docker Hub](https://img.shields.io/docker/v/sustentabilitas/synapse-gateway?logo=docker&label=docker)](https://hub.docker.com/r/sustentabilitas/synapse-gateway)
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)
+[![License: MPL-2.0](https://img.shields.io/badge/License-MPL--2.0-brightgreen.svg)](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)
 [![CI](https://github.com/sustentabilitas/synapse-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/sustentabilitas/synapse-gateway/actions/workflows/ci.yml)
 
 [English](https://github.com/sustentabilitas/synapse-gateway/blob/main/crates/synapse-gateway/README.md) · **Español**
@@ -83,7 +83,7 @@ añade streaming, fallback a OpenAI, peticiones Vertex nativas y el registro de 
 
 ## Contribuciones
 
-Las contribuciones son bienvenidas. Consulta **[CONTRIBUTING.md](https://github.com/sustentabilitas/synapse-gateway/blob/main/CONTRIBUTING.md)** para saber cómo compilar, probar y enviar cambios. Los commits deben estar firmados bajo el [Developer Certificate of Origin](https://developercertificate.org/) (`git commit -s`); las contribuciones se publican bajo AGPL-3.0. Por favor, lee también nuestro **[Código de Conducta](https://github.com/sustentabilitas/synapse-gateway/blob/main/CODE_OF_CONDUCT.md)**.
+Las contribuciones son bienvenidas. Consulta **[CONTRIBUTING.md](https://github.com/sustentabilitas/synapse-gateway/blob/main/CONTRIBUTING.md)** para saber cómo compilar, probar y enviar cambios. Los commits deben estar firmados bajo el [Developer Certificate of Origin](https://developercertificate.org/) (`git commit -s`); las contribuciones se publican bajo MPL-2.0. Por favor, lee también nuestro **[Código de Conducta](https://github.com/sustentabilitas/synapse-gateway/blob/main/CODE_OF_CONDUCT.md)**.
 
 ## Seguridad
 
@@ -91,4 +91,4 @@ Las contribuciones son bienvenidas. Consulta **[CONTRIBUTING.md](https://github.
 
 ## Licencia
 
-Publicado bajo la **GNU Affero General Public License v3.0** (AGPL-3.0). Consulta **[LICENSE](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)**.
+Publicado bajo la **Mozilla Public License 2.0** (MPL-2.0), que permite el uso comercial y pide que los cambios en los archivos de Synapse se compartan. Consulta **[LICENSE](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)** y la [nota sobre la licencia](https://github.com/sustentabilitas/synapse-gateway#license).

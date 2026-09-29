@@ -1,7 +1,7 @@
 # Contributing to Synapse
 
 Thank you for your interest in contributing to Synapse! This is an open-source,
-AGPL-3.0-licensed project and we welcome issues, bug reports, feature requests, and pull
+MPL-2.0-licensed project and we welcome issues, bug reports, feature requests, and pull
 requests from the community.
 
 Before you begin, please read our [Code of Conduct](CODE_OF_CONDUCT.md) and
@@ -194,7 +194,7 @@ Signed-off-by: Your Name <your@email.com>
 **Every commit must carry a `Signed-off-by` trailer.**
 
 By signing off you certify that you have the right to submit the contribution under the
-project's AGPL-3.0 license, as defined by the Developer Certificate of Origin at
+project's MPL-2.0 license, as defined by the Developer Certificate of Origin at
 <https://developercertificate.org/>.
 
 Add the sign-off automatically with the `-s` flag:
@@ -262,7 +262,7 @@ for the full steps, publish order and required secrets.
 ## License
 
 By submitting a contribution you agree that your work is licensed under the
-[GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0), the same license as the rest
+[Mozilla Public License 2.0](LICENSE) (MPL-2.0), the same license as the rest
 of the project.
 
 If you have any questions, feel free to open a discussion or reach out via the contact in

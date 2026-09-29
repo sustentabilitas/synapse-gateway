@@ -104,7 +104,7 @@ A few things we consider table stakes come with every deployment:
 - **Input guardrails.** Named scanner policies that block or observe requests before they
   reach a provider. See [Guardrails policy](/docs/configuration/guardrails-policy/).
 
-Synapse is licensed under AGPL-3.0, and none of this sits behind a paid tier.
+Synapse is licensed under MPL-2.0, so you can build it into commercial products, and none of this sits behind a paid tier.
 
 ## Run it, or embed it
 

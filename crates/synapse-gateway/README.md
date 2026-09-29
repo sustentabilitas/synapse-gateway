@@ -2,7 +2,7 @@
 
 [![crates.io](https://img.shields.io/crates/v/synapse-gateway.svg)](https://crates.io/crates/synapse-gateway)
 [![Docker Hub](https://img.shields.io/docker/v/sustentabilitas/synapse-gateway?logo=docker&label=docker)](https://hub.docker.com/r/sustentabilitas/synapse-gateway)
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)
+[![License: MPL-2.0](https://img.shields.io/badge/License-MPL--2.0-brightgreen.svg)](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)
 [![CI](https://github.com/sustentabilitas/synapse-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/sustentabilitas/synapse-gateway/actions/workflows/ci.yml)
 
 **English** · [Español](https://github.com/sustentabilitas/synapse-gateway/blob/main/crates/synapse-gateway/README.es-ES.md)
@@ -82,7 +82,7 @@ adds streaming, fallback to OpenAI, native Vertex requests and the cost ledger.
 
 ## Contributing
 
-Contributions are welcome. See **[CONTRIBUTING.md](https://github.com/sustentabilitas/synapse-gateway/blob/main/CONTRIBUTING.md)** for how to build, test, and submit changes. Commits must be signed off under the [Developer Certificate of Origin](https://developercertificate.org/) (`git commit -s`); contributions are licensed under AGPL-3.0. Please also read our **[Code of Conduct](https://github.com/sustentabilitas/synapse-gateway/blob/main/CODE_OF_CONDUCT.md)**.
+Contributions are welcome. See **[CONTRIBUTING.md](https://github.com/sustentabilitas/synapse-gateway/blob/main/CONTRIBUTING.md)** for how to build, test, and submit changes. Commits must be signed off under the [Developer Certificate of Origin](https://developercertificate.org/) (`git commit -s`); contributions are licensed under MPL-2.0. Please also read our **[Code of Conduct](https://github.com/sustentabilitas/synapse-gateway/blob/main/CODE_OF_CONDUCT.md)**.
 
 ## Security
 
@@ -90,4 +90,4 @@ Found a vulnerability? **Do not open a public issue.** See **[SECURITY.md](https
 
 ## License
 
-Licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0). See **[LICENSE](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)**.
+Licensed under the **Mozilla Public License 2.0** (MPL-2.0), which welcomes commercial use and asks that changes to Synapse's own files are shared back. See **[LICENSE](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)** and the [licence note](https://github.com/sustentabilitas/synapse-gateway#license).
