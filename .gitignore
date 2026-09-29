@@ -1,7 +1,10 @@
 /target
 **/*.db
 *.db
-docs
+docs/superpowers/
+docs/node_modules/
+docs/build/
+docs/.docusaurus/
 .claude
 .claire
 service-account.json

@@ -1,0 +1,42 @@
+{
+  "title": {
+    "message": "Synapse",
+    "description": "The title in the navbar"
+  },
+  "logo.alt": {
+    "message": "Synapse",
+    "description": "The alt text of navbar logo"
+  },
+  "item.label.Docs": {
+    "message": "Documentación",
+    "description": "Navbar item with label Docs"
+  },
+  "item.label.Blog": {
+    "message": "Blog",
+    "description": "Navbar item with label Blog"
+  },
+  "item.label.Synapse family": {
+    "message": "Familia Synapse",
+    "description": "Navbar item with label Synapse family"
+  },
+  "item.label.GitHub": {
+    "message": "GitHub",
+    "description": "Navbar item with label GitHub"
+  },
+  "item.label.Gateway": {
+    "message": "Gateway",
+    "description": "Navbar item with label Gateway"
+  },
+  "item.label.Proxy": {
+    "message": "Proxy",
+    "description": "Navbar item with label Proxy"
+  },
+  "item.label.A2A": {
+    "message": "A2A",
+    "description": "Navbar item with label A2A"
+  },
+  "item.label.MCP": {
+    "message": "MCP",
+    "description": "Navbar item with label MCP"
+  }
+}

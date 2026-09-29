@@ -1,0 +1,15 @@
+.community {
+  text-align: center;
+}
+
+.community :global(.sy-section-lead) {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1rem;
+}

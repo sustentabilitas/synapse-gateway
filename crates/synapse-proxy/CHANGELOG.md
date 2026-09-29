@@ -1,12 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Relicensed from AGPL-3.0-only to MPL-2.0 (Mozilla Public License 2.0).
 
 ## 1.0.0
 
-
 ## 0.2.22
-
-## Unreleased
 
 - Fix OTLP metric export: `PeriodicReader` exports on its own thread with no tokio runtime, so the async reqwest client panicked ("no reactor running") on every export. `opentelemetry-otlp` now uses the blocking reqwest client (`default-features = false`, features `http-proto`, `metrics`, `reqwest-blocking-client`).
 

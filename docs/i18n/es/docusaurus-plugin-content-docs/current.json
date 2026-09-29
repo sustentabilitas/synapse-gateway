@@ -1,0 +1,62 @@
+{
+  "version.label": {
+    "message": "Siguiente",
+    "description": "The label for version current"
+  },
+  "sidebar.docsSidebar.category.Overview": {
+    "message": "Visión general",
+    "description": "The label for category 'Overview' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.Get started": {
+    "message": "Primeros pasos",
+    "description": "The label for category 'Get started' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.Tutorials": {
+    "message": "Tutoriales",
+    "description": "The label for category 'Tutorials' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.Configuration": {
+    "message": "Configuración",
+    "description": "The label for category 'Configuration' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.Guides": {
+    "message": "Guías",
+    "description": "The label for category 'Guides' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.Deployment": {
+    "message": "Despliegue",
+    "description": "The label for category 'Deployment' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.Operating": {
+    "message": "Operación",
+    "description": "The label for category 'Operating' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.Reference": {
+    "message": "Referencia",
+    "description": "The label for category 'Reference' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.Internals": {
+    "message": "Arquitectura interna",
+    "description": "The label for category 'Internals' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.Synapse family": {
+    "message": "Familia Synapse",
+    "description": "The label for category 'Synapse family' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.Proxy": {
+    "message": "Proxy",
+    "description": "The label for category 'Proxy' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.A2A": {
+    "message": "A2A",
+    "description": "The label for category 'A2A' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.MCP": {
+    "message": "MCP",
+    "description": "The label for category 'MCP' in sidebar 'docsSidebar'"
+  },
+  "sidebar.docsSidebar.category.Contributing": {
+    "message": "Contribuir",
+    "description": "The label for category 'Contributing' in sidebar 'docsSidebar'"
+  }
+}

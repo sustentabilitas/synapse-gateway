@@ -1,57 +1,80 @@
 # synapse-mcp
 
-An MCP (Model Context Protocol) gateway for the `synapse-proxy` sandbox broker. Sandbox code speaks MCP over Streamable HTTP to a loopback endpoint; the gateway routes each call to a backend MCP server **registered on-demand** for that session, injecting the session's tenant identity from the broker's `ContextStore`.
+[![crates.io](https://img.shields.io/crates/v/synapse-mcp.svg)](https://crates.io/crates/synapse-mcp)
+[![License: MPL-2.0](https://img.shields.io/badge/License-MPL--2.0-brightgreen.svg)](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)
+[![CI](https://github.com/sustentabilitas/synapse-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/sustentabilitas/synapse-gateway/actions/workflows/ci.yml)
 
-Built on [`rmcp`](https://docs.rs/rmcp) 2.2 (server + client + streamable-HTTP transports).
+synapse-mcp is an on-demand [Model Context Protocol](https://modelcontextprotocol.io/) (MCP)
+gateway library. A client, typically code running in a sandbox, speaks MCP over Streamable
+HTTP to `/mcp/{server}` on a loopback listener. The gateway forwards each tool call to the
+upstream MCP server registered under that name, over a connection that carries the current
+tenant's identity headers, taken from a shared `ContextStore`. The client never sees the
+upstream URL and can't choose its own identity.
 
-## How it fits
+It is a library, not a program: neither the synapse-proxy nor the synapse-gateway binary
+mounts it. Your application serves its two axum routers, typically next to
+[synapse-proxy](https://crates.io/crates/synapse-proxy) so that both share one context store.
+It is built on [`rmcp`](https://docs.rs/rmcp) 2.2.
 
-`synapse-proxy` mounts this crate as a 4th loopback listener (default `127.0.0.1:8789`) alongside its data / admin / metrics planes, sharing the same `Arc<ContextStore>` — so an identity binding pushed via the proxy's `POST /internal/bind` is immediately visible to the gateway.
+**Full documentation:** https://synapse-gateway.readthedocs.io/en/latest/docs/synapse-family/mcp/overview/
 
-```
-sandbox code ──MCP/Streamable-HTTP──▶ synapse-proxy :8789  /mcp/<server>
-                                         │  registry.resolve(<server>)  → upstream URL (or reject)
-                                         │  ContextStore.resolve()       → org/workspace/user (or fail-closed)
-                                         │  upstream rmcp client w/ x-org-id/x-workspace-id/x-user-id baked in
-                                         ▼
-                                      backend MCP server
-```
+## Install
 
-## Registration (on-demand)
-
-Backend MCP servers are registered per sandbox session on the proxy's **admin** listener (merged from this crate):
-
-- `POST /internal/mcp/servers` — `{ "name": "platform", "url": "http://backend/mcp", "ttl_seconds": 3600 }` → register/replace (hot-swap).
-- `DELETE /internal/mcp/servers/{name}` — deregister.
-
-Servers may also be seeded statically via `synapse-proxy.toml`:
-
-```toml
-mcp_addr = "127.0.0.1:8789"
-[[mcp_upstreams]]
-name = "platform"
-url = "http://backend/mcp"
-ttl_seconds = 3600
+```bash
+cargo add synapse-mcp synapse-context
 ```
 
-Registration is TTL-scoped (mirroring the identity binding's TTL) so a session's servers expire with its identity.
+## Example
 
-## Identity injection
+```rust
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
-On every forwarded request the gateway resolves the `ContextStore` overlay and sets `x-org-id` / `x-workspace-id` / `x-user-id` from the bound `org` / `workspace` / `user` keys. Client-supplied copies of those headers are never forwarded — the bound identity always wins.
+use synapse_context::ContextStore;
+use synapse_mcp::{
+    mcp_admin_router, mcp_gateway_router, IdentityHeaderRule, McpGatewayConfig, McpRegistry,
+};
 
-Because rmcp fixes a transport's HTTP headers at construction (**per-connection**, not per-call), the gateway caches one upstream client per `(server, identity)` and rebuilds it when either the identity overlay **or** the registered URL changes.
+async fn serve() -> anyhow::Result<()> {
+    let context = Arc::new(ContextStore::new(HashMap::new()));
+    context.push(HashMap::from([("org".into(), "my-team".into())]), Some(Duration::from_secs(3600)));
 
-Requests are **fail-closed**: an unbound / partially-bound overlay is rejected before any upstream is contacted; unknown/expired server names error without a network call.
+    let registry = Arc::new(McpRegistry::new());
+    let config = Arc::new(McpGatewayConfig {
+        inject: vec![IdentityHeaderRule {
+            context_key: "org".into(),
+            header: "x-org-id".into(),
+            required: true,
+        }],
+    });
 
-## Security
+    let admin = mcp_admin_router(registry.clone());
+    let gateway = mcp_gateway_router(registry, context, config, None);
 
-- Loopback-only listener.
-- **DNS-rebinding protection** is on by default — rmcp's `StreamableHttpServerConfig::default()` allows only `localhost` / `127.0.0.1` / `::1` as `Host` and returns `403` otherwise (asserted in tests).
-- Upstream URLs / transport errors are logged internally but not surfaced in sandbox-facing MCP errors.
+    let admin_listener = tokio::net::TcpListener::bind("127.0.0.1:8788").await?;
+    let mcp_listener = tokio::net::TcpListener::bind("127.0.0.1:8789").await?;
+    tokio::try_join!(axum::serve(admin_listener, admin), axum::serve(mcp_listener, gateway))?;
+    Ok(())
+}
+```
 
-## Not yet (future work)
+Register an upstream server on the admin listener; clients then call it at
+`http://127.0.0.1:8789/mcp/platform`, and every call carries `x-org-id: my-team`:
 
-- **Tool aggregation** across servers (one merged tool surface) — v1 is transparent per-server routing (`/mcp/<server>`).
-- **SSE back-compat** for upstreams that only speak the legacy transport.
-- Multiple concurrent identity bindings (v1 has a single active overlay, matching `ContextStore`).
+```bash
+curl -s -X POST localhost:8788/internal/mcp/servers \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"platform","url":"http://platform-mcp:8080/mcp","ttl_seconds":3600}'
+```
+
+## Learn more
+
+- [Mount it next to the proxy](https://synapse-gateway.readthedocs.io/en/latest/docs/synapse-family/mcp/overview/#mount-it-next-to-the-proxy)
+- [Registration](https://synapse-gateway.readthedocs.io/en/latest/docs/synapse-family/mcp/registration/)
+- [Identity injection](https://synapse-gateway.readthedocs.io/en/latest/docs/synapse-family/mcp/identity-injection/)
+- [Security](https://synapse-gateway.readthedocs.io/en/latest/docs/synapse-family/mcp/security/)
+- [Roadmap](https://synapse-gateway.readthedocs.io/en/latest/docs/synapse-family/mcp/roadmap/)
+- API reference on [docs.rs](https://docs.rs/synapse-mcp)
+
+## License
+
+Licensed under the **Mozilla Public License 2.0** (MPL-2.0), which welcomes commercial use and asks that changes to Synapse's own files are shared back. See **[LICENSE](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)** and the [licence note](https://github.com/sustentabilitas/synapse-gateway#license).

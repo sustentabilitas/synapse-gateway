@@ -1,0 +1,126 @@
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/700.css';
+@import '@fontsource/inter/800.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/700.css';
+
+/* Light theme uses a darker teal so links meet WCAG AA on white. */
+:root {
+  --ifm-color-primary: #0f766e;
+  --ifm-color-primary-dark: #0d6a63;
+  --ifm-color-primary-darker: #0c645e;
+  --ifm-color-primary-darkest: #0a524d;
+  --ifm-color-primary-light: #118279;
+  --ifm-color-primary-lighter: #12887f;
+  --ifm-color-primary-lightest: #149a90;
+  --ifm-font-family-base: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --ifm-font-family-monospace: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ifm-code-font-size: 92%;
+  --ifm-heading-font-weight: 700;
+  --docusaurus-highlighted-code-line-bg: rgba(15, 118, 110, 0.12);
+  --sy-surface: #f8fafc;
+  --sy-border: #e2e8f0;
+  --sy-muted: #475569;
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #14b8a6;
+  --ifm-color-primary-dark: #12a695;
+  --ifm-color-primary-darker: #119c8d;
+  --ifm-color-primary-darkest: #0e8174;
+  --ifm-color-primary-light: #16cab7;
+  --ifm-color-primary-lighter: #17d4bf;
+  --ifm-color-primary-lightest: #2ee8d3;
+  --ifm-background-color: #0b1020;
+  --ifm-background-surface-color: #111827;
+  --ifm-navbar-background-color: rgba(11, 16, 32, 0.85);
+  --ifm-font-color-base: #e5e7eb;
+  --docusaurus-highlighted-code-line-bg: rgba(20, 184, 166, 0.18);
+  --sy-surface: #111827;
+  --sy-border: #1f2937;
+  --sy-muted: #9ca3af;
+}
+
+[data-theme='dark'] .navbar:not(.navbar-sidebar--show) {
+  backdrop-filter: blur(8px);
+}
+
+[data-theme='dark'] .button--primary {
+  --ifm-button-color: #0b1020;
+}
+
+.footer--dark {
+  --ifm-footer-background-color: #070b16;
+}
+
+/* Shared landing-page section styles. */
+.sy-section {
+  padding: 5rem 0;
+}
+
+.sy-section--alt {
+  background: var(--sy-surface);
+  border-top: 1px solid var(--sy-border);
+  border-bottom: 1px solid var(--sy-border);
+}
+
+.sy-eyebrow {
+  color: var(--ifm-color-primary);
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+
+.sy-section-title {
+  font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: 1rem;
+}
+
+.sy-section-lead {
+  color: var(--sy-muted);
+  font-size: 1.15rem;
+  max-width: 48rem;
+  margin-bottom: 2.5rem;
+}
+
+.sy-card {
+  display: block;
+  height: 100%;
+  padding: 1.5rem;
+  border: 1px solid var(--sy-border);
+  border-radius: 12px;
+  background: var(--ifm-background-color);
+  color: inherit;
+  transition: border-color 150ms ease, transform 150ms ease;
+}
+
+[data-theme='light'] .sy-card {
+  background: #fff;
+}
+
+.sy-card:hover,
+.sy-card:focus-visible {
+  border-color: var(--ifm-color-primary);
+  color: inherit;
+  text-decoration: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sy-card:hover {
+    transform: translateY(-2px);
+  }
+}
+
+.sy-card h3 {
+  margin-bottom: 0.5rem;
+}
+
+.sy-card p {
+  color: var(--sy-muted);
+  margin-bottom: 0;
+}

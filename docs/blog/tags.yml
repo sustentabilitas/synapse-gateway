@@ -1,0 +1,12 @@
+release:
+  label: Release
+  description: Announcements and release notes
+routing:
+  label: Routing
+  description: How Synapse picks models and lanes
+observability:
+  label: Observability
+  description: Metrics, logs and dashboards
+vertex:
+  label: Vertex AI
+  description: The native Vertex AI lane

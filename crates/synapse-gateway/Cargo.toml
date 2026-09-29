@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 description = "OpenAI-compatible LLM router and gateway with streaming, tool calling, multi-provider fallback, native Vertex AI, and per-tenant cost accounting"
 readme = "README.md"
+exclude = ["tests/docs_examples.rs"]
 keywords = ["llm", "gateway", "openai", "vertex-ai", "proxy"]
 categories = ["web-programming::http-server", "api-bindings"]
 
