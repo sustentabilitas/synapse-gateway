@@ -61,7 +61,7 @@ git push origin synapse-gateway-vX.Y.Z
 La publicación falla en la primera comprobación si la etiqueta no coincide con el `Cargo.toml`
 del crate.
 
-También puedes ejecutar **Release** o **Release libraries** a mano desde la pestaña Actions.
+También puedes ejecutar **Release** o **Release library crate** a mano desde la pestaña Actions.
 Desde una rama, publica la versión indicada en el `Cargo.toml` del crate y, para los binarios,
 sube la imagen sin mover `latest`.
 
