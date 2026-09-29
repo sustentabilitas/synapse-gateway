@@ -1,543 +1,94 @@
 # synapse-gateway
 
 [![crates.io](https://img.shields.io/crates/v/synapse-gateway.svg)](https://crates.io/crates/synapse-gateway)
-[![Docker Hub](https://img.shields.io/docker/v/sustentabilitas/synapse-gateway?logo=docker&label=docker)](https://hub.docker.com/repository/docker/sustentabilitas/synapse-gateway)
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![Docker Hub](https://img.shields.io/docker/v/sustentabilitas/synapse-gateway?logo=docker&label=docker)](https://hub.docker.com/r/sustentabilitas/synapse-gateway)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)
 [![CI](https://github.com/sustentabilitas/synapse-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/sustentabilitas/synapse-gateway/actions/workflows/ci.yml)
 
-[English](README.md) · **Español**
+[English](https://github.com/sustentabilitas/synapse-gateway/blob/main/crates/synapse-gateway/README.md) · **Español**
 
-synapse-gateway es un router y gateway de LLM compatible con la API de OpenAI, escrito en Rust. Acepta peticiones estándar `POST /v1/chat/completions` de OpenAI y las enruta, mediante cadenas de fallback configurables, a uno de dos carriles de backend: un carril estándar (a través del crate `genai`, compatible con OpenAI, Qwen/DashScope y otros proveedores compatibles con OpenAI) o un carril nativo de Vertex AI (mediante HTTP directo a la API REST de Vertex, con soporte para contenido en caché, URIs de medios en Cloud Storage y esquemas de respuesta estrictos). Se emiten métricas de Prometheus y atributos de span `gen_ai.*` de OpenTelemetry en cada petición, y un registro de costes por tenant anota los eventos de consumo de tokens en SQLite o Postgres.
+synapse-gateway es un gateway de LLM de código abierto escrito en Rust. Tus clientes envían
+peticiones estándar de OpenAI `POST /v1/chat/completions`; el gateway enruta cada una a
+través de una cadena de fallback de proveedores definida en la configuración (Vertex AI,
+OpenAI, Qwen y servidores autoalojados compatibles con OpenAI) y anota lo que ha costado en un
+registro de costes por tenant. Las peticiones van por uno de tres carriles: el carril estándar
+compatible con OpenAI, un carril Vertex AI nativo que conserva la caché de contexto, los
+medios `gs://` y los esquemas de respuesta estrictos, y un carril Jev para decisiones tipadas
+de TypeSafe System One. Streaming, llamadas a herramientas, embeddings, guardrails de entrada
+y métricas `synapse_*` vienen incluidos.
 
----
+**Documentación completa:** https://synapse-gateway.readthedocs.io/en/latest/es/docs/overview/introduction/
 
-## ¿Por qué otro router/gateway de LLM más?
+## Instalación
 
-La respuesta honesta: intentamos no escribirlo. Primero evaluamos [`litellm-rs`](https://github.com/majiayu000/litellm-rs) (y el enfoque general de "poner un proxy compatible con OpenAI delante de todo") — y nos habría costado lo único a lo que no podíamos renunciar: **Vertex AI nativo**.
+```bash
+# Imagen de Docker (linux/amd64)
+docker pull sustentabilitas/synapse-gateway
 
-- **No reduce Vertex al mínimo común denominador.** `litellm-rs` y la mayoría de gateways compatibles con OpenAI acceden a Vertex/Gemini a través de un adaptador genérico con forma OpenAI, que descarta las funcionalidades específicas de Vertex de las que realmente dependemos: almacenamiento en caché de contexto (`cachedContent`), URIs de medios en Cloud Storage (`gs://`) y decodificación restringida mediante `responseSchema` nativo. synapse mantiene un **carril Vertex nativo** dedicado que habla directamente con `:generateContent` / `:streamGenerateContent`, preservando todas esas capacidades — mientras que el resto sigue usando el carril estándar compatible con OpenAI a través de [`genai`](https://crates.io/crates/genai). Obtienes enrutamiento multi-proveedor *y* el poder nativo de Vertex, sin tener que elegir entre uno y otro.
+# Binario
+cargo install synapse-gateway
+```
 
-- **Es pequeño y propio, no un framework.** synapse es un único binario Rust — o un crate de biblioteca embebible (`default-features = false`, invoca `Gateway::chat()` en el mismo proceso) — con un conjunto de dependencias reducido. Dado que el código de enrutamiento, fallback, registro de costes y observabilidad es nuestro, las cosas que otros gateways no ofrecían fueron sencillas de añadir en lugar de batallas upstream: un **registro de costes por tenant** con distribución a múltiples destinos (SQLite/Postgres + Pub/Sub + SNS), y **spans `gen_ai.*` de OpenTelemetry** + métricas de Prometheus en cada petición.
-
-- **Las partes valiosas son estándar, no complementos de pago.** El streaming es real y está activado por defecto: el gateway siempre hace streaming desde el proveedor upstream internamente, de modo que los clientes con `stream: true` reciben SSE compatible con OpenAI token a token, y los clientes sin streaming reciben esa misma respuesta consolidada en un único objeto JSON — lo que significa que *mantienen el fallback completo a lo largo de toda la cadena*. **Las llamadas a herramientas/funciones funcionan en ambos carriles.** Y como la interfaz es el estándar OpenAI, los SDKs de OpenAI existentes funcionan sin cambios. Nada de esto está bloqueado tras un nivel de precio; es la línea base.
-
-En resumen: synapse es el gateway compatible con OpenAI *sencillo* que no te obliga a sacrificar las capacidades nativas de Vertex para obtener streaming, llamadas a herramientas, fallback multi-proveedor y contabilidad de costes.
-
----
-
-## Arquitectura: dos carriles
-
-### Carril estándar
-
-Las peticiones sin un bloque de extensión `vertex` son gestionadas por el carril estándar, que utiliza el crate [`genai`](https://crates.io/crates/genai) como adaptador HTTP. Cualquier proveedor accesible mediante una API compatible con OpenAI (OpenAI, Qwen/DashScope, vLLM/Ollama/TGI autoalojado a través de `oai_compat`) puede aparecer en una cadena de fallback.
-
-### Router Jev
-
-Una ruta con `strategy = "jev"` elige modelo y esfuerzo de razonamiento en cada
-petición. En lugar de `legs`, declara niveles (tiers) ordenados del más fácil al
-más difícil. Antes de servir, Synapse pregunta a TypeSafe Jev lo exigente que es
-la petición, puntuada contra las descripciones de los niveles, y si requiere
-razonamiento paso a paso. La petición la sirve el nivel más cercano con su
-`effort`, subido un paso cuando es probable que requiera razonamiento. Si ese
-nivel falla, se prueban primero los niveles más difíciles y después los más
-fáciles.
+Para embeber el gateway en un servicio Rust, añade la biblioteca sin sus features por defecto
+y llama a `Gateway::chat()` en el mismo proceso (el crate de biblioteca se llama `synapse`):
 
 ```toml
-[routes."auto"]
-strategy = "jev"
-
-[routes."auto".jev_router]
-default_tier = "moderate"   # con baja confianza, timeout o error de Jev
-timeout_ms = 400
-
-[[routes."auto".tiers]]
-name = "moderate"
-description = "Everyday Q&A, summarising, simple extraction or code edits"
-effort = "low"              # none|minimal|low|medium|high|xhigh|max
-legs = [{ provider = "vertex", model = "gemini-2.5-flash" }]
-# … de 2 a 10 niveles en total
+[dependencies]
+synapse-gateway = { version = "0.5", default-features = false }
 ```
 
-- Las descripciones describen el trabajo, nunca el modelo. Los nombres de nivel
-  deben ser ASCII imprimible, porque se envían como valores de encabezado.
-- Los tramos de un nivel no pueden usar el proveedor `typesafe`.
-- `effort` se convierte en `reasoning_effort` en tramos compatibles con OpenAI y
-  en `thinkingBudget` en tramos Vertex nativos. `none` no envía nada, así que se
-  aplica el valor por defecto del modelo; en Gemini 2.5 Pro y Flash es el
-  pensamiento dinámico, que puede costar más que `minimal` (512).
-- El esfuerzo del propio cliente siempre gana en su carril: `reasoning_effort`
-  en el carril estándar y `vertex.thinking_config` en el carril Vertex nativo
-  (que ignora `reasoning_effort`, así que se sigue aplicando el
-  `thinkingBudget` del nivel).
-- Envía `"routing_strategy": "static"` para omitir la decisión en una petición.
-  En rutas normales, cualquier otro valor devuelve `400`.
-- Las respuestas llevan `x-synapse-routing` (`jev`, `static-override` o
-  `static` en rutas normales), `x-synapse-tier`, `x-synapse-reasoning-effort`
-  y, cuando procede, `x-synapse-tier-decided` y `x-synapse-routing-degraded`
-  (`timeout`, `error`, `low_confidence`, `jev_unavailable`).
-- Cada decisión de Jev que se puede interpretar escribe una fila en el registro con
-  `op = "route_decision"`, con el mismo `request_id` que la fila del chat.
-- Cada petición planificada emite un evento `tracing` con target
-  `synapse::routing`. Una llamada a Jev fallida o agotada por tiempo registra
-  además una advertencia con solo el tipo de fallo (`error.kind`) y el estado
-  HTTP o el timeout configurado, nunca el cuerpo de la respuesta de Jev.
-- Con validación estricta, una ruta `jev` exige `TYPESAFE_API_KEY`; con
-  validación `lenient`, pasa a enrutado estático si no está disponible. Una
-  ruta degradada conserva el `effort` de cada nivel en sus tramos, así que sus
-  respuestas siguen llevando `x-synapse-reasoning-effort` (pero no
-  `x-synapse-tier`).
+Consulta [Instalación](https://synapse-gateway.readthedocs.io/en/latest/es/docs/get-started/installation/)
+para las features de Cargo y los backends del registro de costes, y
+[Synapse como biblioteca embebida](https://synapse-gateway.readthedocs.io/en/latest/es/docs/guides/embedding-as-library/).
 
-### Carril Vertex nativo
+## Ejemplo
 
-Si el cuerpo de la petición contiene un objeto de extensión `vertex` con alguno de los campos `cached_content`, `media_uris` o `response_schema`, la petición se enruta al carril Vertex nativo. Este carril se comunica directamente con el endpoint REST `generateContent` de Vertex AI, traduciendo el formato de mensajes de OpenAI mientras preserva las funcionalidades específicas de Vertex:
-
-- **`cached_content`** — nombre de un recurso `cachedContents` para el almacenamiento en caché de contexto.
-- **`media_uris`** — URIs de Cloud Storage (`gs://`) adjuntas como partes inline.
-- **`response_schema`** — un esquema JSON pasado como `generationConfig.responseSchema` para la decodificación restringida.
-
-Un tramo de ruta accesible únicamente por el carril estándar (es decir, sin tramo `vertex` configurado) devuelve `400 Bad Request` si se le envía una petición Vertex nativa.
-
-### Detección de carril
-
-```json
-{
-  "model": "gemini-pro",
-  "messages": [...],
-  "vertex": {
-    "cached_content": "projects/my-project/locations/us-central1/cachedContents/abc123",
-    "media_uris": ["gs://my-bucket/file.mp4"],
-    "response_schema": { "type": "object", "properties": { "answer": { "type": "string" } } }
-  }
-}
-```
-
-La presencia de la clave `vertex` (cualquiera de sus campos) es la única señal. Las peticiones sin ella siempre van al carril estándar.
-
----
-
-## Inicio rápido
-
-### Requisitos previos
-
-Configura las credenciales de cada proveedor referenciado en tu `config/routes.toml`:
-
-```bash
-# Vertex AI (se usan Application Default Credentials mediante google-cloud-auth)
-export VERTEX_PROJECT=my-gcp-project
-
-# Qwen / DashScope
-export DASHSCOPE_API_KEY=sk-...
-# export DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1  # opcional
-
-# OpenAI
-export OPENAI_API_KEY=sk-...
-# export OPENAI_BASE_URL=https://api.openai.com/v1  # opcional
-
-# OAI-compatible self-hosted (vLLM / Ollama / TGI)
-export OAI_COMPAT_BASE_URL=http://localhost:8000/v1
-# export OAI_COMPAT_API_KEY=token-xyz  # opcional
-```
-
-### Ejecución
-
-```bash
-cargo run --release
-# Server: 0.0.0.0:8080
-# Prometheus: 0.0.0.0:9090
-```
-
-### Petición estándar
-
-```bash
-curl -s http://localhost:8080/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "x-synapse-tenant: my-team" \
-  -d '{
-    "model": "gemini-pro",
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'
-```
-
-### Petición con streaming
-
-```bash
-curl -s http://localhost:8080/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "x-synapse-tenant: my-team" \
-  -d '{
-    "model": "gemini-pro",
-    "messages": [{"role": "user", "content": "Count to 5."}],
-    "stream": true
-  }'
-```
-
-Las respuestas son Server-Sent Events (SSE) en el formato estándar `data: {...}` de OpenAI, finalizadas con `data: [DONE]`.
-
-### Petición Vertex nativa
-
-```bash
-curl -s http://localhost:8080/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "x-synapse-tenant: my-team" \
-  -d '{
-    "model": "gemini-pro",
-    "messages": [{"role": "user", "content": "Describe this video."}],
-    "vertex": {
-      "media_uris": ["gs://my-bucket/video.mp4"]
-    }
-  }'
-```
-
----
-
-## Streaming y llamadas a herramientas
-
-### Streaming
-
-Al establecer `"stream": true` se devuelve una respuesta de Server-Sent Events compatible con OpenAI: una secuencia de eventos `chat.completion.chunk` (cada uno con el prefijo `data: `) finalizada con `data: [DONE]`. Sin él, se devuelve un único objeto JSON `chat.completion`.
-
-Internamente, el gateway **siempre** hace streaming desde el proveedor upstream, incluso para clientes sin streaming. Las respuestas sin streaming se almacenan en búfer completamente antes de la entrega, de modo que la cadena de fallback completa (todos los tramos) está disponible ante cualquier fallo — incluidos los fallos a mitad de stream en tramos anteriores.
-
-### Llamadas a herramientas
-
-Las llamadas a herramientas son compatibles en ambos carriles:
-
-- **Carril estándar** — envía `tools` de OpenAI (array de `{type: "function", function: {name, description, parameters}}`) y opcionalmente `tool_choice`. El gateway los traduce para el crate `genai`. Nota: `tool_choice` es de mejor esfuerzo en este carril; el campo `ChatRequest` de genai 0.6 no tiene `tool_choice`, por lo que no se reenvía.
-- **Carril Vertex nativo** — los `tools` se traducen a `functionDeclarations` de Vertex; `tool_choice` se respeta de forma nativa mediante `toolConfig.functionCallingConfig`.
-
-Las respuestas incluyen `tool_calls` en el mensaje del asistente y `finish_reason: "tool_calls"`. En modo streaming, los deltas de llamadas a herramientas se emiten como eventos indexados `chat.completion.chunk` (con la misma forma que la especificación de streaming de OpenAI).
-
-### Tiempos de espera
-
-Dos variables de entorno acotan la latencia del stream:
-
-| Variable | Valor por defecto | Descripción |
-|----------|-------------------|-------------|
-| `SYNAPSE_REQUEST_TIMEOUT_SECS` | `120` | Tiempo máximo hasta el primer fragmento (time-to-first-token). Un tramo que no produce su primer fragmento dentro de esta ventana se abandona y la cadena cae al siguiente tramo. |
-| `SYNAPSE_STREAM_IDLE_TIMEOUT_SECS` | `60` | Intervalo máximo entre fragmentos consecutivos. Si no llega ningún fragmento dentro de esta ventana una vez iniciado el streaming, el tramo se termina con un error a mitad de stream. |
-
-Ambos tiempos de espera se aplican al carril estándar. El carril Vertex nativo está actualmente limitado únicamente por el timeout del cliente HTTP subyacente (`SYNAPSE_REQUEST_TIMEOUT_SECS`); el timeout de inactividad y el fallback de primer fragmento para ese carril están pendientes como mejora futura.
-
----
-
-## Endpoints
-
-| Método | Ruta | Descripción |
-|--------|------|-------------|
-| `GET` | `/health` | Devuelve `200 OK` con `{"status":"ok"}`. |
-| `GET` | `/v1/models` | Lista todos los alias de modelos definidos en `routes.toml`. |
-| `POST` | `/v1/chat/completions` | Completados de chat compatibles con OpenAI. Admite `stream: true` (SSE). Acepta el bloque de extensión opcional `vertex`. |
-
----
-
-## Configuración
-
-### Variables de entorno
-
-| Variable | Valor por defecto | Descripción |
-|----------|-------------------|-------------|
-| `SYNAPSE_ADDR` | `0.0.0.0:8080` | Dirección y puerto del servidor HTTP principal. |
-| `SYNAPSE_METRICS_ADDR` | `0.0.0.0:9090` | Dirección y puerto del endpoint de métricas de Prometheus. |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | URL base del colector para exportar métricas por OTLP/HTTP (se añade `/v1/metrics`). Sin definir, OTLP queda desactivado. `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` no se lee. |
-| `OTEL_SERVICE_NAME` | `synapse-gateway` | Atributo de recurso `service.name` en las métricas OTLP. |
-| `SYNAPSE_ROUTES_PATH` | `config/routes.toml` | Ruta al fichero de configuración de rutas. |
-| `SYNAPSE_PRICING_PATH` | `config/pricing.toml` | Ruta al fichero de configuración de precios. |
-| `SYNAPSE_LEDGER_BACKENDS` | `sqlite` | Lista separada por comas de los destinos activos del registro de costes (p. ej. `postgres,pubsub`). Cada evento se distribuye a todos los destinos listados. |
-| `SYNAPSE_LEDGER_BACKEND` | — | Alias de destino único; se usa cuando `SYNAPSE_LEDGER_BACKENDS` no está definido. |
-| `SYNAPSE_LEDGER_SQLITE_DSN` | `sqlite://synapse.db?mode=rwc` | DSN de SQLite. Recurre a `SYNAPSE_LEDGER_DSN` y luego a la ruta por defecto. |
-| `SYNAPSE_LEDGER_POSTGRES_DSN` | — | DSN de Postgres. Recurre a `SYNAPSE_LEDGER_DSN`. Obligatorio cuando `postgres` está en la lista de destinos. |
-| `SYNAPSE_LEDGER_DSN` | `sqlite://synapse.db?mode=rwc` | DSN heredado de destino único (SQLite o Postgres). Se prefieren las variables por destino indicadas arriba. |
-| `SYNAPSE_LEDGER_PUBSUB_TOPIC` | — | ID del topic de Pub/Sub. Obligatorio cuando `pubsub` está en la lista de destinos (feature `ledger-pubsub`). |
-| `SYNAPSE_LEDGER_PUBSUB_PROJECT` | — | Proyecto de GCP para Pub/Sub. Recurre a `VERTEX_PROJECT`. |
-| `SYNAPSE_LEDGER_SNS_TOPIC_ARN` | — | ARN del topic de SNS. Obligatorio cuando `sns` está en la lista de destinos (feature `ledger-sns`). |
-| `SYNAPSE_LEDGER_SNS_REGION` | — | Región de AWS para SNS. Opcional; si no se especifica, se usa la cadena de credenciales por defecto de AWS. |
-| `SYNAPSE_DEFAULT_TENANT` | `unattributed` | Nombre de tenant usado cuando el encabezado `x-synapse-tenant` está ausente. |
-| `SYNAPSE_REQUEST_TIMEOUT_SECS` | `120` | Timeout de time-to-first-chunk en segundos. Un tramo que no produce su primer fragmento dentro de esta ventana cae al siguiente. |
-| `SYNAPSE_STREAM_IDLE_TIMEOUT_SECS` | `60` | Intervalo máximo de inactividad entre fragmentos en segundos. Un tramo que se detiene a mitad de stream durante este tiempo se termina. |
-
-### Variables de credenciales de proveedores
-
-El gateway realiza una comprobación de credenciales al inicio que falla de forma inmediata. Si un proveedor está referenciado en `routes.toml` pero le faltan las credenciales requeridas, el proceso termina de inmediato.
-
-| Proveedor | Obligatorio | Opcional |
-|-----------|-------------|----------|
-| `vertex` | `VERTEX_PROJECT` (ADC mediante `google-cloud-auth`) | — |
-| `qwen` | `DASHSCOPE_API_KEY` | `DASHSCOPE_BASE_URL` |
-| `openai` | `OPENAI_API_KEY` | `OPENAI_BASE_URL` |
-| `oai_compat` | `OAI_COMPAT_BASE_URL` | `OAI_COMPAT_API_KEY` |
-
-### `config/routes.toml`
-
-Mapea un alias de modelo de cara al cliente a una lista ordenada de tramos de fallback. El gateway prueba cada tramo en orden, avanzando ante un error.
+Guarda una ruta y sus precios:
 
 ```toml
-[routes."gemini-pro"]
+# config/routes.toml
+[routes."gemini-flash"]
 legs = [
-  { provider = "vertex", model = "gemini-3-pro" },
-  { provider = "qwen",   model = "qwen-max" },
+  { provider = "vertex", model = "gemini-3.5-flash-lite", region = "us" },
 ]
-
-[routes."fast"]
-legs = [{ provider = "vertex", model = "gemini-3-flash" }]
 ```
-
-### `config/pricing.toml`
-
-Mapea `provider:model` al coste de entrada/salida en USD por 1.000.000 de tokens. Los modelos no listados tienen coste 0.
 
 ```toml
-# USD por 1.000.000 de tokens. Los modelos de código abierto o autoalojados tienen coste 0 por defecto.
-["vertex:gemini-3-pro"]
-input  = 1.25
-output = 5.0
-
-["vertex:gemini-3-flash"]
-input  = 0.30
-output = 1.20
-
-["qwen:qwen-max"]
-input  = 1.6
-output = 6.4
+# config/pricing.toml
+"vertex:gemini-3.5-flash-lite" = { input = 0.30, output = 2.50 }
 ```
 
----
-
-## Atribución por tenant
-
-Los encabezados de petición controlan la atribución de costes y observabilidad:
-
-| Encabezado | Descripción |
-|------------|-------------|
-| `x-synapse-tenant` | Identificador de tenant. Recurre a `SYNAPSE_DEFAULT_TENANT` (`unattributed`). |
-| `x-synapse-workspace` | Subagrupación opcional dentro de un tenant (p. ej. un proyecto o equipo). |
-| `x-synapse-user` | Identificador opcional de usuario final dentro del tenant, para atribuir el uso por usuario. |
-| `x-synapse-thread` | Identificador opcional de conversación / hilo de agente. |
-| `x-synapse-message` | Identificador opcional de mensaje dentro del hilo. Si se envía y no hay un id de petición explícito, se usa como `request_id` del registro para correlación. |
-| `x-synapse-user-task-type` | Clasificación opcional y libre del trabajo que atiende la petición (p. ej. `summarisation`, `code-review`). El gateway nunca la interpreta. |
-| `x-synapse-ai-task-type` | Anulación opcional del tipo de tarea de IA. Si falta o está vacío, se infiere del alias de ruta de la petición mediante `config/ai_task_types.toml`, con `simple` como valor por defecto. |
-
-Tenant y workspace se registran en las filas `usage_events` del registro de costes y se incluyen como atributos en los spans `gen_ai.*`; usuario / hilo / mensaje / tipo de tarea de usuario / tipo de tarea de IA se registran en las filas del registro (y en los eventos publicados) pero se mantienen fuera de métricas y spans para acotar la cardinalidad de etiquetas.
-
-### Tipo de tarea de IA
-
-Cada fila del registro incluye un `ai_task_type` que describe el tipo de trabajo realizado por el gateway. Se resuelve por petición así:
-
-1. el encabezado `x-synapse-ai-task-type`, si se envía y no está vacío;
-2. el tipo de tarea asignado al alias de ruta de la petición en `config/ai_task_types.toml`;
-3. `simple`.
-
-La tabla se indexa por tipo de tarea, de modo que varios alias de ruta pueden compartir uno:
-
-```toml
-# config/ai_task_types.toml
-conversation = ["conversation", "planning", "nl-plan"]
-extraction   = ["extract", "doc-extract", "structured"]
-```
-
-La ruta se define con `SYNAPSE_AI_TASK_TYPES_PATH` (por defecto `config/ai_task_types.toml`). El archivo es opcional: si falta, todas las filas se resuelven a `simple`. Un alias de ruta listado bajo dos tipos de tarea es ambiguo y provoca un error al arrancar.
-
----
-
-## Observabilidad
-
-### Prometheus
-
-Las métricas se registran con OpenTelemetry y se sirven en formato de texto de
-Prometheus en `GET /metrics` sobre `SYNAPSE_METRICS_ADDR` (por defecto `:9090`).
-Define `OTEL_EXPORTER_OTLP_ENDPOINT` con la URL base de un colector (p. ej.
-`http://otel-collector:4318`) para enviarlas también por OTLP/HTTP cada 60
-segundos (configurable con `OTEL_METRIC_EXPORT_INTERVAL`, en milisegundos),
-etiquetadas con `service.name` desde `OTEL_SERVICE_NAME` (por defecto
-`synapse-gateway`). Los nombres de series y etiquetas son los mismos en ambas
-vías. Las métricas de duración son histogramas con buckets en segundos
-(`_bucket`, `_sum`, `_count`). Cada métrica conserva como máximo 2000
-combinaciones de etiquetas; las nuevas combinaciones a partir de ese límite se
-agrupan en una única serie con `otel_metric_overflow="true"`.
-
-Quien embeba el crate con `Gateway::builder()` no registra nada por defecto (las
-métricas son no-op); pasa `.metrics(Arc<GatewayMetrics>)` para registrarlas.
-Constrúyelo con `GatewayMetrics::new(&meter)` desde tu propio `MeterProvider`,
-o, con la feature `server`, desde `synapse::telemetry::install`, manteniendo
-vivo el `MetricsExporter` devuelto durante toda la vida del proceso.
-
-| Métrica | Tipo | Etiquetas | Descripción |
-|---------|------|-----------|-------------|
-| `synapse_requests_total` | Counter | `route`, `model`, `system`, `lane` | Total de peticiones atendidas. |
-| `synapse_request_duration_seconds` | Histogram | `route`, `model`, `system`, `lane` | Latencia extremo a extremo de las peticiones. |
-| `synapse_input_tokens_total` | Counter | `route`, `model`, `system`, `lane` | Tokens de entrada consumidos acumulados. |
-| `synapse_output_tokens_total` | Counter | `route`, `model`, `system`, `lane` | Tokens de salida generados acumulados. |
-| `synapse_ledger_dropped_total` | Counter | — | Eventos del registro descartados por canal lleno (desbordamiento fire-and-forget). |
-| `synapse_ledger_errors_total` | Counter | `backend` | Fallos de escritura por destino (p. ej. `backend="pubsub"`). Un fallo en un destino no detiene los demás. |
-| `synapse_embeddings_total` | Counter | `route`, `model`, `provider` | Peticiones de embeddings atendidas. |
-| `synapse_embedding_duration_seconds` | Histogram | `route`, `model`, `provider` | Latencia de embeddings. |
-| `synapse_passthrough_total` | Counter | `provider`, `model`, `action`, `status` | Llamadas passthrough de Gemini (`provider="vertex"`) y Jev (`provider="typesafe"`). |
-| `synapse_passthrough_fallback_total` | Counter | `from_model`, `to_model` | Saltos del passthrough de Gemini al siguiente tramo de Vertex. |
-| `synapse_jev_extraction_total` | Counter | `route`, `degraded` | Respuestas de extracción híbrida de Jev. |
-| `synapse_routing_decisions_total` | Counter | `route`, `tier`, `outcome` | Una por petición planificada a una ruta `jev` (no las rechazadas con `400` o por los guardrails); `tier` es el nivel decidido; `outcome` es `decided`, `low_confidence`, `timeout`, `error` o `static_override`. |
-| `synapse_routing_decision_duration_seconds` | Histogram | `route` | Latencia de la decisión de Jev. |
-| `synapse_resilience_calls_total` | Counter | `label`, `outcome` | Llamadas salientes a proveedores por resultado (`success`, `exhausted`, `circuit_open`). |
-| `synapse_resilience_call_duration_seconds` | Histogram | `label`, `outcome` | Latencia de llamadas salientes, reintentos incluidos. |
-| `synapse_resilience_retry_attempts_total` | Counter | `label` | Reintentos de llamadas salientes. |
-| `synapse_resilience_breaker_transitions_total` | Counter | `name`, `transition` | Transiciones de los circuit breakers. |
-| `synapse_resilience_breaker_state` | Gauge | `name` | Estado del breaker: 0 cerrado, 1 abierto, 2 semiabierto. |
-| `synapse_guard_scans_total` | Counter | `policy`, `outcome` | Escaneos de guardrails por resultado. |
-| `synapse_guard_matches_total` | Counter | `policy`, `scanner`, `severity` | Coincidencias de los escáneres de guardrails. |
-| `synapse_guard_scan_duration_seconds` | Histogram | `policy` | Latencia de los escaneos de guardrails. |
-
-Las cuatro métricas `synapse_*` de tokens/peticiones comparten el mismo conjunto de etiquetas:
-
-- **`route`** — el alias de modelo de cara al cliente (p. ej. `gemini-pro`, `fast`).
-- **`model`** — el modelo que realmente atendió la petición (según lo devuelto por el tramo de backend).
-- **`system`** — el valor OpenLLMetry `gen_ai.system`: `vertexai`, `openai`, `dashscope` o `oai_compat`.
-- **`lane`** — `standard` (crate genai), `native` (REST de Vertex directo) o `jev` (TypeSafe System One).
-
-El tenant y el workspace **no** son etiquetas de Prometheus. Se registran en el registro de costes (tabla `usage_events`) y se incluyen como atributos en los spans de trazado `gen_ai.*`. Mantenerlos fuera de las etiquetas de métricas evita una cardinalidad no acotada derivada de valores de encabezados suministrados por clientes no confiables.
-
-### Trazado
-
-Los spans estructurados siguen las convenciones semánticas `gen_ai.*` de OpenTelemetry (modelo, proveedor, conteo de tokens, tipos de error). Configura el nivel y formato del log mediante `RUST_LOG` (p. ej. `RUST_LOG=info`).
-
----
-
-## Registro de costes
-
-El consumo de tokens se registra de forma asíncrona en una tabla `usage_events` tras cada completado exitoso. La escritura en el registro es fire-and-forget: si el canal interno está lleno, el evento se descarta y `synapse_ledger_dropped_total` se incrementa — la latencia de la petición nunca se ve afectada.
-
-### Distribución a múltiples destinos
-
-Varios backends pueden funcionar simultáneamente. Cada evento de uso se entrega a todos los destinos configurados de forma concurrente. El fallo de un destino nunca bloquea a los demás; los fallos por destino se registran y se contabilizan en `synapse_ledger_errors_total{backend=<name>}`.
-
-Selecciona los backends con `SYNAPSE_LEDGER_BACKENDS` (separados por comas). El singular `SYNAPSE_LEDGER_BACKEND` sigue aceptándose como fallback de un único elemento. Cuando ninguna de las dos variables está definida, el valor por defecto es `sqlite`.
+Arranca el gateway con Application Default Credentials para Vertex AI y envía una petición:
 
 ```bash
-# Distribuir a Postgres y Pub/Sub simultáneamente
-SYNAPSE_LEDGER_BACKENDS=postgres,pubsub
+gcloud auth application-default login
+VERTEX_PROJECT_ID=my-gcp-project synapse-gateway   # API en :8080, métricas en :9090
+
+curl -s http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "x-synapse-tenant: my-team" \
+  -d '{"model": "gemini-flash", "messages": [{"role": "user", "content": "Hello!"}]}'
 ```
 
-### Backends
+El [inicio rápido](https://synapse-gateway.readthedocs.io/en/latest/es/docs/get-started/quickstart/)
+añade streaming, fallback a OpenAI, peticiones Vertex nativas y el registro de costes.
 
-| Backend | Feature de Cargo | Variables de entorno | Notas |
-|---------|-----------------|----------------------|-------|
-| SQLite | `ledger-sqlite` (por defecto) | `SYNAPSE_LEDGER_SQLITE_DSN` (fallback: `SYNAPSE_LEDGER_DSN`, luego `sqlite://synapse.db?mode=rwc`) | El fichero se crea automáticamente. |
-| Postgres | `ledger-postgres` | `SYNAPSE_LEDGER_POSTGRES_DSN` (fallback: `SYNAPSE_LEDGER_DSN`) | Requiere una cadena de conexión. |
-| GCP Pub/Sub | `ledger-pubsub` | `SYNAPSE_LEDGER_PUBSUB_TOPIC` (obligatorio), `SYNAPSE_LEDGER_PUBSUB_PROJECT` (fallback: `VERTEX_PROJECT`) | Autenticación ADC; la clave de ordenación es `requestId`. |
-| AWS SNS | `ledger-sns` | `SYNAPSE_LEDGER_SNS_TOPIC_ARN` (obligatorio), `SYNAPSE_LEDGER_SNS_REGION` (opcional, si no se usa la cadena por defecto de AWS) | Cadena de credenciales estándar de AWS. |
+## Más información
 
-SQLite está habilitado por defecto. Los backends en la nube (`ledger-pubsub`, `ledger-sns`) están protegidos por feature flags y no arrastran ningún SDK de nube salvo que se habiliten explícitamente.
-
-```bash
-# Compilar con soporte para Pub/Sub
-cargo build --release --features ledger-pubsub
-
-# Compilar con soporte para SNS
-cargo build --release --features ledger-sns
-
-# Compilar con ambos backends en la nube
-cargo build --release --features "ledger-pubsub ledger-sns"
-```
-
-### Formato del evento publicado (Pub/Sub y SNS)
-
-Ambos backends en la nube publican un payload JSON alineado con talos (`camelCase`; tenant como `namespace`; `type: "usage"`):
-
-```json
-{
-  "namespace": "my-team",
-  "requestId": "01929f3a-...",
-  "timestamp": "2026-06-10T15:30:45Z",
-  "type": "usage",
-  "route": "gemini-pro",
-  "provider": "vertex",
-  "model": "gemini-3-pro",
-  "lane": "standard",
-  "inputTokens": 128,
-  "outputTokens": 256,
-  "costUsd": 0.00042,
-  "status": "ok"
-}
-```
-
-Cada mensaje incluye atributos para el filtrado de suscripciones: `namespace`, `requestId`, `type`, `provider`, `status`. Pub/Sub además establece `requestId` como clave de ordenación del mensaje.
-
-### Esquema
-
-La única migración (`migrations/0001_usage_events.sql`) crea la tabla `usage_events` con columnas para tenant, workspace, proveedor, modelo, tokens de entrada, tokens de salida, coste y fecha/hora.
-
----
-
-## Compilación
-
-### Cargo
-
-```bash
-# Compilación por defecto (registro SQLite)
-cargo build --release
-
-# Solo registro Postgres
-cargo build --release --no-default-features --features ledger-postgres
-
-# SQLite + distribución a Pub/Sub
-cargo build --release --features ledger-pubsub
-
-# SQLite + distribución a SNS
-cargo build --release --features ledger-sns
-
-# Los cuatro backends
-cargo build --release --features "ledger-pubsub ledger-sns ledger-postgres"
-```
-
-El binario de release se encuentra en `target/release/synapse-gateway`.
-
-### Docker
-
-```bash
-docker build -t synapse-gateway .
-docker run --rm \
-  -e VERTEX_PROJECT=my-project \
-  -e OPENAI_API_KEY=sk-... \
-  -p 8080:8080 \
-  -p 9090:9090 \
-  -v "$(pwd)/config:/app/config" \
-  synapse-gateway
-```
-
-El `Dockerfile` multietapa usa `rust:1-bookworm` para compilar y `debian:bookworm-slim` como imagen de ejecución. Los directorios `config/` y `migrations/` se copian en la imagen para que sea autocontenida; monta un volumen sobre `/app/config` para suministrar tus propios ficheros de rutas y precios en tiempo de ejecución.
-
----
-
-## Pruebas
-
-```bash
-# Ejecutar todas las pruebas (feature SQLite, por defecto)
-cargo test
-
-# Ejecutar todas las pruebas con todas las features (SQLite + Postgres)
-cargo test --all-features
-```
-
-La suite de pruebas (66 tests) cubre la resolución de rutas, el comportamiento del fallback, la detección de carril, la atribución de tenant, el análisis de configuración, las escrituras en el registro de costes, la integración del manejador HTTP, las primitivas de streaming, la acumulación de llamadas a herramientas, el fallback por timeout del primer fragmento y la serialización de SSE.
-
----
-
-## Limitaciones / hoja de ruta
-
-Las siguientes funcionalidades **no están** presentes en v1 y están planificadas para versiones futuras:
-
-- Autenticación / aplicación de claves de API en peticiones entrantes.
-- Limitación de tasa (rate limiting).
-- Enrutamiento de endpoints de Vertex en múltiples regiones.
-- API de administración para la recarga dinámica de rutas.
-
----
+- [Arquitectura](https://synapse-gateway.readthedocs.io/en/latest/es/docs/overview/architecture/): carriles y cadenas de fallback
+- [Rutas](https://synapse-gateway.readthedocs.io/en/latest/es/docs/configuration/routes/) y [variables de entorno](https://synapse-gateway.readthedocs.io/en/latest/es/docs/configuration/environment-variables/)
+- [Referencia de la API HTTP](https://synapse-gateway.readthedocs.io/en/latest/es/docs/reference/http-api/)
+- [Métricas](https://synapse-gateway.readthedocs.io/en/latest/es/docs/operating/metrics/)
+- [Limitaciones y hoja de ruta](https://synapse-gateway.readthedocs.io/en/latest/es/docs/reference/limitations-roadmap/)
 
 ## Contribuciones
 
-Las contribuciones son bienvenidas. Consulta **[CONTRIBUTING.md](CONTRIBUTING.md)** para saber cómo compilar, probar y enviar cambios. Los commits deben estar firmados bajo el [Developer Certificate of Origin](https://developercertificate.org/) (`git commit -s`); las contribuciones se publican bajo AGPL-3.0. Por favor, lee también nuestro **[Código de Conducta](CODE_OF_CONDUCT.md)**.
+Las contribuciones son bienvenidas. Consulta **[CONTRIBUTING.md](https://github.com/sustentabilitas/synapse-gateway/blob/main/CONTRIBUTING.md)** para saber cómo compilar, probar y enviar cambios. Los commits deben estar firmados bajo el [Developer Certificate of Origin](https://developercertificate.org/) (`git commit -s`); las contribuciones se publican bajo AGPL-3.0. Por favor, lee también nuestro **[Código de Conducta](https://github.com/sustentabilitas/synapse-gateway/blob/main/CODE_OF_CONDUCT.md)**.
 
 ## Seguridad
 
-¿Has encontrado una vulnerabilidad? **No abras un issue público.** Consulta **[SECURITY.md](SECURITY.md)** para la divulgación privada (correo a `raj@sustentabilitas.com` o un aviso privado de GitHub).
+¿Has encontrado una vulnerabilidad? **No abras un issue público.** Consulta **[SECURITY.md](https://github.com/sustentabilitas/synapse-gateway/blob/main/SECURITY.md)** para la divulgación privada (correo a `raj@sustentabilitas.com` o un aviso privado de GitHub).
 
 ## Licencia
 
-Publicado bajo la **GNU Affero General Public License v3.0** (AGPL-3.0). Consulta **[LICENSE](LICENSE)**.
+Publicado bajo la **GNU Affero General Public License v3.0** (AGPL-3.0). Consulta **[LICENSE](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)**.

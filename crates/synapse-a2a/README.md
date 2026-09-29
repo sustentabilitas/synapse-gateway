@@ -1,163 +1,71 @@
 # synapse-a2a
 
-In-memory A2A agent registry for **synapse-gateway**: admin registration plus public catalog / agent-card / resolve endpoints.
+[![crates.io](https://img.shields.io/crates/v/synapse-a2a.svg)](https://crates.io/crates/synapse-a2a)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)
+[![CI](https://github.com/sustentabilitas/synapse-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/sustentabilitas/synapse-gateway/actions/workflows/ci.yml)
 
-Mounted on the LLM gateway HTTP listener (default `:8080`) — a stable cluster service that marketplace and ploutonion register against. This is **not** the cortex-sandbox-broker MCP plane.
+synapse-a2a is an in-memory registry of agent-to-agent ([A2A](https://a2a-protocol.org/))
+agents. Services that host agents register them over HTTP or list them in a seed file;
+clients discover them through a catalogue, fetch their agent cards, and resolve an agent id
+to the URL where it serves A2A. The registry stores what it is given and hands it back: it
+doesn't proxy A2A traffic.
 
-## How it fits
+The [synapse-gateway](https://crates.io/crates/synapse-gateway) binary serves the registry on
+its API port (default `:8080`), seeded from `a2a.toml` when that file exists. This crate lets
+you serve the same endpoints from your own axum application.
 
-```
-ploutonion ──POST /internal/a2a/agents──▶ synapse-gateway :8080
-marketplace ──GET  /.well-known/a2a-agent-catalog.json──▶ same
-clients     ──GET  /a2a/agents/{id}/…──▶ same
-```
+**Full documentation:** https://synapse-gateway.readthedocs.io/en/latest/docs/synapse-family/a2a/overview/
 
-One `Arc<A2aRegistry>` is created at process boot in `synapse-gateway` and shared by the admin and public routers via `.merge(...)`.
+## Install
 
-## Static seed
-
-Agents may be seeded at process boot via `config/a2a.toml` (`SYNAPSE_A2A_PATH`):
-
-```toml
-[[a2a_agents]]
-id = "ghg-emissions"
-name = "GHG Emissions"
-description = "Estimates GHG emissions"
-endpoint_url = "http://ploutonion/a2a/agents/ghg-emissions"
-card_url = "http://ploutonion/a2a/agents/ghg-emissions/.well-known/agent-card.json"
-tags = ["ghg", "emissions"]
+```bash
+cargo add synapse-a2a
 ```
 
-At boot the gateway GETs each `card_url` (3 attempts, exponential backoff) and insert-only registers the agent. Missing seed file ⇒ empty registry. Unreachable / invalid card after retries ⇒ that agent is **skipped** (warn + continue) so peer CrashLoops cannot take down LLM routing.
+## Example
 
-## Registration semantics
-
-`POST /internal/a2a/agents` and seed inserts are **first-writer-wins**: re-adding an existing `id` is ignored and still returns `204`. Use `DELETE` then `POST` to replace.
-
-## Admin (register if absent / deregister)
-
-No auth (same pattern as gateway-internal surfaces).
-
-### `POST /internal/a2a/agents`
-
-Register if absent (ignore duplicate). Body matches `RegisterA2aAgentRequest`.
-
-**Request**
-
-```http
-POST /internal/a2a/agents
-Content-Type: application/json
-```
-
-```json
-{
-  "id": "ghg-emissions",
-  "name": "GHG Emissions",
-  "description": "Estimates GHG emissions",
-  "endpoint_url": "http://ploutonion/a2a/agents/ghg-emissions",
-  "card_url": "http://ploutonion/a2a/agents/ghg-emissions/.well-known/agent-card.json",
-  "tags": ["ghg", "emissions"],
-  "card": {
-    "name": "GHG Emissions",
-    "description": "Estimates GHG emissions",
-    "url": "http://ploutonion/a2a/agents/ghg-emissions",
-    "version": "1.0",
-    "skills": []
-  },
-  "ttl_seconds": 3600
-}
-```
-
-| Field | Type | Notes |
-| --- | --- | --- |
-| `id` | string | Registry key |
-| `name` | string | Display name |
-| `description` | string | Short summary |
-| `endpoint_url` | string | Absolute A2A JSON-RPC URL |
-| `card_url` | string | Absolute agent-card URL |
-| `tags` | string[] | Free-form tags |
-| `card` | object | Full A2A agent-card JSON (passthrough) |
-| `ttl_seconds` | u64? | Optional TTL; omit for no expiry |
-
-**Response:** `204 No Content`
-
-### `DELETE /internal/a2a/agents/{id}`
-
-Deregister by id.
-
-**Response:** `204 No Content` (idempotent even if missing)
-
-## Public discovery
-
-### `GET /.well-known/a2a-agent-catalog.json`
-
-Lists non-expired agents. Response matches `A2aCatalog`.
-
-```json
-{
-  "version": "1.0",
-  "agents": [
-    {
-      "id": "ghg-emissions",
-      "name": "GHG Emissions",
-      "description": "Estimates GHG emissions",
-      "card_url": "http://ploutonion/a2a/agents/ghg-emissions/.well-known/agent-card.json",
-      "endpoint_url": "http://ploutonion/a2a/agents/ghg-emissions",
-      "tags": ["ghg", "emissions"]
-    }
-  ]
-}
-```
-
-### `GET /a2a/agents/{id}/.well-known/agent-card.json`
-
-Returns the stored `card` JSON for `{id}`.
-
-**Response:** `200` + card object, or `404` if unknown / expired.
-
-```json
-{
-  "name": "GHG Emissions",
-  "description": "Estimates GHG emissions",
-  "url": "http://ploutonion/a2a/agents/ghg-emissions",
-  "version": "1.0",
-  "skills": []
-}
-```
-
-### `GET /a2a/agents/{id}/resolve`
-
-Returns endpoint + card. Response matches `A2aResolveResponse`.
-
-**Response:** `200`, or `404` if unknown / expired.
-
-```json
-{
-  "id": "ghg-emissions",
-  "endpoint_url": "http://ploutonion/a2a/agents/ghg-emissions",
-  "card_url": "http://ploutonion/a2a/agents/ghg-emissions/.well-known/agent-card.json",
-  "card": {
-    "name": "GHG Emissions",
-    "description": "Estimates GHG emissions",
-    "url": "http://ploutonion/a2a/agents/ghg-emissions",
-    "version": "1.0",
-    "skills": []
-  }
-}
-```
-
-## TTL
-
-When `ttl_seconds` is set at register time, `resolve` / catalog listing drop the agent after expiry (same seam as `McpRegistry`: `resolve_at` / `list_at`).
-
-## Crate API
+Share one registry between the admin and public routers, so registrations are visible to
+discovery:
 
 ```rust
 use std::sync::Arc;
-use synapse_a2a::{a2a_admin_router, a2a_public_router, A2aRegistry};
 
-let registry = Arc::new(A2aRegistry::new());
-let app = axum::Router::new()
-    .merge(a2a_admin_router(registry.clone()))
-    .merge(a2a_public_router(registry));
+use synapse_a2a::{a2a_admin_router, a2a_public_router, seed_from_path, A2aRegistry};
+
+async fn app() -> anyhow::Result<axum::Router> {
+    let registry = Arc::new(A2aRegistry::new());
+
+    let seed = "config/a2a.toml";
+    if std::path::Path::new(seed).exists() {
+        seed_from_path(&registry, seed).await?;
+    }
+
+    Ok(axum::Router::new()
+        .merge(a2a_admin_router(registry.clone()))
+        .merge(a2a_public_router(registry)))
+}
 ```
+
+The routers serve:
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/internal/a2a/agents` | Register an agent (first writer wins). |
+| `DELETE` | `/internal/a2a/agents/{id}` | Remove an agent. |
+| `GET` | `/.well-known/a2a-agent-catalog.json` | List the agents. |
+| `GET` | `/a2a/agents/{id}/.well-known/agent-card.json` | One agent's card. |
+| `GET` | `/a2a/agents/{id}/resolve` | One agent's endpoint and card. |
+
+The `/internal/` endpoints have no authentication: serve them on a private listener, or block
+them at your ingress.
+
+## Learn more
+
+- [Static seed](https://synapse-gateway.readthedocs.io/en/latest/docs/synapse-family/a2a/static-seed/)
+- [Admin API](https://synapse-gateway.readthedocs.io/en/latest/docs/synapse-family/a2a/admin-api/)
+- [Discovery](https://synapse-gateway.readthedocs.io/en/latest/docs/synapse-family/a2a/discovery/)
+- [Crate API](https://synapse-gateway.readthedocs.io/en/latest/docs/synapse-family/a2a/crate-api/) and [docs.rs](https://docs.rs/synapse-a2a)
+
+## License
+
+Licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0). See **[LICENSE](https://github.com/sustentabilitas/synapse-gateway/blob/main/LICENSE)**.
