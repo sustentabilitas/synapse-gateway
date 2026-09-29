@@ -1,0 +1,12 @@
+release:
+  label: Versiones
+  description: Anuncios y notas de versión
+routing:
+  label: Enrutamiento
+  description: Cómo elige Synapse modelos y carriles
+observability:
+  label: Observabilidad
+  description: Métricas, logs y paneles
+vertex:
+  label: Vertex AI
+  description: El carril Vertex AI nativo
