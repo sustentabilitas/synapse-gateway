@@ -19,7 +19,7 @@ Desactiva las features por defecto, que añaden el servidor HTTP y el registro e
 
 ```toml
 [dependencies]
-synapse-gateway = { version = "0.5", default-features = false }
+synapse-gateway = { version = "2", default-features = false }
 anyhow = "1"
 futures = "0.3"
 serde_json = "1"

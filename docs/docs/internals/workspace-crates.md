@@ -10,8 +10,8 @@ ones in each crate's `Cargo.toml` on `main`.
 
 | Crate | Version | Library name | Binary | Docker image |
 |---|---|---|---|---|
-| [`synapse-gateway`](#synapse-gateway) | 0.5.38 | `synapse` | `synapse-gateway` | `sustentabilitas/synapse-gateway` |
-| [`synapse-proxy`](#synapse-proxy) | 0.2.21 | `synapse_proxy` | `synapse-proxy` | `sustentabilitas/synapse-proxy` |
+| [`synapse-gateway`](#synapse-gateway) | 2.0.0 | `synapse` | `synapse-gateway` | `sustentabilitas/synapse-gateway` |
+| [`synapse-proxy`](#synapse-proxy) | 1.0.0 | `synapse_proxy` | `synapse-proxy` | `sustentabilitas/synapse-proxy` |
 | [`synapse-context`](#synapse-context) | 0.1.1 | `synapse_context` | — | — |
 | [`synapse-a2a`](#synapse-a2a) | 0.2.2 | `synapse_a2a` | — | — |
 | [`synapse-mcp`](#synapse-mcp) | 0.1.4 | `synapse_mcp` | — | — |

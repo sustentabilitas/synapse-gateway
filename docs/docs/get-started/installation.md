@@ -16,7 +16,7 @@ Pull the image from Docker Hub:
 docker pull sustentabilitas/synapse-gateway
 ```
 
-Tags are published for every release (for example `0.5.38`), as `latest` for the most
+Tags are published for every release (for example `2.0.0`), as `latest` for the most
 recent release, and as `edge` for the tip of `main`. Images are built for `linux/amd64`
 only. On Apple silicon or another ARM machine, add `--platform linux/amd64` to `docker pull`
 and `docker run`, and Docker runs them under emulation.
@@ -106,7 +106,7 @@ or a ledger backend:
 
 ```toml
 [dependencies]
-synapse-gateway = { version = "0.5", default-features = false }
+synapse-gateway = { version = "2", default-features = false }
 ```
 
 The library crate is named `synapse`, so you import it as `synapse::…`, for example

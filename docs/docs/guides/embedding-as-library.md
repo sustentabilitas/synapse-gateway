@@ -19,7 +19,7 @@ Turn off the default features, which add the HTTP server and the SQLite ledger:
 
 ```toml
 [dependencies]
-synapse-gateway = { version = "0.5", default-features = false }
+synapse-gateway = { version = "2", default-features = false }
 anyhow = "1"
 futures = "0.3"
 serde_json = "1"

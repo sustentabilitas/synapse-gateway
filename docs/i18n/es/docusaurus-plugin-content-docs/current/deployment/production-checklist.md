@@ -10,7 +10,7 @@ que explica el ajuste en detalle.
 ## Imagen y configuración {#image-and-configuration}
 
 - [ ] **Fija la etiqueta de la imagen.** Ejecuta una etiqueta de versión como
-  `sustentabilitas/synapse-gateway:0.5.38`, no `latest` ni `edge`, para que un reinicio nunca
+  `sustentabilitas/synapse-gateway:2.0.0`, no `latest` ni `edge`, para que un reinicio nunca
   cambie la versión que ejecutas. Lee el registro de cambios antes de cambiar de etiqueta.
   Consulta [Docker](docker.md#images).
 - [ ] **Monta tu propio `/app/config`.** La configuración integrada en la imagen es un

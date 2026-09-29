@@ -10,7 +10,7 @@ that explains the setting in full.
 ## Image and configuration
 
 - [ ] **Pin the image tag.** Run a release tag such as
-  `sustentabilitas/synapse-gateway:0.5.38`, not `latest` or `edge`, so a restart never
+  `sustentabilitas/synapse-gateway:2.0.0`, not `latest` or `edge`, so a restart never
   changes the version you run. Read the changelog before you move the tag. See
   [Docker](docker.md#images).
 - [ ] **Mount your own `/app/config`.** The image's built-in configuration is an example.

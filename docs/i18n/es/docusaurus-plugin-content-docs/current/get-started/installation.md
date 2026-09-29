@@ -17,7 +17,7 @@ Descarga la imagen de Docker Hub:
 docker pull sustentabilitas/synapse-gateway
 ```
 
-Se publican etiquetas para cada versión (por ejemplo, `0.5.38`), `latest` para la versión
+Se publican etiquetas para cada versión (por ejemplo, `2.0.0`), `latest` para la versión
 más reciente y `edge` para la punta de `main`. Las imágenes solo se construyen para
 `linux/amd64`. En Apple silicon u otra máquina ARM, añade `--platform linux/amd64` a
 `docker pull` y `docker run`, y Docker las ejecutará mediante emulación.
@@ -109,7 +109,7 @@ ni ningún backend del registro:
 
 ```toml
 [dependencies]
-synapse-gateway = { version = "0.5", default-features = false }
+synapse-gateway = { version = "2", default-features = false }
 ```
 
 El crate de biblioteca se llama `synapse`, así que lo importas como `synapse::…`, por

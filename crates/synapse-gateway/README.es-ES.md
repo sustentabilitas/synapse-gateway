@@ -34,7 +34,7 @@ y llama a `Gateway::chat()` en el mismo proceso (el crate de biblioteca se llama
 
 ```toml
 [dependencies]
-synapse-gateway = { version = "0.5", default-features = false }
+synapse-gateway = { version = "2", default-features = false }
 ```
 
 Consulta [Instalación](https://synapse-gateway.readthedocs.io/en/latest/es/docs/get-started/installation/)

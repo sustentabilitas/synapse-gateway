@@ -38,7 +38,7 @@ project:
 ```yaml title="compose.yaml"
 services:
   gateway:
-    image: sustentabilitas/synapse-gateway:0.5.38
+    image: sustentabilitas/synapse-gateway:2.0.0
     platform: linux/amd64
     init: true
     ports:

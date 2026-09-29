@@ -16,7 +16,7 @@ instead; to run it next to Postgres and Prometheus, see [Docker Compose](docker-
 | `sustentabilitas/synapse-gateway` | `synapse-gateway` | `8080` API, `9090` Prometheus metrics | `synapse` (UID 1001) |
 | `sustentabilitas/synapse-proxy` | `synapse-proxy` | `8787` proxy traffic, `9090` Prometheus metrics | `synapse` (UID 1001) |
 
-Each release is tagged with its version (for example `sustentabilitas/synapse-gateway:0.5.38`)
+Each release is tagged with its version (for example `sustentabilitas/synapse-gateway:2.0.0`)
 and as `latest`. Every push to `main` is published as `edge`. The images are built for
 `linux/amd64` only. On an ARM machine, such as a Mac with Apple silicon, add
 `--platform linux/amd64` to `docker pull` and `docker run` (or `platform: linux/amd64` in
@@ -38,7 +38,7 @@ docker run -d --name synapse \
   -e GOOGLE_APPLICATION_CREDENTIALS=/secrets/sa.json \
   -v "$(pwd)/sa.json:/secrets/sa.json:ro" \
   -v "$(pwd)/config:/app/config:ro" \
-  sustentabilitas/synapse-gateway:0.5.38
+  sustentabilitas/synapse-gateway:2.0.0
 ```
 
 with `synapse.env` holding, for example:
@@ -119,7 +119,7 @@ docker run -d --name synapse \
   -e SYNAPSE_LEDGER_BACKENDS=postgres \
   -e SYNAPSE_LEDGER_POSTGRES_DSN=postgres://synapse:change-me@db.internal:5432/synapse \
   -v "$(pwd)/config:/app/config:ro" \
-  sustentabilitas/synapse-gateway:0.5.38
+  sustentabilitas/synapse-gateway:2.0.0
 ```
 
 The gateway creates the `usage_events` table itself on startup; there are no migrations to
@@ -178,7 +178,7 @@ smaller image with fewer ledger backends, change the `--features` list in
 docker run -d --name synapse-proxy \
   -p 8787:8787 -p 9090:9090 \
   -v "$(pwd)/synapse-proxy.toml:/app/synapse-proxy.toml:ro" \
-  sustentabilitas/synapse-proxy:0.2.21
+  sustentabilitas/synapse-proxy:1.0.0
 ```
 
 The proxy listens on the addresses in its configuration file: `addr` (`0.0.0.0:8787` in the

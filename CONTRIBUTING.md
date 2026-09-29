@@ -244,7 +244,7 @@ The name and email must match a real identity (your real name and a working emai
 ## Releasing
 
 Maintainers only. Each crate is versioned and released on its own, with a tag named after the
-crate: `<crate>-vX.Y.Z` (for example `synapse-gateway-v0.5.38`). The usual way to release is
+crate: `<crate>-vX.Y.Z` (for example `synapse-gateway-v2.0.0`). The usual way to release is
 the crate's **Bump & release** workflow in the Actions tab (**Bump & release synapse-gateway**,
 **Bump & release synapse-proxy**, and so on), which bumps the version and the crate's
 changelog, commits, tags, and starts the release.

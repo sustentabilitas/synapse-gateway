@@ -18,7 +18,7 @@ Prometheus, consulta [Docker Compose](docker-compose.md).
 | `sustentabilitas/synapse-proxy` | `synapse-proxy` | `8787` tráfico del proxy, `9090` métricas de Prometheus | `synapse` (UID 1001) |
 
 Cada versión se etiqueta con su número de versión (por ejemplo
-`sustentabilitas/synapse-gateway:0.5.38`) y como `latest`. Cada push a `main` se publica como
+`sustentabilitas/synapse-gateway:2.0.0`) y como `latest`. Cada push a `main` se publica como
 `edge`. Las imágenes se compilan solo para `linux/amd64`. En una máquina ARM, como un Mac con
 Apple silicon, añade `--platform linux/amd64` a `docker pull` y `docker run` (o
 `platform: linux/amd64` en Compose) y Docker las ejecuta con emulación; sin ello, el pull falla
@@ -39,7 +39,7 @@ docker run -d --name synapse \
   -e GOOGLE_APPLICATION_CREDENTIALS=/secrets/sa.json \
   -v "$(pwd)/sa.json:/secrets/sa.json:ro" \
   -v "$(pwd)/config:/app/config:ro" \
-  sustentabilitas/synapse-gateway:0.5.38
+  sustentabilitas/synapse-gateway:2.0.0
 ```
 
 con un `synapse.env` que contenga, por ejemplo:
@@ -123,7 +123,7 @@ docker run -d --name synapse \
   -e SYNAPSE_LEDGER_BACKENDS=postgres \
   -e SYNAPSE_LEDGER_POSTGRES_DSN=postgres://synapse:change-me@db.internal:5432/synapse \
   -v "$(pwd)/config:/app/config:ro" \
-  sustentabilitas/synapse-gateway:0.5.38
+  sustentabilitas/synapse-gateway:2.0.0
 ```
 
 El gateway crea la tabla `usage_events` por sí mismo al arrancar; no hay migraciones que
@@ -186,7 +186,7 @@ definiendo `SYNAPSE_PROXY_CONFIG_PATH`:
 docker run -d --name synapse-proxy \
   -p 8787:8787 -p 9090:9090 \
   -v "$(pwd)/synapse-proxy.toml:/app/synapse-proxy.toml:ro" \
-  sustentabilitas/synapse-proxy:0.2.21
+  sustentabilitas/synapse-proxy:1.0.0
 ```
 
 El proxy escucha en las direcciones de su archivo de configuración: `addr` (`0.0.0.0:8787` en
