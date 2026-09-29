@@ -57,6 +57,10 @@ git push origin synapse-gateway-vX.Y.Z
 
 The release fails at the first check if the tag doesn't match the crate's `Cargo.toml`.
 
+You can also run **Release** or **Release libraries** by hand from the Actions tab. From a
+branch, it publishes the version in the crate's `Cargo.toml` and, for the binaries, pushes the
+image without moving `latest`.
+
 ## Publish order
 
 crates.io must already have the version of each workspace dependency a crate is published

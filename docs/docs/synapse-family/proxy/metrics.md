@@ -13,7 +13,7 @@ application that embeds the proxy library can add an OTLP exporter with
 
 | Prometheus name | Counts or measures |
 |---|---|
-| `synapse_proxy_requests_total_total` | Every request, by `route`, `method`, `status` and `outcome`. |
+| `synapse_proxy_requests_total_total` | Every routed request except oversized bodies (`413`), by `route`, `method`, `status` and `outcome`. |
 | `synapse_proxy_request_duration_seconds` | Time until the response headers were ready, by `route` and `method`. |
 | `synapse_proxy_upstream_retries_total_total` | Retried upstream sends, by `route` and `reason`. |
 | `synapse_proxy_upstream_errors_total_total` | Upstream sends that failed after every retry, by `route` and `reason`. |

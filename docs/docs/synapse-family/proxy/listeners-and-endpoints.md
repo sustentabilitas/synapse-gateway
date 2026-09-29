@@ -13,8 +13,9 @@ The proxy serves three listeners at once, each on its own address:
 | Metrics | `metrics_addr` | `0.0.0.0:9090` | `GET /metrics`. |
 
 The admin listener has no authentication: whoever can reach it can bind any identity. Keep
-it on `127.0.0.1`, so only processes in the same container or pod can call it. The Docker
-image declares only port `8787`; publish the others explicitly if you need them.
+it on `127.0.0.1`, so only processes in the same container or pod can call it; publishing
+port `8788` from Docker doesn't reach it. The Docker image declares only port `8787`; publish
+`9090` explicitly if you scrape metrics from outside the container.
 
 ## Data plane
 
@@ -58,7 +59,7 @@ Errors the proxy generates have a JSON body with `error` and `detail`:
 | `404` | `no_route` | No route matches the path and method. |
 | `413` | `body_too_large` | The request body is over 64 MiB. |
 | `500` | `transform_error` | A custom transform failed with `TransformError::Internal`. |
-| `502` | `request_failed` | The upstream couldn't be reached after every retry. |
+| `502` | `request_failed` | The upstream send failed, after any retries (see [Timeouts and retries](configuration.md#timeouts-and-retries)). |
 | `503` | `request_failed` | A `require_context` key isn't bound (`"detail": "context not bound"`). |
 
 A custom transform can also reject a request with a status and `error` of its own; see

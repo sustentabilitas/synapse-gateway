@@ -55,8 +55,9 @@ For each `tools/list` or `tools/call`, before any network call:
 2. Every rule is applied to the resolved context:
    - a bound key sets its header;
    - a missing key on a `required` rule **fails the call closed**, with the MCP error
-     `context not bound: missing identity key '<key>'`, and counts in
-     `broker_identity_injection_failures_total`;
+     `context not bound: missing identity key '<key>'`, and, when metrics are enabled, counts in
+     `broker_identity_injection_failures_total` (see the
+     [metrics catalogue](../../reference/metrics-catalogue.md#synapse-mcp));
    - a missing key on an optional rule leaves its header out.
 3. The call is sent on a connection to the upstream that carries exactly those headers.
 
