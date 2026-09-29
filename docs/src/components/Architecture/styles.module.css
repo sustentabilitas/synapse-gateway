@@ -1,0 +1,62 @@
+.scroller {
+  overflow-x: auto;
+}
+
+.scroller:focus-visible {
+  outline: 2px solid var(--ifm-color-primary);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
+.diagram {
+  width: 100%;
+  height: auto;
+  max-width: 960px;
+  display: block;
+  margin: 0 auto;
+}
+
+.node {
+  fill: var(--sy-surface);
+  stroke: var(--sy-border);
+  stroke-width: 1.5;
+}
+
+.nodeAccent {
+  fill: var(--sy-surface);
+  stroke: var(--ifm-color-primary);
+  stroke-width: 2;
+}
+
+.label {
+  fill: var(--ifm-font-color-base);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.arrow {
+  fill: none;
+  stroke: var(--sy-muted);
+  stroke-width: 1.5;
+}
+
+.arrowHead {
+  fill: var(--sy-muted);
+}
+
+.bar {
+  fill: none;
+  stroke: var(--ifm-color-primary);
+  stroke-dasharray: 6 6;
+}
+
+.barLabel {
+  fill: var(--sy-muted);
+  font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .diagram {
+    min-width: 600px;
+  }
+}
