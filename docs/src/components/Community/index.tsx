@@ -33,6 +33,9 @@ export default function Community(): ReactNode {
           <Link className="button button--secondary button--outline button--lg" href="https://hub.docker.com/r/sustentabilitas/synapse-gateway">
             Docker Hub
           </Link>
+          <Link className="button button--secondary button--outline button--lg" to="/blog/">
+            <Translate id="home.community.blog">Blog</Translate>
+          </Link>
         </div>
       </div>
     </section>

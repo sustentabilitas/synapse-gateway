@@ -54,7 +54,15 @@ const config: Config = {
           editUrl: `${REPO}/tree/main/docs/`,
           editLocalizedFiles: true,
         },
-        blog: false,
+        blog: {
+          showReadingTime: true,
+          feedOptions: {type: ['rss', 'atom'], xslt: true},
+          editUrl: `${REPO}/tree/main/docs/`,
+          editLocalizedFiles: true,
+          onInlineTags: 'throw',
+          onInlineAuthors: 'throw',
+          onUntruncatedBlogPosts: 'throw',
+        },
         theme: {
           customCss: './src/css/custom.css',
         },
@@ -69,7 +77,7 @@ const config: Config = {
         hashed: true,
         language: ['en', 'es'],
         docsRouteBasePath: '/docs',
-        indexBlog: false,
+        indexBlog: true,
         highlightSearchTermsOnTargetPage: true,
       },
     ],
@@ -86,6 +94,7 @@ const config: Config = {
       logo: {alt: 'Synapse', src: 'img/logo.svg', srcDark: 'img/logo-dark.svg'},
       items: [
         {type: 'docSidebar', sidebarId: 'docsSidebar', position: 'left', label: 'Docs'},
+        {to: '/blog/', label: 'Blog', position: 'left'},
         {
           type: 'dropdown',
           label: 'Synapse family',
@@ -125,6 +134,7 @@ const config: Config = {
         {
           title: 'More',
           items: [
+            {label: 'Blog', to: '/blog/'},
             {label: 'crates.io', href: 'https://crates.io/crates/synapse-gateway'},
             {label: 'Docker Hub', href: 'https://hub.docker.com/r/sustentabilitas/synapse-gateway'},
             {label: 'docs.rs', href: 'https://docs.rs/synapse-gateway'},
