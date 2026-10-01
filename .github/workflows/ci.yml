@@ -12,100 +12,70 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # axonal is experimental, so CI pins the commit it installs.
+  AXONAL_REV: 1bb1a9ea4ccdb2a11fd4e4d1c8aae6fa4b8ec1ce
+  # Pull requests run only the tasks their changes can affect; main runs every task, and the
+  # task cache skips those whose inputs haven't changed.
+  AFFECTED: ${{ github.event_name == 'pull_request' && '--affected' || '' }}
+  CRATES: -p synapse-gateway -p synapse-proxy -p synapse-mcp -p synapse-context -p synapse-a2a
 
 jobs:
-  check:
-    name: fmt + clippy + test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-      - name: Format
-        run: cargo fmt --all --check
-      - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
-      - name: Test
-        run: cargo test
-      - name: Vertex native gateway integration
-        run: cargo test -p synapse-gateway --test vertex_native_gateway
-
-  build-features:
-    name: build (${{ matrix.features }})
+  rust:
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        features:
-          - ledger-postgres
-          - ledger-pubsub
-          - ledger-sns
-          - ledger-pubsub ledger-sns
+        include:
+          - name: fmt + clippy + test
+            cache: check
+            run: fmt lint test $CRATES
+          - name: build (ledger-postgres)
+            cache: postgres
+            run: build-postgres
+          - name: build (ledger-pubsub)
+            cache: pubsub
+            run: build-pubsub
+          - name: build (ledger-sns)
+            cache: sns
+            run: build-sns
+          - name: build (ledger-pubsub ledger-sns)
+            cache: cloud
+            run: build-cloud
+          - name: build (crates + lean core)
+            cache: build
+            run: build build-lean $CRATES
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Build
-        run: cargo build -p synapse-gateway --features "${{ matrix.features }}"
-
-  core:
-    name: core (no-default-features lib)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Build lean core
-        run: cargo build -p synapse-gateway --no-default-features --lib
-
-  proxy:
-    name: build (synapse-proxy)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Build proxy
-        run: cargo build -p synapse-proxy
-
-  changes:
-    name: detect changes
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      docs: ${{ steps.filter.outputs.docs }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
         with:
-          filters: |
-            docs:
-              - 'docs/**'
-              - '.readthedocs.yaml'
-              - '.github/workflows/ci.yml'
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: ./.github/actions/setup-ax
+        with:
+          cache-key: ${{ matrix.cache }}
+      - name: ax run ${{ matrix.run }}
+        run: ax run ${{ matrix.run }} ${{ env.AFFECTED }}
 
   docs:
     name: docs site
-    needs: changes
-    if: needs.changes.outputs.docs == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: docs
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: docs/package-lock.json
       - run: npm ci
-      - run: npm test
-      - run: npm run check:i18n
-      - run: npm run typecheck
-      - run: npm run build
+        working-directory: docs
+      - uses: ./.github/actions/setup-ax
+        with:
+          cache-key: docs
+      - name: ax run test i18n typecheck build -p docs
+        run: ax run test i18n typecheck build -p docs ${{ env.AFFECTED }}

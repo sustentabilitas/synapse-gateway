@@ -1,5 +1,5 @@
 ---
-sidebar_position: 2
+sidebar_position: 3
 title: Publicar versiones
 description: Cómo quienes mantienen el proyecto versionan y publican cada crate de Synapse en crates.io y Docker Hub con los workflows de bump y de publicación.
 ---
