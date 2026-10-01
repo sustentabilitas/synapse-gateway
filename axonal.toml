@@ -1,0 +1,38 @@
+# axonal (https://github.com/sustentabilitas/axonal) runs this repository's checks.
+# The five crates are inferred from the Cargo workspace, each with build, test, lint and
+# fmt targets. This file adds what inference can't see.
+
+[workspace]
+default_branch = "main"
+
+# docs_examples parses the config examples in the docs, so docs changes re-run the tests.
+[projects."crates/synapse-gateway".targets.test]
+inputs = ["**/*", "{workspace}/docs/docs/**", "{workspace}/docs/i18n/**"]
+
+[projects."crates/synapse-gateway".targets.build-postgres]
+command = "cargo build -p synapse-gateway --features ledger-postgres"
+
+[projects."crates/synapse-gateway".targets.build-pubsub]
+command = "cargo build -p synapse-gateway --features ledger-pubsub"
+
+[projects."crates/synapse-gateway".targets.build-sns]
+command = "cargo build -p synapse-gateway --features ledger-sns"
+
+[projects."crates/synapse-gateway".targets.build-cloud]
+command = "cargo build -p synapse-gateway --features 'ledger-pubsub ledger-sns'"
+
+[projects."crates/synapse-gateway".targets.build-lean]
+command = "cargo build -p synapse-gateway --no-default-features --lib"
+
+# The docs site uses npm, not pnpm, so it's declared here. Run `npm ci` in docs/ first.
+[projects.docs.targets.test]
+command = "npm test"
+
+[projects.docs.targets.i18n]
+command = "npm run check:i18n"
+
+[projects.docs.targets.typecheck]
+command = "npm run typecheck"
+
+[projects.docs.targets.build]
+command = "npm run build"
