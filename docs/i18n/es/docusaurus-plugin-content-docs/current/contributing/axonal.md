@@ -170,13 +170,15 @@ $
 
 ## Configuración de este repositorio {#configuration-in-this-repository}
 
-El `axonal.toml` del repositorio añade lo que la inferencia no puede ver: la documentación que
-leen los tests del gateway, las compilaciones con features del gateway que hace la CI y el sitio
-de documentación.
+El `axonal.toml` del repositorio añade lo que la inferencia no puede ver: los archivos de CI de
+los que dependen todas las tareas, la documentación que leen los tests del gateway, las
+compilaciones con features del gateway y el sitio de documentación.
 
 ```toml title="axonal.toml"
 [workspace]
 default_branch = "main"
+# CI runs every task through ax, so a change to how it does that re-runs every task.
+inputs = [".github/workflows/ci.yml", ".github/actions/setup-ax/**"]
 
 # docs_examples parses the config examples in the docs, so docs changes re-run the tests.
 [projects."crates/synapse-gateway".targets.test]
@@ -209,6 +211,7 @@ command = "npm run typecheck"
 
 [projects.docs.targets.build]
 command = "npm run build"
+inputs = ["**/*", "{workspace}/.readthedocs.yaml"]
 ```
 
 Las comprobaciones de [Antes de enviar](contributing.md#before-you-submit) corresponden a estos
@@ -224,6 +227,24 @@ targets:
 
 `ax run test` sin más ejecuta a la vez los tests de cada crate y los del sitio de
 documentación.
+
+## En la CI {#in-ci}
+
+El workflow de CI ejecuta estas comprobaciones con `ax`, en los mismos jobs paralelos que antes:
+uno para el formato, clippy y los tests, uno por cada compilación con features, uno para las
+compilaciones por defecto y ligera de los crates, y uno para el sitio de documentación. Cada job
+instala `ax` en un commit fijado de axonal y restaura su caché de tareas de ejecuciones
+anteriores.
+
+- **En una pull request,** cada job ejecuta `ax run <targets> --affected`, así que un cambio
+  ejecuta solo las tareas a las que puede afectar, y un job sin nada afectado no ejecuta
+  ninguna tarea. Un cambio solo en la documentación, por ejemplo, ejecuta las comprobaciones de
+  la documentación y los tests del gateway.
+- **En `main`,** cada job ejecuta todas las tareas, y la caché de tareas se salta las que no han
+  cambiado de entradas desde la última vez que pasaron.
+
+Un cambio en el workflow, en la acción que instala `ax` o en `axonal.toml` afecta a todas las
+tareas, así que lo ejecuta todo.
 
 ## Referencia de comandos {#command-reference}
 

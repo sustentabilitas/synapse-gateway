@@ -162,12 +162,15 @@ $
 
 ## Configuration in this repository
 
-The repository's `axonal.toml` adds what inference can't see: the docs that the gateway's
-tests read, the gateway's feature builds from CI, and the docs site.
+The repository's `axonal.toml` adds what inference can't see: the CI files that every task
+depends on, the docs that the gateway's tests read, the gateway's feature builds and the docs
+site.
 
 ```toml title="axonal.toml"
 [workspace]
 default_branch = "main"
+# CI runs every task through ax, so a change to how it does that re-runs every task.
+inputs = [".github/workflows/ci.yml", ".github/actions/setup-ax/**"]
 
 # docs_examples parses the config examples in the docs, so docs changes re-run the tests.
 [projects."crates/synapse-gateway".targets.test]
@@ -200,6 +203,7 @@ command = "npm run typecheck"
 
 [projects.docs.targets.build]
 command = "npm run build"
+inputs = ["**/*", "{workspace}/.readthedocs.yaml"]
 ```
 
 The checks from [Before you submit](contributing.md#before-you-submit) map onto these
@@ -214,6 +218,22 @@ targets:
 | The docs checks | `ax run test i18n typecheck build -p docs` |
 
 `ax run test` on its own runs the tests of every crate and the docs site together.
+
+## In CI
+
+The CI workflow runs these checks through `ax`, in the same parallel jobs as before: one for
+formatting, clippy and the tests, one per feature build, one for the crates' default and lean
+builds, and one for the docs site. Each job installs `ax` at a pinned axonal commit and
+restores its task cache from earlier runs.
+
+- **On a pull request,** each job runs `ax run <targets> --affected`, so a change runs only
+  the tasks it can affect, and a job with nothing affected runs no tasks at all. A docs-only
+  change, for example, runs the docs checks and the gateway's tests.
+- **On `main`,** each job runs every task, and the task cache skips those whose inputs haven't
+  changed since they last passed.
+
+A change to the workflow, to the action that installs `ax` or to `axonal.toml` affects every
+task, so it runs everything.
 
 ## Command reference
 

@@ -1,0 +1,29 @@
+name: Set up ax
+description: Install the axonal task runner at AXONAL_REV and restore its task cache.
+
+inputs:
+  cache-key:
+    description: Names this job's task cache, so jobs running different targets don't share one.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Restore ax
+      id: bin
+      uses: actions/cache@v4
+      with:
+        path: ~/.axonal-bin
+        key: ax-${{ runner.os }}-${{ env.AXONAL_REV }}
+    - name: Install ax
+      if: steps.bin.outputs.cache-hit != 'true'
+      shell: bash
+      run: cargo install --locked --git https://github.com/sustentabilitas/axonal --rev "$AXONAL_REV" axonal --root ~/.axonal-bin
+    - shell: bash
+      run: echo "$HOME/.axonal-bin/bin" >> "$GITHUB_PATH"
+    - name: Restore the task cache
+      uses: actions/cache@v4
+      with:
+        path: .axonal
+        key: axonal-${{ inputs.cache-key }}-${{ github.sha }}
+        restore-keys: axonal-${{ inputs.cache-key }}-

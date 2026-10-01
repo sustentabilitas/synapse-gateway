@@ -4,6 +4,8 @@
 
 [workspace]
 default_branch = "main"
+# CI runs every task through ax, so a change to how it does that re-runs every task.
+inputs = [".github/workflows/ci.yml", ".github/actions/setup-ax/**"]
 
 # docs_examples parses the config examples in the docs, so docs changes re-run the tests.
 [projects."crates/synapse-gateway".targets.test]
@@ -36,3 +38,4 @@ command = "npm run typecheck"
 
 [projects.docs.targets.build]
 command = "npm run build"
+inputs = ["**/*", "{workspace}/.readthedocs.yaml"]
