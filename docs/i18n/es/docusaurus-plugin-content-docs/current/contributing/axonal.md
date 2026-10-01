@@ -23,7 +23,7 @@ axonal es un único binario de Rust. Instálalo desde el repositorio con Cargo (
 posterior):
 
 ```bash
-cargo install --locked --git https://github.com/sustentabilitas/axonal
+cargo install --locked --git https://github.com/sustentabilitas/axonal axonal
 ax --version
 ```
 

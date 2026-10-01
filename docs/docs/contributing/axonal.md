@@ -21,7 +21,7 @@ always work, and they remain the reference for what a pull request must pass.
 axonal is a single Rust binary. Install it from the repository with Cargo (Rust 1.96 or later):
 
 ```bash
-cargo install --locked --git https://github.com/sustentabilitas/axonal
+cargo install --locked --git https://github.com/sustentabilitas/axonal axonal
 ax --version
 ```
 

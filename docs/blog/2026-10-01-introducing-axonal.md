@@ -93,7 +93,7 @@ Every affected task records why, as `files`, `lockfile`, `manifest`, `dependency
 Install the binary with Cargo and run it from anywhere in the repository:
 
 ```bash
-cargo install --locked --git https://github.com/sustentabilitas/axonal
+cargo install --locked --git https://github.com/sustentabilitas/axonal axonal
 ax graph
 ax run fmt lint test --affected
 ```

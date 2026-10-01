@@ -100,7 +100,7 @@ Cada tarea afectada indica por qué, como `files`, `lockfile`, `manifest`, `depe
 Instala el binario con Cargo y ejecútalo desde cualquier punto del repositorio:
 
 ```bash
-cargo install --locked --git https://github.com/sustentabilitas/axonal
+cargo install --locked --git https://github.com/sustentabilitas/axonal axonal
 ax graph
 ax run fmt lint test --affected
 ```
