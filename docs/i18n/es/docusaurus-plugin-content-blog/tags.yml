@@ -10,3 +10,6 @@ observability:
 vertex:
   label: Vertex AI
   description: El carril Vertex AI nativo
+tooling:
+  label: Herramientas
+  description: Cómo compilamos, probamos y publicamos Synapse

@@ -1,5 +1,5 @@
 ---
-sidebar_position: 3
+sidebar_position: 4
 title: Registro de cambios
 description: Dónde encontrar el registro de cambios de cada crate de Synapse.
 ---

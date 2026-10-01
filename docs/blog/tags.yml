@@ -10,3 +10,6 @@ observability:
 vertex:
   label: Vertex AI
   description: The native Vertex AI lane
+tooling:
+  label: Tooling
+  description: How we build, test and ship Synapse

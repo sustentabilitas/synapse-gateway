@@ -72,6 +72,12 @@ cargo build -p synapse-gateway --features "ledger-pubsub ledger-sns"
 cargo build -p synapse-gateway --no-default-features --lib
 ```
 
+:::tip
+The experimental task runner [axonal](axonal.md) can run these checks for you and skip those
+whose inputs haven't changed: `ax run fmt lint test --affected` runs only what your branch can
+affect.
+:::
+
 Also:
 
 - **Update the changelog.** Each crate has its own `crates/<crate>/CHANGELOG.md`. Add a line

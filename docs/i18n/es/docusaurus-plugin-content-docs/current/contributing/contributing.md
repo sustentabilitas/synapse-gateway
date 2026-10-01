@@ -74,6 +74,12 @@ cargo build -p synapse-gateway --features "ledger-pubsub ledger-sns"
 cargo build -p synapse-gateway --no-default-features --lib
 ```
 
+:::tip
+El ejecutor de tareas experimental [axonal](axonal.md) puede ejecutar estas comprobaciones por
+ti y saltarse las que no han cambiado de entradas: `ax run fmt lint test --affected` ejecuta
+solo lo que tu rama puede afectar.
+:::
+
 Además:
 
 - **Actualiza el registro de cambios.** Cada crate tiene su propio

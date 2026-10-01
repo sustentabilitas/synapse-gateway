@@ -1,5 +1,5 @@
 ---
-sidebar_position: 2
+sidebar_position: 3
 title: Releasing
 description: How maintainers version and release each Synapse crate to crates.io and Docker Hub with the bump and release workflows.
 ---
