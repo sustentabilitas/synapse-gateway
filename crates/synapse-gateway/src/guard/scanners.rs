@@ -62,11 +62,15 @@ fn block_pattern(id: &'static str, pat: &str) -> anyhow::Result<RegexPattern> {
 
 /// Deterministic isolation-bypass signals: forging tenant identity headers,
 /// naming internal cluster hosts, or curling/wgetting those hosts directly.
+/// A header counts as set when its name is followed by `:`/`=` (curl `-H`,
+/// dict/object literals), by `] =` (subscript assignment), or is the first
+/// argument of a setter call (`set`, `append`, `header`, ...). Header reads
+/// and comma-separated name lists do not match.
 fn isolation_bypass_scanner() -> anyhow::Result<RegexScan> {
     let patterns = vec![
         block_pattern(
             "forged_identity_header",
-            r#"(?i)x-(?:tenant|workspace|user|agent)-id(?:["']?\s*[:=]|["']\s*\]\s*=|["']\s*,)"#,
+            r#"(?i)(?:^|[^a-z0-9-])x-(?:tenant|workspace|user|agent)-id(?:["']?\s*[:=]|["']\s*\]\s*=)|\b(?:set|append|add|put|insert|header|setheader|set_header|add_header)\s*\(\s*["']x-(?:tenant|workspace|user|agent)-id["']\s*,"#,
         )?,
         block_pattern(
             "internal_host",
@@ -229,6 +233,7 @@ mod tests {
             .scan(r#"req.headers.set("X-Tenant-Id", v)"#)
             .should_refuse());
         assert!(s.scan(r#"h.Set('X-User-Id', v)"#).should_refuse());
+        assert!(s.scan(r#".header("X-Agent-Id", id)"#).should_refuse());
     }
 
     #[test]
@@ -237,6 +242,17 @@ mod tests {
         assert!(!s
             .scan("Supported headers: X-Tenant-Id, X-Workspace-Id and more.")
             .flagged());
+        assert!(!s
+            .scan("allowed headers: 'X-Tenant-Id', 'X-Workspace-Id'")
+            .flagged());
+    }
+
+    #[test]
+    fn isolation_bypass_ignores_longer_names_and_header_reads() {
+        let s = &build("isolation_bypass", None).unwrap()[0];
+        assert!(!s.scan("max-user-id=5").flagged());
+        assert!(!s.scan("inbox-user-id: 3").flagged());
+        assert!(!s.scan(r#"headers.get("X-Tenant-Id", fallback)"#).flagged());
     }
 
     #[test]
