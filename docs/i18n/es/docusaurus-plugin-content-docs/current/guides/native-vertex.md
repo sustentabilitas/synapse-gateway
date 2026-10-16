@@ -179,7 +179,7 @@ los endpoints passthrough nativos de Gemini de Synapse,
 `POST /google/models/<model>:<action>`. Synapse reenvía el cuerpo literalmente a Vertex AI con
 sus propias credenciales, contabiliza en el registro las llamadas `generateContent` y
 `streamGenerateContent`, y ante un error de conexión o una respuesta `5xx`, `429` o `408`
-prueba los siguientes tramos `vertex` de la ruta que incluye ese modelo. Las peticiones
+prueba los siguientes tramos `vertex` de la ruta que incluye ese modelo.
 Todas las acciones salvo `countTokens` y `computeTokens` se escanean con la política de la
 ruta coincidente, si no con `default`; consulta
 [Qué se escanea](../configuration/guardrails-policy.md#what-is-scanned). `<model>` puede ser

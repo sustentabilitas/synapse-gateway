@@ -30,10 +30,35 @@ fn gemini_text(body: &Value) -> Vec<String> {
     system.chain(turns).chain(batch).collect()
 }
 
+/// Keys whose values are encoded media or media references, not text.
+const MEDIA_KEYS: &[&str] = &[
+    "bytesBase64Encoded",
+    "gcsUri",
+    "inlineData",
+    "inline_data",
+    "fileData",
+    "file_data",
+];
+
 /// One segment of every string leaf in a body whose shape is not known, such
-/// as a Vertex `predict` body. Numbers, booleans and object keys are skipped.
+/// as a Vertex `predict` body. Numbers, booleans, object keys and values under
+/// encoded-media keys (`bytesBase64Encoded`, `gcsUri`, `inlineData`,
+/// `fileData`) are skipped.
 pub fn body_segments(body: &Value) -> Vec<String> {
-    vec![string_leaves(body).join("\n")]
+    vec![text_leaves(body).join("\n")]
+}
+
+fn text_leaves(v: &Value) -> Vec<String> {
+    match v {
+        Value::String(s) => vec![s.clone()],
+        Value::Array(items) => items.iter().flat_map(text_leaves).collect(),
+        Value::Object(map) => map
+            .iter()
+            .filter(|(k, _)| !MEDIA_KEYS.contains(&k.as_str()))
+            .flat_map(|(_, v)| text_leaves(v))
+            .collect(),
+        _ => Vec::new(),
+    }
 }
 
 /// One segment for a Jev System One body: every string leaf of `state` and
@@ -182,6 +207,22 @@ mod tests {
         let body = json!({"instances": [{"content": "A", "n": 1}], "parameters": {"k": "B"}});
         let s = one(body_segments(&body));
         assert!(s.contains('A') && s.contains('B'), "{s}");
+    }
+
+    #[test]
+    fn body_segments_skip_encoded_media() {
+        let body = json!({"instances": [{
+            "text": "CAPTION",
+            "image": {"bytesBase64Encoded": "QUJDIMAGE"},
+            "video": {"gcsUri": "gs://b/VIDEO.mp4"},
+            "part": {"inlineData": {"mimeType": "image/png", "data": "QUJDINLINE"}},
+            "file": {"fileData": {"fileUri": "gs://b/FILE.pdf"}}
+        }]});
+        let s = one(body_segments(&body));
+        assert!(s.contains("CAPTION"), "{s}");
+        for skip in ["QUJDIMAGE", "VIDEO", "QUJDINLINE", "FILE"] {
+            assert!(!s.contains(skip), "should not scan {skip}: {s}");
+        }
     }
 
     #[test]
