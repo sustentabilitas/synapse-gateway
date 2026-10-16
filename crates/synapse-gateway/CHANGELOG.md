@@ -10,7 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Embedding aliases accept an optional `policy`.
-- `synapse_guard_scans_total`, `synapse_guard_matches_total` and `synapse_guard_scan_duration_seconds` carry a `lane` label: `chat`, `passthrough`, `embeddings` or `jev`.
+- `synapse_guard_scans_total`, `synapse_guard_matches_total` and `synapse_guard_scan_duration_seconds` carry a `lane` label: `chat`, `passthrough`, `embeddings`, `jev` or `write`. The gateway never emits `write`; library users pass `GuardLane::Write` when they guard content being written to storage.
+- `isolation_bypass` scanner (block): content that sets an `x-tenant-id`, `x-workspace-id`, `x-user-id` or `x-agent-id` header, names a `*.svc.cluster.local` or `*.svc.clusterset.local` host, or calls one with `curl`/`wget`. A literal header token in prose, such as `Set the X-Tenant-Id: header`, also matches; roll it out in an `observe` policy first.
+- `data_exfil` scanner (block): content that sets a `recursive` flag true alongside a `/fs/ls` call, or names a `cortex://<a>/<b>/` URI with no deeper path. Roll it out in an `observe` policy first.
+- Library API: `guard::GuardLane`, `GuardEngine::guard_segments`, `guard::validate_guardrails`, the `guard::segments` module, `server::apps`, `GatewayBuilder::passthrough_models`, and `config::GuardrailsMode`, `config::PassthroughModels` and `config::AdminAddr`.
 
 ### Changed
 
@@ -22,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** The Gemini passthrough returns the gateway's own errors in Google's error shape (`error.status`, `error.details`) instead of the OpenAI shape. Upstream responses pass through unchanged.
 - **Breaking:** The Gemini passthrough returns `400` for a path model with characters other than `A-Z a-z 0-9 . _ -`, or an action with characters other than `A-Z a-z`.
 - **Breaking:** Library users: `GatewayMetrics::guard_scan` and `GatewayMetrics::guard_match` take a `lane` argument.
+- **Breaking:** Library users: `config::Config` has three new public fields, `guardrails_mode`, `passthrough_models` and `admin_addr`, so code that builds `Config` with a struct literal must set them.
+- **Breaking:** The Gemini passthrough scans every action except `countTokens` and `computeTokens`, including `embedContent` and `batchEmbedContents`, reading embedding `content` and each entry of a batch body's `requests`.
 - **Breaking:** `synapse_guard_scans_total`, `synapse_guard_matches_total` and `synapse_guard_scan_duration_seconds` count the passthrough, embeddings and Jev lanes as well as chat, so totals and alert thresholds on them rise after upgrading. Filter on `{lane="chat"}` to reproduce the previous numbers.
 - Relicensed from AGPL-3.0-only to MPL-2.0 (Mozilla Public License 2.0).
 

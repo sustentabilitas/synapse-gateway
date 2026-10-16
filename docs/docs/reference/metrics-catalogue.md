@@ -83,7 +83,7 @@ successful requests are counted, and the duration covers the serving leg alone. 
 | `synapse_guard_matches_total` | Counter | matches | `lane`, `policy`, `scanner`, `severity` |
 | `synapse_guard_scan_duration_seconds` | Histogram | seconds | `lane`, `policy` |
 
-`lane` is `chat`, `passthrough`, `embeddings` or `jev`, a different set of values from the
+`lane` is `chat`, `passthrough`, `embeddings`, `jev` or `write` (library users only), a different set of values from the
 `lane` label on `synapse_requests_total` (`standard`, `native` or `jev`). `outcome` is `pass`,
 `flag`, `block` or `observe`; `severity` is `block`, `warn` or `info`. See
 [Guardrails policy](../configuration/guardrails-policy.md#metrics).

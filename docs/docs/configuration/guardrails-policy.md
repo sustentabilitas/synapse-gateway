@@ -129,6 +129,8 @@ under `default`, and cannot be exempted.
 | `role_override` | — | block | `role_override`. Attempts to switch the model's role mid-prompt. |
 | `token_limit` | `max_chars` (required) | block | `token_limit`. Blocks input longer than `max_chars` characters, not tokens. |
 | `ban_substrings` | `substrings` (required, non-empty); `severity`: `block` (default), `warn` or `info` | as configured | `ban_substrings`. Matches any listed substring, ignoring ASCII case. |
+| `isolation_bypass` | — | block | `isolation_bypass`. Content that sets an `x-tenant-id`, `x-workspace-id`, `x-user-id` or `x-agent-id` header (curl `-H`, header dicts and objects, subscript assignment, or a setter call such as `set` or `header`), names a `*.svc.cluster.local` or `*.svc.clusterset.local` host, or calls one with `curl` or `wget`. A header token in prose such as `Set the X-Tenant-Id: header` also matches, so run it in an `observe` policy first. |
+| `data_exfil` | — | block | `data_exfil`. Content that sets a `recursive` flag true alongside a `/fs/ls` call, or names a `cortex://<a>/<b>/` URI with no deeper path. Run it in an `observe` policy first. |
 | `script_mix` | `threshold` (default `2`) | warn | `script_mix`. Flags input with more than `threshold` characters outside its dominant script (Latin, Cyrillic, Greek, Arabic, Hebrew or CJK). Catches look-alike characters such as a Cyrillic `а` in `paypal`. Other non-ASCII characters, such as emoji or typographic quotes, also count. |
 
 The "Reported as" name is the one that appears in the block response and in the
@@ -198,7 +200,7 @@ not sent to any provider and not recorded in the cost ledger.
 | `synapse_guard_matches_total` | Counter | `lane`, `policy`, `scanner`, `severity` | Matches per scanner and severity. |
 | `synapse_guard_scan_duration_seconds` | Histogram | `lane`, `policy` | Time spent running the policy's scanners. |
 
-`lane` is `chat`, `passthrough`, `embeddings` or `jev`.
+`lane` is `chat`, `passthrough`, `embeddings`, `jev` or `write`. The gateway never emits `write`; it is for library users who guard content being written to storage.
 
 To roll out a policy, run it in `observe` mode and watch
 `synapse_guard_scans_total{outcome="observe"}` and `synapse_guard_matches_total` to see what

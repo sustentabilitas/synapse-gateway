@@ -133,6 +133,8 @@ de Jev (`POST /typesafe/v1/systemone`). El passthrough no tiene ruta, siempre es
 | `role_override` | — | block | `role_override`. Intentos de cambiar el rol del modelo a mitad del prompt. |
 | `token_limit` | `max_chars` (obligatorio) | block | `token_limit`. Bloquea las entradas de más de `max_chars` caracteres, no tokens. |
 | `ban_substrings` | `substrings` (obligatorio, no vacío); `severity`: `block` (por defecto), `warn` o `info` | según la configuración | `ban_substrings`. Coincide con cualquiera de las subcadenas de la lista, sin distinguir mayúsculas y minúsculas ASCII. |
+| `isolation_bypass` | — | block | `isolation_bypass`. Contenido que fija una cabecera `x-tenant-id`, `x-workspace-id`, `x-user-id` o `x-agent-id` (`-H` de curl, diccionarios y objetos de cabeceras, asignación por índice o una llamada a un setter como `set` o `header`), nombra un host `*.svc.cluster.local` o `*.svc.clusterset.local`, o lo llama con `curl` o `wget`. Un token de cabecera en prosa como `Set the X-Tenant-Id: header` también coincide, así que pruébalo primero en una política `observe`. |
+| `data_exfil` | — | block | `data_exfil`. Contenido que pone a true un indicador `recursive` junto a una llamada a `/fs/ls`, o nombra una URI `cortex://<a>/<b>/` sin ruta más profunda. Pruébalo primero en una política `observe`. |
 | `script_mix` | `threshold` (por defecto `2`) | warn | `script_mix`. Marca las entradas con más de `threshold` caracteres fuera de su sistema de escritura dominante (latino, cirílico, griego, árabe, hebreo o CJK). Detecta caracteres de aspecto similar, como una `а` cirílica en `paypal`. Otros caracteres no ASCII, como los emojis o las comillas tipográficas, también cuentan. |
 
 El nombre de "Se informa como" es el que aparece en la respuesta de bloqueo y en la etiqueta
@@ -203,7 +205,7 @@ petición no se envía a ningún proveedor ni se registra en el registro de cost
 | `synapse_guard_matches_total` | Counter | `lane`, `policy`, `scanner`, `severity` | Coincidencias por escáner y severidad. |
 | `synapse_guard_scan_duration_seconds` | Histogram | `lane`, `policy` | Tiempo dedicado a ejecutar los escáneres de la política. |
 
-`lane` es `chat`, `passthrough`, `embeddings` o `jev`.
+`lane` es `chat`, `passthrough`, `embeddings`, `jev` o `write`. El gateway nunca emite `write`; es para quien usa la biblioteca y protege contenido que se escribe en almacenamiento.
 
 Para desplegar una política, ejecútala en modo `observe` y vigila
 `synapse_guard_scans_total{outcome="observe"}` y `synapse_guard_matches_total` para ver qué
