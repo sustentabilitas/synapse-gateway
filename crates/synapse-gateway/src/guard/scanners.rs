@@ -76,11 +76,30 @@ fn isolation_bypass_scanner() -> anyhow::Result<RegexScan> {
     Ok(RegexScan::new("isolation_bypass", patterns))
 }
 
+/// Deterministic unbounded-view signals: a recursive flag in content that
+/// calls `/fs/ls`, or a cortex URI scoped at a bare tenant/workspace root.
+fn data_exfil_scanner() -> anyhow::Result<RegexScan> {
+    let block = |id: &'static str, pat: &str| -> anyhow::Result<RegexPattern> {
+        Ok(RegexPattern::new(id, pat)?
+            .with_severity(Severity::Block)
+            .with_confidence(Confidence::High))
+    };
+    let patterns = vec![
+        block(
+            "recursive_listing",
+            r#"(?is)/fs/ls\b.*?recursive["'\s]*[:=]\s*["']?true\b|recursive["'\s]*[:=]\s*["']?true\b.*?/fs/ls\b"#,
+        )?,
+        block("root_scope", r#"cortex://[^/\s"']+/[^/\s"']+/(?:["'\s]|$)"#)?,
+    ];
+    Ok(RegexScan::new("data_exfil", patterns))
+}
+
 fn build(name: &str, d: Option<&DetailedScanner>) -> anyhow::Result<Vec<Box<dyn Scanner>>> {
     let scanners: Vec<Box<dyn Scanner>> = match name {
         "secrets" => vec![Box::new(Secrets::new())],
         "pii" => vec![Box::new(PiiPatterns::new())],
         "isolation_bypass" => vec![Box::new(isolation_bypass_scanner()?)],
+        "data_exfil" => vec![Box::new(data_exfil_scanner()?)],
         "invisible_text" => vec![Box::new(InvisibleText::new())],
         "role_override" => vec![Box::new(RoleOverride::new())],
         "script_mix" => {
@@ -211,5 +230,33 @@ mod tests {
     fn isolation_bypass_flags_header_token_even_in_prose() {
         let s = &build("isolation_bypass", None).unwrap()[0];
         assert!(s.scan("Set the X-Tenant-Id: header before calling.").should_refuse());
+    }
+
+    #[test]
+    fn data_exfil_flags_recursive_listing_and_root_scope() {
+        let s = &build("data_exfil", None).unwrap()[0];
+        assert_eq!(s.name(), "data_exfil");
+        assert!(s
+            .scan("curl -G \"$CX/api/v1/fs/ls\" \\\n  --data-urlencode \"recursive=true\"")
+            .should_refuse());
+        assert!(s
+            .scan(r#"requests.get(f"{cx}/api/v1/fs/ls", params={"recursive": "true"})"#)
+            .should_refuse());
+        assert!(s.scan(r#"uri=cortex://$ORG/$WS/""#).should_refuse());
+    }
+
+    #[test]
+    fn data_exfil_ignores_recursive_flag_without_fs_ls() {
+        let s = &build("data_exfil", None).unwrap()[0];
+        assert!(!s.scan(r#"glob.glob("**/*.md", recursive=True)"#).flagged());
+        assert!(!s.scan("fs.mkdirSync(p, {recursive: true})").flagged());
+    }
+
+    #[test]
+    fn data_exfil_ignores_bounded_deep_path_read() {
+        let s = &build("data_exfil", None).unwrap()[0];
+        assert!(!s
+            .scan(r#"uri=cortex://org/ws/agent/a1/skills/run.sh"#)
+            .flagged());
     }
 }
