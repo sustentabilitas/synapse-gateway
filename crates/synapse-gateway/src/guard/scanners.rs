@@ -54,21 +54,25 @@ pub fn build_scanners(spec: &ScannerSpec) -> anyhow::Result<Vec<Box<dyn Scanner>
     }
 }
 
+fn block_pattern(id: &'static str, pat: &str) -> anyhow::Result<RegexPattern> {
+    Ok(RegexPattern::new(id, pat)?
+        .with_severity(Severity::Block)
+        .with_confidence(Confidence::High))
+}
+
 /// Deterministic isolation-bypass signals: forging tenant identity headers,
 /// naming internal cluster hosts, or curling/wgetting those hosts directly.
 fn isolation_bypass_scanner() -> anyhow::Result<RegexScan> {
-    let block = |id: &'static str, pat: &str| -> anyhow::Result<RegexPattern> {
-        Ok(RegexPattern::new(id, pat)?
-            .with_severity(Severity::Block)
-            .with_confidence(Confidence::High))
-    };
     let patterns = vec![
-        block(
+        block_pattern(
             "forged_identity_header",
-            r#"(?i)x-(?:tenant|workspace|user|agent)-id["']?\s*[:=]"#,
+            r#"(?i)x-(?:tenant|workspace|user|agent)-id(?:["']?\s*[:=]|["']\s*\]\s*=|["']\s*,)"#,
         )?,
-        block("internal_host", r"[A-Za-z0-9.-]+\.svc\.cluster(?:set)?\.local")?,
-        block(
+        block_pattern(
+            "internal_host",
+            r"[A-Za-z0-9.-]+\.svc\.cluster(?:set)?\.local",
+        )?,
+        block_pattern(
             "direct_internal_call",
             r"(?i)\b(?:curl|wget)\b[^\n]*\.svc\.cluster(?:set)?\.local",
         )?,
@@ -79,17 +83,12 @@ fn isolation_bypass_scanner() -> anyhow::Result<RegexScan> {
 /// Deterministic unbounded-view signals: a recursive flag in content that
 /// calls `/fs/ls`, or a cortex URI scoped at a bare tenant/workspace root.
 fn data_exfil_scanner() -> anyhow::Result<RegexScan> {
-    let block = |id: &'static str, pat: &str| -> anyhow::Result<RegexPattern> {
-        Ok(RegexPattern::new(id, pat)?
-            .with_severity(Severity::Block)
-            .with_confidence(Confidence::High))
-    };
     let patterns = vec![
-        block(
+        block_pattern(
             "recursive_listing",
             r#"(?is)/fs/ls\b.*?recursive["'\s]*[:=]\s*["']?true\b|recursive["'\s]*[:=]\s*["']?true\b.*?/fs/ls\b"#,
         )?,
-        block("root_scope", r#"cortex://[^/\s"']+/[^/\s"']+/(?:["'\s]|$)"#)?,
+        block_pattern("root_scope", r#"cortex://[^/\s"']+/[^/\s"']+/(?:["'\s]|$)"#)?,
     ];
     Ok(RegexScan::new("data_exfil", patterns))
 }
@@ -205,7 +204,9 @@ mod tests {
         assert_eq!(built.len(), 1);
         let s = &built[0];
         assert_eq!(s.name(), "isolation_bypass");
-        assert!(s.scan(r#"curl -H "X-Tenant-Id: org-123" https://x"#).should_refuse());
+        assert!(s
+            .scan(r#"curl -H "X-Tenant-Id: org-123" https://x"#)
+            .should_refuse());
         assert!(s
             .scan("http://cortex-server.infrastructure.svc.clusterset.local/health")
             .should_refuse());
@@ -215,21 +216,44 @@ mod tests {
     fn isolation_bypass_flags_header_set_from_code() {
         let s = &build("isolation_bypass", None).unwrap()[0];
         assert!(s.scan(r#"headers={"X-Tenant-Id": org}"#).should_refuse());
-        assert!(s.scan(r#"fetch(u, {headers: {'X-Workspace-Id': ws}})"#).should_refuse());
+        assert!(s
+            .scan(r#"fetch(u, {headers: {'X-Workspace-Id': ws}})"#)
+            .should_refuse());
+    }
+
+    #[test]
+    fn isolation_bypass_flags_header_setter_calls() {
+        let s = &build("isolation_bypass", None).unwrap()[0];
+        assert!(s.scan(r#"headers["X-Tenant-Id"] = org"#).should_refuse());
+        assert!(s
+            .scan(r#"req.headers.set("X-Tenant-Id", v)"#)
+            .should_refuse());
+        assert!(s.scan(r#"h.Set('X-User-Id', v)"#).should_refuse());
+    }
+
+    #[test]
+    fn isolation_bypass_ignores_header_name_list_in_prose() {
+        let s = &build("isolation_bypass", None).unwrap()[0];
+        assert!(!s
+            .scan("Supported headers: X-Tenant-Id, X-Workspace-Id and more.")
+            .flagged());
     }
 
     #[test]
     fn isolation_bypass_ignores_plain_prose() {
         let s = &build("isolation_bypass", None).unwrap()[0];
-        assert!(!s.scan("This skill summarises the tenant onboarding flow.").flagged());
+        assert!(!s
+            .scan("This skill summarises the tenant onboarding flow.")
+            .flagged());
     }
 
-    // Current behavior: a literal `x-...-id:` in prose still matches. Observe-mode
-    // rollout surfaces this; it is a conscious choice, not an accident.
+    // A literal header token in prose also matches.
     #[test]
     fn isolation_bypass_flags_header_token_even_in_prose() {
         let s = &build("isolation_bypass", None).unwrap()[0];
-        assert!(s.scan("Set the X-Tenant-Id: header before calling.").should_refuse());
+        assert!(s
+            .scan("Set the X-Tenant-Id: header before calling.")
+            .should_refuse());
     }
 
     #[test]
