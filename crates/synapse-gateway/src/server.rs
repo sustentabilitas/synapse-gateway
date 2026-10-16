@@ -213,6 +213,10 @@ fn google_status(status: axum::http::StatusCode) -> &'static str {
     }
 }
 
+/// Passthrough actions that send no content upstream to a model and are
+/// forwarded unscanned. Every other action is guarded.
+const NON_CONTENT_ACTIONS: &[&str] = &["countTokens", "computeTokens"];
+
 /// Rejects a path model outside `[A-Za-z0-9._-]+` or an action outside
 /// `[A-Za-z]+`, so neither can change the upstream URL's path or query.
 fn check_model_action(model: &str, action: &str) -> Result<(), GatewayError> {
@@ -275,7 +279,19 @@ async fn forward_gemini(
         )));
     };
 
-    // countTokens etc.: pure single forward, no chain / metering.
+    if !NON_CONTENT_ACTIONS.contains(&action) {
+        let policy = chain
+            .route
+            .as_deref()
+            .and_then(|r| st.gateway.routes.policy_of(r));
+        st.gateway.guard_lane(
+            policy,
+            crate::guard::GuardLane::Passthrough,
+            &crate::guard::segments::gemini_segments(&body),
+        )?;
+    }
+
+    // Non-generation actions: pure single forward, no chain / metering.
     if !metered {
         let resp = provider
             .passthrough_request(
@@ -296,16 +312,6 @@ async fn forward_gemini(
         })?;
         return passthrough_response(status.as_u16(), "application/json", bytes);
     }
-
-    let policy = chain
-        .route
-        .as_deref()
-        .and_then(|r| st.gateway.routes.policy_of(r));
-    st.gateway.guard_lane(
-        policy,
-        crate::guard::GuardLane::Passthrough,
-        &crate::guard::segments::gemini_segments(&body),
-    )?;
 
     let ctx = request_ctx(&headers);
     let route_alias = chain.route.as_deref();

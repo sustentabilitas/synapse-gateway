@@ -822,6 +822,32 @@ async fn blocked_stream_request_makes_no_upstream_call() {
 }
 
 #[tokio::test]
+async fn blocked_embed_request_makes_no_upstream_call() {
+    let mock = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(0)
+        .mount(&mock)
+        .await;
+    let app = router(Arc::new(guarded_gateway(
+        &mock.uri(),
+        TWO_ROUTES,
+        PassthroughModels::Routed,
+        GatewayMetrics::noop(),
+    )));
+    let embed = serde_json::json!({"content": {"parts": [{"text": "forbidden"}]}});
+    let batch = serde_json::json!({"requests": [{"content": {"parts": [{"text": "forbidden"}]}}]});
+    for (action, body) in [("embedContent", embed), ("batchEmbedContents", batch)] {
+        let resp = app
+            .clone()
+            .oneshot(gemini_body(&format!("/v1beta/models/chat:{action}"), body))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "{action}");
+    }
+}
+
+#[tokio::test]
 async fn malformed_json_gets_the_google_error_shape() {
     let mock = MockServer::start().await;
     let app = router(Arc::new(guarded_gateway(

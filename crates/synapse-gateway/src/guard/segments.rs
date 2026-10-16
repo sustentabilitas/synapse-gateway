@@ -2,16 +2,23 @@
 
 use serde_json::Value;
 
-/// One segment for a Gemini `generateContent` body: the system instruction's
-/// text, plus every non-model turn's text parts and the string leaves of its
-/// function responses. Model turns (any case), function calls and inline or
-/// file data are skipped. camelCase and snake_case keys are both read, and both
-/// when both are present. A repeated field may be an array or a single object.
+/// One segment for a Gemini request body: the system instruction's text, plus
+/// every non-model turn's text parts and the string leaves of its function
+/// responses. Turns come from `contents` (generation) and `content`
+/// (embedding); a batch body's `requests` are read the same way. Model turns
+/// (any case), function calls and inline or file data are skipped. camelCase
+/// and snake_case keys are both read, and both when both are present. A
+/// repeated field may be an array or a single object.
 pub fn gemini_segments(body: &Value) -> Vec<String> {
+    vec![gemini_text(body).join("\n")]
+}
+
+fn gemini_text(body: &Value) -> Vec<String> {
     let system = field(body, "systemInstruction", "system_instruction")
         .filter_map(|s| s.get("parts"))
         .flat_map(parts_text);
     let turns = items(body.get("contents"))
+        .chain(items(body.get("content")))
         .filter(|c| {
             !c.get("role")
                 .and_then(Value::as_str)
@@ -19,11 +26,8 @@ pub fn gemini_segments(body: &Value) -> Vec<String> {
         })
         .filter_map(|c| c.get("parts"))
         .flat_map(parts_text);
-    vec![system
-        .into_iter()
-        .chain(turns)
-        .collect::<Vec<_>>()
-        .join("\n")]
+    let batch = items(body.get("requests")).flat_map(gemini_text);
+    system.chain(turns).chain(batch).collect()
 }
 
 /// One segment for a Jev System One body: every string leaf of `state` and
@@ -153,6 +157,18 @@ mod tests {
             !s.contains("UPPERMODEL") && !s.contains("MIXEDMODEL"),
             "{s}"
         );
+    }
+
+    #[test]
+    fn gemini_scans_embed_and_batch_request_bodies() {
+        let embed = json!({"content": {"parts": [{"text": "EMBED"}]}});
+        assert!(one(gemini_segments(&embed)).contains("EMBED"));
+        let batch = json!({"requests": [
+            {"content": {"parts": [{"text": "BATCHEMBED"}]}},
+            {"contents": [{"role": "user", "parts": [{"text": "BATCHGEN"}]}]}
+        ]});
+        let s = one(gemini_segments(&batch));
+        assert!(s.contains("BATCHEMBED") && s.contains("BATCHGEN"), "{s}");
     }
 
     #[test]
