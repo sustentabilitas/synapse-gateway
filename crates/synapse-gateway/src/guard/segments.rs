@@ -30,6 +30,12 @@ fn gemini_text(body: &Value) -> Vec<String> {
     system.chain(turns).chain(batch).collect()
 }
 
+/// One segment of every string leaf in a body whose shape is not known, such
+/// as a Vertex `predict` body. Numbers, booleans and object keys are skipped.
+pub fn body_segments(body: &Value) -> Vec<String> {
+    vec![string_leaves(body).join("\n")]
+}
+
 /// One segment for a Jev System One body: every string leaf of `state` and
 /// `questions`. Numbers, booleans and object keys are skipped.
 pub fn jev_segments(body: &Value) -> Vec<String> {
@@ -169,6 +175,13 @@ mod tests {
         ]});
         let s = one(gemini_segments(&batch));
         assert!(s.contains("BATCHEMBED") && s.contains("BATCHGEN"), "{s}");
+    }
+
+    #[test]
+    fn body_segments_scan_every_string_leaf() {
+        let body = json!({"instances": [{"content": "A", "n": 1}], "parameters": {"k": "B"}});
+        let s = one(body_segments(&body));
+        assert!(s.contains('A') && s.contains('B'), "{s}");
     }
 
     #[test]

@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** The Gemini passthrough returns `400` for a path model with characters other than `A-Z a-z 0-9 . _ -`, or an action with characters other than `A-Z a-z`.
 - **Breaking:** Library users: `GatewayMetrics::guard_scan` and `GatewayMetrics::guard_match` take a `lane` argument.
 - **Breaking:** Library users: `config::Config` has three new public fields, `guardrails_mode`, `passthrough_models` and `admin_addr`, so code that builds `Config` with a struct literal must set them.
-- **Breaking:** The Gemini passthrough scans every action except `countTokens` and `computeTokens`, including `embedContent` and `batchEmbedContents`, reading embedding `content` and each entry of a batch body's `requests`.
+- **Breaking:** The Gemini passthrough scans every action except `countTokens` and `computeTokens`, including `embedContent` and `batchEmbedContents`, reading embedding `content` and each entry of a batch body's `requests`. Any other action, such as `predict`, scans every string value in its body.
 - **Breaking:** `synapse_guard_scans_total`, `synapse_guard_matches_total` and `synapse_guard_scan_duration_seconds` count the passthrough, embeddings and Jev lanes as well as chat, so totals and alert thresholds on them rise after upgrading. Filter on `{lane="chat"}` to reproduce the previous numbers.
 - Relicensed from AGPL-3.0-only to MPL-2.0 (Mozilla Public License 2.0).
 

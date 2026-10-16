@@ -848,6 +848,28 @@ async fn blocked_embed_request_makes_no_upstream_call() {
 }
 
 #[tokio::test]
+async fn blocked_unknown_action_body_makes_no_upstream_call() {
+    let mock = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(0)
+        .mount(&mock)
+        .await;
+    let app = router(Arc::new(guarded_gateway(
+        &mock.uri(),
+        TWO_ROUTES,
+        PassthroughModels::Routed,
+        GatewayMetrics::noop(),
+    )));
+    let body = serde_json::json!({"instances": [{"content": "this is forbidden"}]});
+    let resp = app
+        .oneshot(gemini_body("/v1beta/models/chat:predict", body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn malformed_json_gets_the_google_error_shape() {
     let mock = MockServer::start().await;
     let app = router(Arc::new(guarded_gateway(

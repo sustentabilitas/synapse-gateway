@@ -228,7 +228,8 @@ AI with the gateway's credentials.
   returns `502` with code `upstream_error`. If the gateway has no Vertex AI project configured,
   the endpoint returns `400`.
 
-Generation requests are scanned under the matched route's policy, else `default` (see [What is
+Every action except `countTokens` and `computeTokens` is scanned under the matched route's
+policy, else `default` (see [What is
 scanned](../configuration/guardrails-policy.md#what-is-scanned)). With
 `SYNAPSE_PASSTHROUGH_MODELS=routed` (the default), a model that is neither a route alias nor a
 `vertex` leg gets `404`. The gateway's own errors on this endpoint use Google's error shape.

@@ -231,8 +231,9 @@ que se reenvía tal cual a Vertex AI con las credenciales del gateway.
   intento devuelve `502` con el código `upstream_error`. Si el gateway no tiene ningún proyecto
   de Vertex AI configurado, el endpoint devuelve `400`.
 
-Las peticiones de generación se escanean con la política de la ruta coincidente o, si no,
-`default` (consulta [Qué se escanea](../configuration/guardrails-policy.md#what-is-scanned)).
+Todas las acciones salvo `countTokens` y `computeTokens` se escanean con la política de la
+ruta coincidente o, si no, `default` (consulta
+[Qué se escanea](../configuration/guardrails-policy.md#what-is-scanned)).
 Con `SYNAPSE_PASSTHROUGH_MODELS=routed` (el valor por defecto), un modelo que no es ni un alias
 de ruta ni un tramo `vertex` recibe `404`. Los errores del propio gateway en este endpoint usan
 la forma de error de Google.

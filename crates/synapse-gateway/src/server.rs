@@ -217,6 +217,15 @@ fn google_status(status: axum::http::StatusCode) -> &'static str {
 /// forwarded unscanned. Every other action is guarded.
 const NON_CONTENT_ACTIONS: &[&str] = &["countTokens", "computeTokens"];
 
+/// Passthrough actions whose body is a Gemini request read by
+/// `gemini_segments`. Any other guarded action scans every string in its body.
+const GEMINI_BODY_ACTIONS: &[&str] = &[
+    "generateContent",
+    "streamGenerateContent",
+    "embedContent",
+    "batchEmbedContents",
+];
+
 /// Rejects a path model outside `[A-Za-z0-9._-]+` or an action outside
 /// `[A-Za-z]+`, so neither can change the upstream URL's path or query.
 fn check_model_action(model: &str, action: &str) -> Result<(), GatewayError> {
@@ -284,11 +293,13 @@ async fn forward_gemini(
             .route
             .as_deref()
             .and_then(|r| st.gateway.routes.policy_of(r));
-        st.gateway.guard_lane(
-            policy,
-            crate::guard::GuardLane::Passthrough,
-            &crate::guard::segments::gemini_segments(&body),
-        )?;
+        let segments = if GEMINI_BODY_ACTIONS.contains(&action) {
+            crate::guard::segments::gemini_segments(&body)
+        } else {
+            crate::guard::segments::body_segments(&body)
+        };
+        st.gateway
+            .guard_lane(policy, crate::guard::GuardLane::Passthrough, &segments)?;
     }
 
     // Non-generation actions: pure single forward, no chain / metering.
