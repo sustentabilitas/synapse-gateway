@@ -5,9 +5,10 @@
 use anyhow::{bail, Context};
 use llm_guard::patterns::COMMON_INJECTION_PATTERNS;
 use llm_guard::scanners::{
-    BanSubstrings, InvisibleText, PiiPatterns, RoleOverride, ScriptMix, Secrets, TokenLimit,
+    BanSubstrings, InvisibleText, PiiPatterns, RegexPattern, RegexScan, RoleOverride, ScriptMix,
+    Secrets, TokenLimit,
 };
-use llm_guard::{ScanResult, Scanner, Severity};
+use llm_guard::{Confidence, ScanResult, Scanner, Severity};
 
 use super::policy::{DetailedScanner, ScannerSpec};
 
@@ -53,10 +54,33 @@ pub fn build_scanners(spec: &ScannerSpec) -> anyhow::Result<Vec<Box<dyn Scanner>
     }
 }
 
+/// Deterministic isolation-bypass signals: forging tenant identity headers,
+/// naming internal cluster hosts, or curling/wgetting those hosts directly.
+fn isolation_bypass_scanner() -> anyhow::Result<RegexScan> {
+    let block = |id: &'static str, pat: &str| -> anyhow::Result<RegexPattern> {
+        Ok(RegexPattern::new(id, pat)?
+            .with_severity(Severity::Block)
+            .with_confidence(Confidence::High))
+    };
+    let patterns = vec![
+        block(
+            "forged_identity_header",
+            r#"(?i)x-(?:tenant|workspace|user|agent)-id["']?\s*[:=]"#,
+        )?,
+        block("internal_host", r"[A-Za-z0-9.-]+\.svc\.cluster(?:set)?\.local")?,
+        block(
+            "direct_internal_call",
+            r"(?i)\b(?:curl|wget)\b[^\n]*\.svc\.cluster(?:set)?\.local",
+        )?,
+    ];
+    Ok(RegexScan::new("isolation_bypass", patterns))
+}
+
 fn build(name: &str, d: Option<&DetailedScanner>) -> anyhow::Result<Vec<Box<dyn Scanner>>> {
     let scanners: Vec<Box<dyn Scanner>> = match name {
         "secrets" => vec![Box::new(Secrets::new())],
         "pii" => vec![Box::new(PiiPatterns::new())],
+        "isolation_bypass" => vec![Box::new(isolation_bypass_scanner()?)],
         "invisible_text" => vec![Box::new(InvisibleText::new())],
         "role_override" => vec![Box::new(RoleOverride::new())],
         "script_mix" => {
@@ -154,5 +178,38 @@ mod tests {
         );
         let err = build_scanners(&s).err().expect("expected an error");
         assert!(err.to_string().contains("unknown scanner"));
+    }
+
+    #[test]
+    fn isolation_bypass_flags_forged_header_and_internal_host() {
+        let built = build("isolation_bypass", None).unwrap();
+        assert_eq!(built.len(), 1);
+        let s = &built[0];
+        assert_eq!(s.name(), "isolation_bypass");
+        assert!(s.scan(r#"curl -H "X-Tenant-Id: org-123" https://x"#).should_refuse());
+        assert!(s
+            .scan("http://cortex-server.infrastructure.svc.clusterset.local/health")
+            .should_refuse());
+    }
+
+    #[test]
+    fn isolation_bypass_flags_header_set_from_code() {
+        let s = &build("isolation_bypass", None).unwrap()[0];
+        assert!(s.scan(r#"headers={"X-Tenant-Id": org}"#).should_refuse());
+        assert!(s.scan(r#"fetch(u, {headers: {'X-Workspace-Id': ws}})"#).should_refuse());
+    }
+
+    #[test]
+    fn isolation_bypass_ignores_plain_prose() {
+        let s = &build("isolation_bypass", None).unwrap()[0];
+        assert!(!s.scan("This skill summarises the tenant onboarding flow.").flagged());
+    }
+
+    // Current behavior: a literal `x-...-id:` in prose still matches. Observe-mode
+    // rollout surfaces this; it is a conscious choice, not an accident.
+    #[test]
+    fn isolation_bypass_flags_header_token_even_in_prose() {
+        let s = &build("isolation_bypass", None).unwrap()[0];
+        assert!(s.scan("Set the X-Tenant-Id: header before calling.").should_refuse());
     }
 }
