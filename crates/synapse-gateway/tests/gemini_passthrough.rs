@@ -848,6 +848,37 @@ async fn blocked_embed_request_makes_no_upstream_call() {
 }
 
 #[tokio::test]
+async fn single_forward_action_uses_matched_leg_region() {
+    let mock = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(
+            "/v1/projects/p/locations/us-central1/publishers/google/models/gemini-2.5-flash:countTokens",
+        ))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"totalTokens": 9})),
+        )
+        .expect(1)
+        .mount(&mock)
+        .await;
+    let routes = r#"[routes."regional"]
+        legs = [{ provider = "vertex", model = "gemini-2.5-flash", region = "us-central1" }]"#;
+    let app = router(Arc::new(guarded_gateway(
+        &mock.uri(),
+        routes,
+        PassthroughModels::Routed,
+        GatewayMetrics::noop(),
+    )));
+    let resp = app
+        .oneshot(gemini_body(
+            "/v1beta/models/gemini-2.5-flash:countTokens",
+            user_says("hello"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
 async fn blocked_unknown_action_body_makes_no_upstream_call() {
     let mock = MockServer::start().await;
     Mock::given(method("POST"))
