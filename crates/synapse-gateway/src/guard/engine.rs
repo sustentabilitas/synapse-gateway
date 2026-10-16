@@ -22,6 +22,7 @@ pub enum GuardLane {
     Passthrough,
     Embeddings,
     Jev,
+    Write,
 }
 
 impl GuardLane {
@@ -31,6 +32,7 @@ impl GuardLane {
             GuardLane::Passthrough => "passthrough",
             GuardLane::Embeddings => "embeddings",
             GuardLane::Jev => "jev",
+            GuardLane::Write => "write",
         }
     }
 }
@@ -317,5 +319,10 @@ mod tests {
                 "missing `{line}` in:\n{text}"
             );
         }
+    }
+
+    #[test]
+    fn write_lane_label_is_write() {
+        assert_eq!(GuardLane::Write.label(), "write");
     }
 }
