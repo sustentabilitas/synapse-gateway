@@ -701,9 +701,15 @@ which can appear in benign creative or role-play prompts. Start new policies in
 
 #### `secrets`
 
-- **What it catches**: API keys, cloud credentials, bearer tokens, private key headers, GitHub
-  personal access tokens (`ghp_...`, `github_pat_...`), Slack tokens (`xoxb-...`), OpenAI keys
-  (`sk-...`), AWS access keys (`AKIA...`), and high-entropy credential patterns.
+- **What it catches** (pattern ids in parentheses): OpenAI keys `sk-...` (`openai_key`), AWS
+  access key IDs `AKIA...`/`ASIA...` (`aws_access_key`), AWS secret access keys after a label
+  such as `aws_secret_access_key =` or `"SecretAccessKey":` (`aws_secret_key`), GitHub tokens
+  `ghp_...` (`github_token`), Slack tokens `xoxb-...` (`slack_token`), Stripe keys
+  (`stripe_key`), PEM private key headers (`pem_private_key`), and JWTs (`jwt`).
+- **Not matched**: the key ID in a presigned URL's `X-Amz-Credential=` parameter. A presigned
+  URL never carries the secret key; it grants one request on one object until it expires.
+- **Logs**: each match logs its pattern id and byte span under `synapse::guard`, never the
+  matched text.
 - **Default severity**: `block`. Supports `action = "mask"` (rewrites to `[REDACTED:secrets]`).
 - **Configuration**:
   ```toml
