@@ -689,9 +689,17 @@ comprueba qué bloquearían antes de cambiarlas a `block`.
 
 #### `secrets`
 
-- **Qué detecta**: Claves de API, credenciales de nube, tokens bearer, encabezados de claves
-  privadas, tokens de GitHub (`ghp_...`, `github_pat_...`), tokens de Slack (`xoxb-...`), claves
-  de OpenAI (`sk-...`), claves AWS (`AKIA...`) y secretos de alta entropía.
+- **Qué detecta** (ids de patrón entre paréntesis): claves de OpenAI `sk-...` (`openai_key`),
+  IDs de clave de acceso de AWS `AKIA...`/`ASIA...` (`aws_access_key`), claves de acceso
+  secretas de AWS tras una etiqueta como `aws_secret_access_key =` o `"SecretAccessKey":`
+  (`aws_secret_key`), tokens de GitHub `ghp_...` (`github_token`), tokens de Slack `xoxb-...`
+  (`slack_token`), claves de Stripe (`stripe_key`), encabezados de claves privadas PEM
+  (`pem_private_key`) y JWT (`jwt`).
+- **No detecta**: el ID de clave del parámetro `X-Amz-Credential=` de una URL prefirmada. Una
+  URL prefirmada nunca lleva la clave secreta; autoriza una petición sobre un objeto hasta que
+  caduca.
+- **Logs**: cada coincidencia registra su id de patrón y su rango de bytes en `synapse::guard`,
+  nunca el texto coincidente.
 - **Severidad por defecto**: `block`. Admite `action = "mask"` (`[REDACTED:secrets]`).
 - **Configuración**:
   ```toml
