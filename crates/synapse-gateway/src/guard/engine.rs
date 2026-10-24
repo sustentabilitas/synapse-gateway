@@ -452,6 +452,18 @@ impl GuardEngine {
             if eff != Effect::Block && m.span.end > cut {
                 continue;
             }
+            tracing::info!(
+                target: "synapse::guard",
+                policy,
+                lane = lane.label(),
+                direction,
+                scanner = m.scanner,
+                pattern = pattern_label(&m),
+                start = m.span.start,
+                end = m.span.end,
+                effect = ?eff,
+                "guardrail match span"
+            );
             self.metrics.guard_match(
                 policy,
                 lane.label(),
@@ -534,6 +546,15 @@ fn sorted_dedup(mut v: Vec<String>) -> Vec<String> {
     v.sort();
     v.dedup();
     v
+}
+
+/// The match's pattern id for logs; `-` for substring scanners, whose pattern
+/// id is the banned text itself.
+fn pattern_label(m: &llm_guard::Match<'_>) -> &'static str {
+    match m.scanner {
+        "ban_substrings" | "injection" => "-",
+        _ => m.pattern,
+    }
 }
 
 /// Emits a structured tracing log for non-pass guardrail scan outcomes. Never
@@ -916,6 +937,8 @@ mod tests {
             r#"policy="mask_p" lane="chat" direction="input" outcome="masked" scanners=["secrets"]"#,
             r#"policy="flag_p" lane="chat" direction="input" outcome="flag" scanners=["ban_substrings"]"#,
             r#"policy="output_p" lane="chat" direction="output" outcome="block" scanners=["ban_substrings"]"#,
+            r#"policy="mask_p" lane="chat" direction="input" scanner="secrets" pattern="github_token" start=6 end=46 effect=Mask"#,
+            r#"policy="block_p" lane="chat" direction="input" scanner="ban_substrings" pattern="-" start=8 end=17 effect=Block"#,
         ] {
             assert!(
                 logs.contains(expected),
