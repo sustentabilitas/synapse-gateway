@@ -138,6 +138,7 @@ const config: Config = {
             {label: 'crates.io', href: 'https://crates.io/crates/synapse-gateway'},
             {label: 'Docker Hub', href: 'https://hub.docker.com/r/sustentabilitas/synapse-gateway'},
             {label: 'docs.rs', href: 'https://docs.rs/synapse-gateway'},
+            {label: 'Personal blog', href: 'https://sustentabilitas.com/'},
           ],
         },
       ],
