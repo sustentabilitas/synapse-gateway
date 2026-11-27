@@ -668,6 +668,12 @@ Write a scanner as a bare string (`"secrets"`) to use its defaults, or as an inl
 | `data_exfil` | — | `block` | No | Yes | `data_exfil` |
 | `script_mix` | `threshold` (default `2`) | `warn` | No | Yes | `script_mix` |
 
+`prompt_injection` matches its known injection phrases case-insensitively at word boundaries: a phrase
+must start a word, and a multi-word phrase must end its last word or end it with an inflection (`s`,
+`es`, `d`, `ed`, `ing`, `ly`). "developer mode" and "forget all previously" match, "developer models"
+does not; "jailbreaking" still matches "jailbreak". `ban_substrings` matches anywhere, inside
+words too.
+
 The **Reported as** name is used in `400` block responses, `[REDACTED:<scanner>]` mask labels,
 `synapse::guard` log lines, and the `scanner` label on `synapse_guard_matches_total`.
 

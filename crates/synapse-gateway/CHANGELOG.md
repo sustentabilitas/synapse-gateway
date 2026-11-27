@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Jev 2D (`harness × model`) UHP router (`config/harnesses.toml`)**: declares runtime capability catalogs under `[bases.<id>]` (`pi`, `claude-code`, `codex`, `hermes`, `systemone`), static UHP harness seeds under `[harnesses.<id>]`, and 2D `(profile × tier)` routing tables under `[harness_routes.<alias>]`. In a single TypeSafe System One (`/v1/systemone`) call (`profile` `choice`, `difficulty` `score`, `needs_reasoning` `noul`, and optional `needs_deep_horizon` `noul`), Synapse selects both the work archetype (`profile` → ordered harness bases) and the difficulty tier (`tier` → model legs, reasoning effort, `max_step`, and `timeout_seconds`), pre-filtering incompatible `(base, leg)` cells and ordering failover with `base` as the outer loop and `escalation_order(tiers.len(), start_tier)` as the inner loop. Continuation turns (`previous_response_id`) keep the session's `base` pinned while re-scoring difficulty so follow-up turns can down-shift to cheaper/faster tiers. Adds `GET /v1/harnesses`, `POST /v1/responses`, and `GET /v1/responses/{id}`, `x-synapse-harness-base`, `x-synapse-profile`, `x-synapse-profile-decided`, and `x-synapse-max-step` headers, `GatewayError::{HarnessMismatch, SessionBusy, ModelUnavailable, HarnessUnavailable}`, and `synapse_harness_routing_decisions_total`, `synapse_harness_turns_total`, and `synapse_harness_turn_duration_seconds` metrics.
 
+### Fixed
+
+- `prompt_injection` matches its injection phrases at word boundaries: a phrase must start a word, and a multi-word phrase must end its last word or end it with an inflection (`s`, `es`, `d`, `ed`, `ing`, `ly`, so "forget all previously" still matches). A phrase running into a longer word, such as "developer mode" in "developer models" or "simulate a" in "simulate annual", no longer blocks the request; single words keep matching any ending ("jailbreaking").
+
 ## [2.0.5] - 2026-10-26
 
 ## [2.0.4] - 2026-10-26

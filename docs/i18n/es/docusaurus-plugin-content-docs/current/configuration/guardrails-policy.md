@@ -662,6 +662,12 @@ sustituir `action`.
 | `data_exfil` | — | `block` | No | Sí | `data_exfil` |
 | `script_mix` | `threshold` (por defecto `2`) | `warn` | No | Sí | `script_mix` |
 
+`prompt_injection` detecta sus frases de inyección conocidas sin distinguir mayúsculas y en límites de
+palabra: una frase debe empezar una palabra, y una frase de varias palabras debe terminar su última palabra
+o terminarla con una flexión (`s`, `es`, `d`, `ed`, `ing`, `ly`). "developer mode" y "forget all
+previously" coinciden, "developer models" no; "jailbreaking" sigue coincidiendo con "jailbreak".
+`ban_substrings` coincide en cualquier parte, también dentro de palabras.
+
 El nombre de **Se informa como** es el que aparece en la respuesta de bloqueo `400`, en las
 etiquetas `[REDACTED:<scanner>]`, en los logs `synapse::guard` y en la etiqueta `scanner` de
 `synapse_guard_matches_total`.
